@@ -22,6 +22,7 @@ Any social media accounts, websites, or channels claiming to be me or this proje
 - Background music (BGM) support
 - Controller / touch input mapping
 - Change game icon and rename
+- Per-game config (Screen Orientation/Display/Hide Keypad)
 
 ## Screenshots
 
