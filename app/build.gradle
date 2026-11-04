@@ -1,0 +1,96 @@
+plugins {
+    id 'com.android.application'
+}
+
+def signingPropsPath = project.findProperty('pocketdoja.signingProps') ?: 'C:/AndroidPrivate/PocketDoJa/signing.properties'
+def signingPropsFile = file(signingPropsPath)
+def hasSigning = signingPropsFile.exists()
+
+android {
+    namespace 'opendoja.android'
+    compileSdk 34
+
+    // External signing configuration (never committed).
+    signingConfigs {
+        debug {
+            // default debug keystore
+        }
+        release {
+            if (hasSigning) {
+                def props = new Properties()
+                signingPropsFile.withInputStream { props.load(it) }
+                storeFile file(props['storeFile'])
+                storePassword props['storePassword']
+                keyAlias props['keyAlias']
+                keyPassword props['keyPassword']
+            }
+        }
+    }
+
+    defaultConfig {
+        applicationId 'com.shibesan.pocketdoja'
+        minSdk 28
+        // 30 keeps java.nio.charset.Charset->defaultCharset (max-target-r) visible to
+        // reflection so installDefaultCharsetOverride() can fix new String(byte[]) mojibake.
+        targetSdk 30
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+        coreLibraryDesugaringEnabled true
+    }
+
+    buildTypes {
+        debug {
+            debuggable true
+        }
+        release {
+            if (hasSigning) {
+                signingConfig signingConfigs.release
+            }
+            minifyEnabled false
+            debuggable false
+        }
+    }
+    sourceSets {
+        main {
+            java {
+                srcDirs = ["${rootDir}/opendoja/src/main/java", "${projectDir}/src/main/java"]
+                exclude 'opendoja/launcher/**'
+                exclude 'opendoja/probes/**'
+                exclude 'opendoja/tools/**'
+                exclude 'opendoja/host/input/ControllerInputManagerProbe.java'
+            }
+            resources {
+                srcDirs = ["${rootDir}/opendoja/src/main/resources"]
+            }
+        }
+    }
+}
+
+gradle.taskGraph.whenReady { graph ->
+    if (graph.allTasks.any { it.name.toLowerCase().contains('release') } && !hasSigning) {
+        throw new GradleException("Release signing configuration not found at: ${signingPropsFile}. Create signing.properties (storeFile, storePassword, keyAlias, keyPassword) outside the project.")
+    }
+}
+
+dependencies {
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
+    implementation project(':dexlib')
+    implementation 'com.android.tools:r8:8.5.35'
+    implementation 'org.ow2.asm:asm:9.6'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.compilerArgs += ['-Xmaxerrs', '10000']
+}
+
+android.applicationVariants.all { variant ->
+    variant.outputs.all { output ->
+        outputFileName = "PocketDoJa-v${variant.versionName}.apk"
+    }
+}

@@ -1,0 +1,71 @@
+# Gradle / Android build outputs
+.gradle/
+build/
+**/build/
+out/
+local.properties
+signing.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Logs & development intermediate outputs
+*.log
+*.err
+*.out
+javap-all.txt
+jdk-api-sigs.txt
+jdk-sigs-all.txt
+jdk-sound-sigs.txt
+sources.list
+sources17.list
+stdin-feed.txt
+awt-members.tsv
+
+# Keystore / signing files
+*.jks
+*.keystore
+*.pkcs12
+*.p12
+*.pfx
+key.properties
+signing.properties
+
+# Environment variables / secrets
+.env
+.env.*
+!.env.example
+secrets/
+credentials/
+
+# Operating system
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files and backups
+*.tmp
+*.bak
+*.swp
+*~
+
+# Kilo AI tooling (local config)
+.kilo/
+
+# Game files / user data (do not distribute)
+public/*.jam
+public/*.jar
+public/*.sp
+public/ENGLISH_PATCH__*/
+public/Flower Skirt/
+public/**/*.jam
+public/**/*.jar
+
+# Logs directory
+logs/
+
+# Runtime-generated / local data
+configs/networkuid.txt
+opendoja-log.txt

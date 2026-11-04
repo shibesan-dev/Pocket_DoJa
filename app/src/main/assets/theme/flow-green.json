@@ -1,0 +1,35 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "sXGXDD",
+  "date": "0",
+  "viewed": 0,
+  "name": "flow-green",
+  "description": "flow-green",
+  "likes": 0,
+  "published": "Private",
+  "usePreview": 0,
+  "tags": [
+   "minimalistic",
+   "lemongrass"
+  ],
+  "hasliked": 0,
+  "parentid": "",
+  "parentname": ""
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "\n#define TAU 6.28318530718\n#define LOOP_SECONDS 16.0\n\nfloat gaussian(float x, float width)\n{\n    float v = x / width;\n    return exp(-v * v);\n}\n\nvoid addRibbon(\n    inout vec3 color,\n    float distanceToCurve,\n    float width,\n    vec3 tint\n) {\n    float d = distanceToCurve;\n\n    float shadow = gaussian(\n        d + width * 0.78,\n        width * 0.30\n    );\n\n    color *= 1.0 - 0.045 * shadow;\n    \n    float body = 1.0 - smoothstep(\n        width,\n        width + 0.025,\n        abs(d)\n    );\n\n    color = mix(color, tint, body * 0.58);\n    \n    float highlight = gaussian(\n        d - width * 0.48,\n        width * 0.13\n    );\n\n    color = mix(\n        color,\n        vec3(1.0, 1.0, 1.0),\n        highlight * 0.36\n    );\n}\n\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord)\n{\n    vec2 uv = fragCoord / iResolution.xy;\n\n    vec2 p = (fragCoord - 0.5 * iResolution.xy)\n           / iResolution.y;\n\n    float phase = TAU * fract(iTime / LOOP_SECONDS);\n    float x = uv.x * TAU;\n\n    vec3 color = mix(\n        vec3(0.79, 0.87, 0.64),\n        vec3(0.99, 1.0, 0.92),\n        smoothstep(-0.48, 0.48, p.y)\n    );\n    float waveA =\n        -0.235\n        + 0.063 * sin(x * 0.64 + phase)\n        + 0.018 * sin(x * 1.28 - 2.0 * phase);\n\n    float waveB =\n        -0.025\n        + 0.066 * sin(x * 0.51 - phase + 1.35)\n        + 0.018 * sin(x * 1.02 + 2.0 * phase);\n\n    float waveC =\n         0.185\n        + 0.052 * sin(x * 0.59 + phase + 2.2)\n        + 0.015 * sin(x * 1.18 - 2.0 * phase);\n\n    addRibbon(\n        color,\n        p.y - waveA,\n        0.082,\n        vec3(0.65, 0.79, 0.42)\n    );\n\n    addRibbon(\n        color,\n        p.y - waveB,\n        0.090,\n        vec3(0.83, 0.89, 0.61)\n    );\n\n    addRibbon(\n        color,\n        p.y - waveC,\n        0.078,\n        vec3(0.56, 0.74, 0.46)\n    );\n\n    float edge = smoothstep(\n        1.15, 0.15,\n        length(vec2(p.x * 0.60, p.y * 0.85))\n    );\n\n    color = mix(color, color * 0.985, edge * 0.22);\n\n    fragColor = vec4(color, 1.0);\n}\n",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

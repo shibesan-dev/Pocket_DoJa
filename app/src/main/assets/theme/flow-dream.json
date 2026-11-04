@@ -1,0 +1,35 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "7XySDD",
+  "date": "0",
+  "viewed": 0,
+  "name": "flow - dreamcore",
+  "description": "flow - dreamcore",
+  "likes": 0,
+  "published": "Private",
+  "usePreview": 0,
+  "tags": [
+   "minimalistic",
+   "dreamcore"
+  ],
+  "hasliked": 0,
+  "parentid": "",
+  "parentname": ""
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "\n#define TAU 6.28318530718\n#define LOOP_SECONDS 16.0\n\nfloat gaussian(float x, float width)\n{\n    float v = x / width;\n    return exp(-v * v);\n}\n\nvoid addRibbon(\n    inout vec3 color,\n    float distanceToCurve,\n    float width,\n    vec3 tint\n) {\n    float d = distanceToCurve;\n\n    // Soft pink-purple shadow beneath each flowing layer.\n    float shadow = gaussian(\n        d + width * 0.78,\n        width * 0.30\n    );\n\n    color *= 1.0 - 0.045 * shadow;\n\n    // Feathered translucent ribbon.\n    float body = 1.0 - smoothstep(\n        width,\n        width + 0.025,\n        abs(d)\n    );\n\n    color = mix(color, tint, body * 0.58);\n\n    // Delicate luminous highlight along the ribbon.\n    float highlight = gaussian(\n        d - width * 0.48,\n        width * 0.13\n    );\n\n    color = mix(\n        color,\n        vec3(1.0, 1.0, 1.0),\n        highlight * 0.36\n    );\n}\n\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord)\n{\n    vec2 uv = fragCoord / iResolution.xy;\n\n    // Keep the wave proportions consistent on different screens.\n    vec2 p = (fragCoord - 0.5 * iResolution.xy)\n           / iResolution.y;\n\n    // Periodic phase: returns to its starting point every 16 seconds.\n    float phase = TAU * fract(iTime / LOOP_SECONDS);\n    float x = uv.x * TAU;\n\n    // Dreamy pearl-pink background with a subtle lavender gradient.\n    vec3 color = mix(\n        vec3(0.88, 0.76, 0.91),\n        vec3(1.0, 0.975, 0.995),\n        smoothstep(-0.48, 0.48, p.y)\n    );\n\n    // Three original flowing wave curves.\n    float waveA =\n        -0.235\n        + 0.063 * sin(x * 0.64 + phase)\n        + 0.018 * sin(x * 1.28 - 2.0 * phase);\n\n    float waveB =\n        -0.025\n        + 0.066 * sin(x * 0.51 - phase + 1.35)\n        + 0.018 * sin(x * 1.02 + 2.0 * phase);\n\n    float waveC =\n         0.185\n        + 0.052 * sin(x * 0.59 + phase + 2.2)\n        + 0.015 * sin(x * 1.18 - 2.0 * phase);\n\n    // Lower ribbon: soft rose pink.\n    addRibbon(\n        color,\n        p.y - waveA,\n        0.082,\n        vec3(0.88, 0.62, 0.82)\n    );\n\n    // Middle ribbon: pale dreamy lavender.\n    addRibbon(\n        color,\n        p.y - waveB,\n        0.090,\n        vec3(0.79, 0.70, 0.92)\n    );\n\n    // Upper ribbon: delicate pastel purple.\n    addRibbon(\n        color,\n        p.y - waveC,\n        0.078,\n        vec3(0.67, 0.55, 0.85)\n    );\n\n    // Gentle edge falloff for a polished interface background.\n    float edge = smoothstep(\n        1.15, 0.15,\n        length(vec2(p.x * 0.60, p.y * 0.85))\n    );\n\n    color = mix(color, color * 0.985, edge * 0.22);\n\n    fragColor = vec4(color, 1.0);\n}\n",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}
