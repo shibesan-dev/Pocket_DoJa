@@ -78,7 +78,7 @@ If you enjoy Pocket DoJa and would like to support its continued development, yo
 **PayPal:** https://www.paypal.com/ncp/payment/CCLQWPK38LFB4
 
 **Cryptocurrency:**<br>
-Network: ETH, BSC (BEP-20), and POLYGON based networks are supported!<br>
+**Network:** ETH, BSC (BEP-20), and POLYGON based networks are supported!<br>
 **Currency:** USDT, BNB, ETH, and POLYGON accepted<br>
 **Wallet address:** 0xB3Edf36f3654779ACdE275744a8cC31C37BE9d6c
 
