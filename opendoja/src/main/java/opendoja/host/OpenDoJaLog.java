@@ -1,5 +1,7 @@
 package opendoja.host;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.PrintStream;
 import java.util.Locale;
 import java.util.function.Supplier;
@@ -8,6 +10,8 @@ public final class OpenDoJaLog {
     private static final boolean PROPERTY_CONFIGURED = OpenDoJaLaunchArgs.get(OpenDoJaLaunchArgs.LOG_LEVEL, null) != null;
     private static volatile Level configuredLevel = Level.parse(OpenDoJaLaunchArgs.get(OpenDoJaLaunchArgs.LOG_LEVEL, null));
     private static volatile boolean configuredInCode;
+    private static volatile PrintStream fileStream;
+    private static volatile boolean fileLoggingEnabled;
 
     private OpenDoJaLog() {
     }
@@ -47,6 +51,26 @@ public final class OpenDoJaLog {
     public static void configure(Level level) {
         configuredLevel = level == null ? Level.OFF : level;
         configuredInCode = true;
+    }
+
+    public static void setFileLoggingEnabled(boolean enabled, File file) {
+        PrintStream existing = fileStream;
+        if (existing != null) {
+            try { existing.close(); } catch (Exception ignored) {}
+        }
+        fileStream = null;
+        fileLoggingEnabled = false;
+        if (enabled && file != null) {
+            try {
+                File parent = file.getParentFile();
+                if (parent != null) parent.mkdirs();
+                fileStream = new PrintStream(new FileOutputStream(file, true), true);
+                fileLoggingEnabled = true;
+            } catch (Exception ignored) {
+                fileStream = null;
+                fileLoggingEnabled = false;
+            }
+        }
     }
 
     public static void configureIfUnset(Level level) {
@@ -142,7 +166,8 @@ public final class OpenDoJaLog {
     }
 
     private static void write(Level level, Class<?> source, String message, Throwable throwable) {
-        PrintStream stream = level == Level.ERROR ? System.err : System.out;
+        PrintStream stream = fileLoggingEnabled && fileStream != null ? fileStream
+                : (level == Level.ERROR ? System.err : System.out);
         stream.print(level.name());
         stream.print(" [");
         stream.print(Thread.currentThread().getName());
@@ -153,5 +178,6 @@ public final class OpenDoJaLog {
         if (throwable != null) {
             throwable.printStackTrace(stream);
         }
+        stream.flush();
     }
 }

@@ -30,6 +30,21 @@ public class EntryActivity extends Activity {
 
     private JamSurfaceView surfaceView;
     private JamInputController input;
+    private android.widget.TextView loadingView;
+    private android.os.Handler loadingHandler;
+    private volatile boolean loadingHidden = false;
+    private int loadingDot = 0;
+    private final Runnable loadingTick = new Runnable() {
+        @Override
+        public void run() {
+            if (loadingView == null || loadingHidden) return;
+            StringBuilder sb = new StringBuilder("Booting");
+            for (int i = 0; i < loadingDot; i++) sb.append('.');
+            loadingView.setText(sb.toString());
+            loadingDot = (loadingDot + 1) % 4;
+            if (loadingHandler != null) loadingHandler.postDelayed(this, 400);
+        }
+    };
     // Static: a system-driven activity recreation must not spawn a second
     // jam-launch game loop over the one that is already running (two loops on
     // one process corrupt the game's shared static state). reset in stopGame()
@@ -55,6 +70,23 @@ public class EntryActivity extends Activity {
     private volatile long audioGeneration;
 
     @Override
+    protected void attachBaseContext(android.content.Context newBase) {
+        super.attachBaseContext(newBase);
+        // Apply the requested orientation as early as possible (before the window
+        // is created) so the activity does not flash in portrait first.
+        try {
+            String earlyJamPath = getIntent() != null ? getIntent().getStringExtra("jamPath") : null;
+            String earlyGameId = earlyJamPath;
+            if (earlyGameId != null) {
+                java.io.File f = new java.io.File(earlyGameId);
+                earlyGameId = f.getName();
+            }
+            HomeActivity.applyDisplayOrientation(this, earlyGameId);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         String gameId = getIntent() != null ? getIntent().getStringExtra("jamPath") : null;
@@ -69,7 +101,7 @@ public class EntryActivity extends Activity {
             System.setProperty(OpenDoJaLaunchArgs.MICROEDITION_PLATFORM_OVERRIDE, platformOverride);
         }
         HomeActivity.applyDisplayOrientation(this, gameId);
-        OpenDoJaLog.configure(OpenDoJaLog.Level.DEBUG);
+        OpenDoJaLog.configure(OpenDoJaLog.Level.OFF);
         DoJaRuntime.setGlobalShutdownCallback(runtime -> {
             if (runtime.sessionId() != activeSessionId) {
                 android.util.Log.i("OpenDoJa", "shutdown callback ignored: session=" + runtime.sessionId() + " active=" + activeSessionId);
@@ -131,7 +163,25 @@ public class EntryActivity extends Activity {
             boolean hidden = hkPrefs.getBoolean(gameId + "_" + DisplayActivity.KEY_HIDE_KEYPAD, false);
             surfaceView.setKeypadVisible(!hidden);
         }
-        setContentView(surfaceView);
+        android.widget.FrameLayout root = new android.widget.FrameLayout(this);
+        root.setBackgroundColor(0xFF000000);
+        root.addView(surfaceView, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+        loadingView = new android.widget.TextView(this);
+        loadingView.setText("Booting...");
+        loadingView.setTextColor(0xFFFFFFFF);
+        loadingView.setTextSize(24f);
+        loadingView.setTypeface(android.graphics.Typeface.createFromAsset(getAssets(), "fonts/PixelifySans-Bold.ttf"), android.graphics.Typeface.BOLD);
+        loadingView.setGravity(android.view.Gravity.CENTER);
+        android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT);
+        lp.gravity = android.view.Gravity.CENTER;
+        root.addView(loadingView, lp);
+        setContentView(root);
+        loadingHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+        loadingHandler.post(loadingTick);
         DoJaRuntime.setPlatformPresenter((frame, sessionId) -> {
             if (frame == null) {
                 runOnUiThread(this::exitGame);
@@ -304,6 +354,15 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
         if (!isFinishing()) {
             finish();
         }
+    }
+
+    public void hideLoadingOverlay() {
+        if (loadingHidden) return;
+        loadingHidden = true;
+        runOnUiThread(() -> {
+            if (loadingView != null) loadingView.setVisibility(android.view.View.GONE);
+            if (loadingHandler != null) loadingHandler.removeCallbacksAndMessages(null);
+        });
     }
 
     private void forceExitToTitle() {
@@ -701,6 +760,30 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
                 }
                 return JamDexHost.createLoader(siblingDex, parent, appContext);
             });
+        // Prepare the surface for the new session before launching so frames rendered
+        // during launch (including the first title frame) are not dropped by the
+        // released flag left over from the previous game, which would leave the
+        // screen black for several seconds.
+        if (surfaceView != null) {
+            surfaceView.prepareForNewGame();
+        }
+        // Apply debug logging preference (default: disabled for performance).
+        try {
+            android.content.SharedPreferences logPrefs = getSharedPreferences(DisplayActivity.PREFS_NAME, MODE_PRIVATE);
+            boolean logEnabled = "enable".equals(logPrefs.getString(DisplayActivity.KEY_DEBUG, "disable"));
+            if (logEnabled) {
+                java.io.File logFile = new java.io.File(getExternalFilesDir(null), "pocketdoja-log.txt");
+                if (logFile.getParentFile() == null) {
+                    logFile = new java.io.File(getFilesDir(), "pocketdoja-log.txt");
+                }
+                OpenDoJaLog.setFileLoggingEnabled(true, logFile);
+                OpenDoJaLog.configure(OpenDoJaLog.Level.DEBUG);
+            } else {
+                OpenDoJaLog.setFileLoggingEnabled(false, null);
+                OpenDoJaLog.configure(OpenDoJaLog.Level.OFF);
+            }
+        } catch (Throwable ignored) {
+        }
         DoJaRuntime.setPlatformPresenter((frame, sessionId) -> {
             if (frame == null) {
                 runOnUiThread(this::exitGame);

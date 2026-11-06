@@ -18,6 +18,7 @@ public class DisplayActivity extends Activity {
     static final String KEY_ORIENTATION = "orientation";
     static final String KEY_DISPLAY_MODE = "displayMode";
     static final String KEY_HIDE_KEYPAD = "hideKeypad";
+    static final String KEY_DEBUG = "debugLogging";
     static final String INHERIT = "inherit";
 
     static final String ORIENTATION_PORTRAIT = "portrait";
@@ -32,9 +33,11 @@ public class DisplayActivity extends Activity {
     private String gameId;
     private String pendingOrientation;
     private String pendingMode;
+    private String pendingDebug;
 
     private final List<OptionRow> orientationRows = new ArrayList<>();
     private final List<OptionRow> modeRows = new ArrayList<>();
+    private final List<OptionRow> debugRows = new ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -50,6 +53,7 @@ public class DisplayActivity extends Activity {
             pendingOrientation = prefs.getString(KEY_ORIENTATION, ORIENTATION_PORTRAIT);
             pendingMode = prefs.getString(KEY_DISPLAY_MODE, MODE_ORIGINAL);
         }
+        pendingDebug = prefs.getString(KEY_DEBUG, "disable");
 
         float density = getResources().getDisplayMetrics().density;
         int pad = (int) (16 * density);
@@ -106,7 +110,18 @@ public class DisplayActivity extends Activity {
                     value -> pendingMode = value);
         }
 
-        // Reset to global defaults (per-game only)
+        // Debugging (global)
+        TextView sectionDebug = new TextView(this);
+        sectionDebug.setText("Debugging");
+        sectionDebug.setTextSize(18f);
+        sectionDebug.setTypeface(Typeface.DEFAULT_BOLD);
+        sectionDebug.setPadding(0, pad, 0, pad / 2);
+        root.addView(sectionDebug, matchWrap());
+        addOptionGroup(root, debugRows,
+                new String[]{"Enable", "Disable"},
+                new String[]{"enable", "disable"},
+                pendingDebug,
+                value -> pendingDebug = value);
         if (perGame) {
             TextView reset = new TextView(this);
             reset.setText("Reset to Global Defaults");
@@ -170,6 +185,9 @@ public class DisplayActivity extends Activity {
         for (OptionRow row : modeRows) {
             row.view.setBackgroundColor(row.value.equals(pendingMode) ? 0x663080FF : 0x00000000);
         }
+        for (OptionRow row : debugRows) {
+            row.view.setBackgroundColor(row.value.equals(pendingDebug) ? 0x663080FF : 0x00000000);
+        }
     }
 
     private void commitAndFinish() {
@@ -191,7 +209,8 @@ public class DisplayActivity extends Activity {
             editor.putString(KEY_ORIENTATION, pendingOrientation);
             editor.putString(KEY_DISPLAY_MODE, pendingMode);
         }
-        editor.commit();
+         editor.putString(KEY_DEBUG, pendingDebug);
+         editor.commit();
         HomeActivity.applyDisplayOrientation(this, gameId);
         finish();
     }
