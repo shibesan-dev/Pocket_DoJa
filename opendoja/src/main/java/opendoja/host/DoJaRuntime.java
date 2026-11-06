@@ -298,7 +298,7 @@ public final class DoJaRuntime {
         } catch (Throwable ignored) {
         }
         try {
-            opendoja.host.OpenDoJaLog.configure(opendoja.host.OpenDoJaLog.Level.DEBUG);
+            opendoja.host.OpenDoJaLog.configureIfUnset(opendoja.host.OpenDoJaLog.Level.OFF);
         } catch (Throwable ignored) {
         }
 

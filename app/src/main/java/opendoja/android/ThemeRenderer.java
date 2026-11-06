@@ -24,6 +24,7 @@ public class ThemeRenderer implements GLSurfaceView.Renderer {
     private int resolutionUniform = -1;
     private int width = 1;
     private int height = 1;
+    private int vertexBuffer = 0;
 
     public ThemeRenderer(Context context) {
         this.context = context;
@@ -38,7 +39,6 @@ public class ThemeRenderer implements GLSurfaceView.Renderer {
     public void onSurfaceCreated(GL10 gl, EGLConfig config) {
         GLES20.glClearColor(0f, 0f, 0f, 0f);
         program = 0;
-        Log.i(TAG, "onSurfaceCreated: program reset, theme=" + themeId);
     }
 
     @Override
@@ -46,20 +46,32 @@ public class ThemeRenderer implements GLSurfaceView.Renderer {
         width = w;
         height = h;
         GLES20.glViewport(0, 0, w, h);
+        if (vertexBuffer == 0) {
+            int[] buffers = new int[1];
+            GLES20.glGenBuffers(1, buffers, 0);
+            vertexBuffer = buffers[0];
+            float[] vertices = {
+                    -1f, -1f, 1f, -1f, -1f, 1f,
+                    1f, -1f, 1f, 1f, -1f, 1f
+            };
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vertexBuffer);
+            java.nio.FloatBuffer fb = java.nio.ByteBuffer.allocateDirect(vertices.length * 4)
+                    .order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
+            fb.put(vertices).position(0);
+            GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, vertices.length * 4, fb, GLES20.GL_STATIC_DRAW);
+        }
     }
 
     @Override
     public void onDrawFrame(GL10 gl) {
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
         if (program == 0) {
-            Log.d(TAG, "onDrawFrame: program==0, loading theme=" + themeId);
             String code = loadShaderCode(themeId);
             if (code != null) {
                 program = compileProgram(code);
-                if (program != 0) {
-                    timeUniform = GLES20.glGetUniformLocation(program, "iTime");
-                    resolutionUniform = GLES20.glGetUniformLocation(program, "iResolution");
-                    Log.d(TAG, "onDrawFrame: compiled OK, program=" + program);
+            if (program != 0) {
+                timeUniform = GLES20.glGetUniformLocation(program, "iTime");
+                resolutionUniform = GLES20.glGetUniformLocation(program, "iResolution");
                 } else {
                     Log.e(TAG, "onDrawFrame: compilation failed for " + themeId);
                 }
@@ -76,25 +88,13 @@ public class ThemeRenderer implements GLSurfaceView.Renderer {
             if (resolutionUniform >= 0) {
                 GLES20.glUniform3f(resolutionUniform, width, height, 1f);
             }
-            float[] vertices = {
-                -1f, -1f, 1f, -1f, -1f, 1f,
-                1f, -1f, 1f, 1f, -1f, 1f
-            };
-            int[] buffers = new int[1];
-            GLES20.glGenBuffers(1, buffers, 0);
-            int buf = buffers[0];
-            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, buf);
-            java.nio.FloatBuffer fb = java.nio.ByteBuffer.allocateDirect(vertices.length * 4)
-                    .order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
-            fb.put(vertices).position(0);
-            GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, vertices.length * 4, fb, GLES20.GL_STATIC_DRAW);
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vertexBuffer);
             int pos = GLES20.glGetAttribLocation(program, "position");
             if (pos < 0) pos = 0;
             GLES20.glEnableVertexAttribArray(pos);
             GLES20.glVertexAttribPointer(pos, 2, GLES20.GL_FLOAT, false, 0, 0);
             GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, 6);
             GLES20.glDisableVertexAttribArray(pos);
-            GLES20.glDeleteBuffers(1, buffers, 0);
         }
     }
 

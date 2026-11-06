@@ -69,7 +69,7 @@ public class HomeActivity extends Activity {
     private static final int REQUEST_CHANGE_ICON = 2;
     private static final int REQUEST_IMPORT_FOLDER = 1;
     private GameEntry pendingIconGame;
-    private static final String[] MENU_ITEMS = {"Import .JAM", "Key Mapping", "Display", "Theme", "About", "Exit"};
+    private static final String[] MENU_ITEMS = {"Import .JAM", "Key Mapping", "Settings", "Theme", "About", "Exit"};
 
     private final Map<String, Bitmap> iconCache = new ConcurrentHashMap<>();
     private ExecutorService worker = Executors.newFixedThreadPool(2);
@@ -96,7 +96,7 @@ public class HomeActivity extends Activity {
             restart.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
             android.app.PendingIntent pi = android.app.PendingIntent.getActivity(
                     this, 0, restart, android.app.PendingIntent.FLAG_ONE_SHOT | android.app.PendingIntent.FLAG_IMMUTABLE);
-            android.app.AlarmManager am = (android.app.AlarmManager) getSystemService(ACTIVITY_SERVICE);
+            android.app.AlarmManager am = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
             if (am != null) {
                 am.cancel(pi);
             }
@@ -172,6 +172,7 @@ public class HomeActivity extends Activity {
     protected void onResume() {
         super.onResume();
         applyDisplayOrientation(this);
+        computeGridMetrics();
         refreshGames();
         if (glView != null) {
             android.view.ViewGroup parent = (android.view.ViewGroup) glView.getParent();
@@ -418,7 +419,7 @@ public class HomeActivity extends Activity {
             case "Key Mapping":
                 startActivity(new Intent(this, KeyMappingActivity.class));
                 break;
-            case "Display":
+            case "Settings":
                 startActivity(new Intent(this, DisplayActivity.class));
                 break;
             case "Theme":
@@ -489,6 +490,17 @@ public class HomeActivity extends Activity {
 android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested);
         activity.setRequestedOrientation(requested);
     }
+    @Override
+    public void onConfigurationChanged(android.content.res.Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        applyDisplayOrientation(this);
+        computeGridMetrics();
+        iconCache.clear();
+        if (gridContainer != null) {
+            refreshGames();
+        }
+    }
+
     private void showAboutDialog() {
         ScrollView scroll = new ScrollView(this);
         LinearLayout content = new LinearLayout(this);
@@ -498,7 +510,7 @@ android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested
         android.graphics.Typeface regular = android.graphics.Typeface.createFromAsset(getAssets(), "fonts/PixelifySans-Regular.ttf");
 
         TextView title = new TextView(this);
-        title.setText("About Pocket DoJa v1.0");
+        title.setText("About Pocket DoJa v1.1.0");
         title.setTypeface(regular);
         title.setTextSize(18f);
         title.setTextColor(0xFFE0E0E0);
@@ -1041,7 +1053,7 @@ android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested
                     row.setGravity(Gravity.START);
                     gridContainer.addView(row, matchWrap());
                 }
-                LinearLayout.LayoutParams cellParams = new LinearLayout.LayoutParams(cellSize, (int)(cellSize * 1.15f));
+                LinearLayout.LayoutParams cellParams = new LinearLayout.LayoutParams(cellSize, iconSizePx + dp(56));
                 cellParams.setMargins(marginPx, marginPx, marginPx, marginPx);
                 LinearLayout cell = createGameCell(games.get(i));
                 cell.setLayoutParams(cellParams);
@@ -1203,7 +1215,7 @@ android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested
             showGameOptions(game);
             return true;
         });
-        LinearLayout.LayoutParams cellLp = new LinearLayout.LayoutParams(dp(iconSizePx + 40), dp(iconSizePx + 50));
+        LinearLayout.LayoutParams cellLp = new LinearLayout.LayoutParams(iconSizePx + dp(40), iconSizePx + dp(56));
         cellLp.setMargins(dp(5), dp(5), dp(5), dp(5));
         cell.setLayoutParams(cellLp);
         return cell;

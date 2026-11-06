@@ -135,6 +135,10 @@ public class JamSurfaceView extends View {
         android.graphics.Bitmap bmp = frame.getBitmap();
         if (bmp == null) return;
         setScreen(bmp, bmp.getWidth(), bmp.getHeight(), screenVersion + 1);
+        android.content.Context ctx = getContext();
+        if (ctx instanceof EntryActivity) {
+            ((EntryActivity) ctx).hideLoadingOverlay();
+        }
     }
 
     /** Called when a new game session begins, clearing the released flag so rendering can proceed. */
@@ -287,10 +291,7 @@ public class JamSurfaceView extends View {
             return;
         }
         computeZones();
-        android.util.Log.d("OpenDoJa", "onDraw: screen=" + (screen == null ? "null" : screen.getWidth() + "x" + screen.getHeight())
-                + " gameRect=" + gameRect + " rotated=" + rotated + " view=" + getWidth() + "x" + getHeight());
         if (bmp != null && !bmp.isRecycled()) {
-            android.util.Log.d("OpenDoJa", "drawGameUpscaled: bmp=" + bmp.getWidth() + "x" + bmp.getHeight() + " gameRect=" + gameRect);
             drawGameUpscaled(canvas, bmp, sourceVersion);
         }
         if (keypadVisible) {
@@ -502,7 +503,6 @@ public class JamSurfaceView extends View {
         String orientation;
         if (gameId != null && !gameId.isEmpty()) {
             String override = prefs.getString(gameId + "_" + DisplayActivity.KEY_ORIENTATION, DisplayActivity.INHERIT);
-            android.util.Log.d("OpenDoJa", "computeRotationAngle: gameId=" + gameId + " override=" + override);
             if (!override.equals(DisplayActivity.INHERIT)) {
                 orientation = override;
             } else {
@@ -511,7 +511,6 @@ public class JamSurfaceView extends View {
         } else {
             orientation = prefs.getString(DisplayActivity.KEY_ORIENTATION, DisplayActivity.ORIENTATION_PORTRAIT);
         }
-        android.util.Log.d("OpenDoJa", "computeRotationAngle: effective=" + orientation + " devicePortrait=" + (getHeight() >= getWidth()));
         boolean desiredPortrait = orientation.startsWith("portrait");
         boolean devicePortrait = getHeight() >= getWidth();
         boolean reverse = orientation.endsWith("reverse");
@@ -529,7 +528,6 @@ public class JamSurfaceView extends View {
         String mode;
         if (gameId != null && !gameId.isEmpty()) {
             String override = prefs.getString(gameId + "_" + DisplayActivity.KEY_DISPLAY_MODE, DisplayActivity.INHERIT);
-            android.util.Log.d("OpenDoJa", "isFullScreenMode: gameId=" + gameId + " override=" + override);
             if (!override.equals(DisplayActivity.INHERIT)) {
                 mode = override;
             } else {
@@ -538,7 +536,6 @@ public class JamSurfaceView extends View {
         } else {
             mode = prefs.getString(DisplayActivity.KEY_DISPLAY_MODE, DisplayActivity.MODE_ORIGINAL);
         }
-        android.util.Log.d("OpenDoJa", "isFullScreenMode: effective=" + mode);
         return DisplayActivity.MODE_FULLSCREEN.equals(mode);
     }
 
