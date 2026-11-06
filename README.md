@@ -53,10 +53,10 @@ gradlew.bat :app:assembleDebug
 ```
 ## Logging/Debugging
 
-1.) Enable logging in settings in the emulator.
-2.) Open the game that has issue.
-3.) Go to settings and disable logging.
-4.) The log file is saved in \Android\data\com.shibesan.pocketdoja\ folder. 
+- Enable logging in settings in the emulator.
+- Open the game that has issue.
+- Go to settings and disable logging.
+- The log file is saved in \Android\data\com.shibesan.pocketdoja\ folder. 
 
 ## Project Structure
 
