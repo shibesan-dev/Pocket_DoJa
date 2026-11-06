@@ -90,6 +90,9 @@ If you enjoy Pocket DoJa and would like to support its continued development, yo
 
 Donations are entirely optional and help support ongoing development and preservation efforts.
 
+Additionally, feel free to donate to official OpenDoJa team if you want to support the community. Please visit "https://github.com/GrenderG/openDoJa"
+If you need more information or related resources, please visit "keitaiarchive.org/"
+
 Thank you for your interest in Pocket DoJa!
 
 © 2026 Pocket DoJa. Original themes, artwork, and branding are owned by the Pocket DoJa developer, except where otherwise stated.
