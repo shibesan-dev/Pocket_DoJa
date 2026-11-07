@@ -41,16 +41,14 @@ public final class JamDexHost {
 
     /** Returns the dex file for the jar, converting it first when missing or stale. */
     public static File ensureDex(File jarFile) throws IOException {
+        File rewrittenJar = new File(jarFile.getParentFile(), jarFile.getName() + ".sjisfix.jar");
+        rewriteSjisInJar(jarFile, rewrittenJar);
         File dexFile = dexFor(jarFile);
-        if (dexFile.exists() && dexFile.length() > 0 && dexFile.lastModified() >= jarFile.lastModified()) {
-            return dexFile;
-        }
-        if (dexFile.exists() && !dexFile.setWritable(true)) {
-            //noinspection ResultOfMethodCallIgnored
+        if (dexFile.exists()) {
             dexFile.delete();
         }
         long start = SystemClock.uptimeMillis();
-        File inputJar = jarFile;
+        File inputJar = rewrittenJar;
         File outDir = null;
         java.io.ByteArrayOutputStream capturedOut = new java.io.ByteArrayOutputStream();
         java.io.ByteArrayOutputStream capturedErr = new java.io.ByteArrayOutputStream();
@@ -332,5 +330,101 @@ public final class JamDexHost {
                 return zipFile;
             }
         }
+    }
+
+    private static void rewriteSjisInJar(File inputJar, File outputJar) throws IOException {
+        try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(inputJar);
+             java.io.FileOutputStream fos = new java.io.FileOutputStream(outputJar);
+             java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(fos)) {
+            java.util.Enumeration<? extends java.util.zip.ZipEntry> entries = zip.entries();
+            while (entries.hasMoreElements()) {
+                java.util.zip.ZipEntry entry = entries.nextElement();
+                java.util.zip.ZipEntry outEntry = new java.util.zip.ZipEntry(entry.getName());
+                zos.putNextEntry(outEntry);
+                if (entry.isDirectory()) { zos.closeEntry(); continue; }
+                byte[] original = readEntry(zip, entry);
+                if (entry.getName().endsWith(".class")) {
+                    try {
+                        original = rewriteSjisInClass(original);
+                    } catch (Throwable throwable) {
+                        Log.w(TAG, "SJIS rewrite failed for " + entry.getName(), throwable);
+                    }
+                }
+                zos.write(original);
+                zos.closeEntry();
+            }
+        }
+    }
+    private static boolean isSjisCharsetName(String value) {
+        return "SJIS".equalsIgnoreCase(value)
+                || "Shift_JIS".equalsIgnoreCase(value)
+                || "MS_Kanji".equalsIgnoreCase(value)
+                || "x-SJIS".equalsIgnoreCase(value)
+                || "csShiftJIS".equalsIgnoreCase(value);
+    }
+
+    private static byte[] rewriteSjisInClass(byte[] classBytes) {
+        org.objectweb.asm.ClassReader reader = new org.objectweb.asm.ClassReader(classBytes);
+        // COMPUTE_MAXS keeps the original stack map frames. Our rewrite only changes a
+        // constructor/method descriptor, so frame types are unchanged, and COMPUTE_FRAMES
+        // would fail on game classes that cannot be loaded by the host class loader.
+        org.objectweb.asm.ClassWriter writer = new org.objectweb.asm.ClassWriter(org.objectweb.asm.ClassWriter.COMPUTE_MAXS);
+        org.objectweb.asm.ClassVisitor visitor = new org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9, writer) {
+            @Override
+            public org.objectweb.asm.MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                org.objectweb.asm.MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
+                return new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitLdcInsn(Object value) {
+                        if (value instanceof String && isSjisCharsetName((String) value)) {
+                            value = "SJIS_i";
+                        }
+                        super.visitLdcInsn(value);
+                    }
+
+                    @Override
+                    public void visitMethodInsn(int opcode, String owner, String name,
+                                                String descriptor, boolean isInterface) {
+                        // DoJa titles rely on the handset's Shift_JIS default charset, but ART
+                        // decodes new String(byte[]) as UTF-8. Force the explicit DoJa charset
+                        // without changing the surrounding new/dup sequence.
+                        if (opcode == org.objectweb.asm.Opcodes.INVOKESPECIAL
+                                && "java/lang/String".equals(owner) && "<init>".equals(name)) {
+                            if ("([B)V".equals(descriptor)) {
+                                super.visitFieldInsn(org.objectweb.asm.Opcodes.GETSTATIC,
+                                        "opendoja/host/DoJaEncoding", "DEFAULT_CHARSET",
+                                        "Ljava/nio/charset/Charset;");
+                                super.visitMethodInsn(opcode, owner, name,
+                                        "([BLjava/nio/charset/Charset;)V", isInterface);
+                                return;
+                            }
+                            if ("([BII)V".equals(descriptor)) {
+                                super.visitFieldInsn(org.objectweb.asm.Opcodes.GETSTATIC,
+                                        "opendoja/host/DoJaEncoding", "DEFAULT_CHARSET",
+                                        "Ljava/nio/charset/Charset;");
+                                super.visitMethodInsn(opcode, owner, name,
+                                        "([BIILjava/nio/charset/Charset;)V", isInterface);
+                                return;
+                            }
+                        }
+                        // Encoding with the no-argument overload would use UTF-8 on Android and
+                        // produce bytes the SJIS decoder above cannot read back.
+                        if (opcode == org.objectweb.asm.Opcodes.INVOKEVIRTUAL
+                                && "java/lang/String".equals(owner) && "getBytes".equals(name)
+                                && "()[B".equals(descriptor)) {
+                            super.visitFieldInsn(org.objectweb.asm.Opcodes.GETSTATIC,
+                                    "opendoja/host/DoJaEncoding", "DEFAULT_CHARSET",
+                                    "Ljava/nio/charset/Charset;");
+                            super.visitMethodInsn(opcode, owner, name,
+                                    "(Ljava/nio/charset/Charset;)[B", isInterface);
+                            return;
+                        }
+                        super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
+                    }
+                };
+            }
+        };
+        reader.accept(visitor, org.objectweb.asm.ClassReader.EXPAND_FRAMES);
+        return writer.toByteArray();
     }
 }

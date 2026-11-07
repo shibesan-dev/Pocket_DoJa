@@ -31,6 +31,10 @@ public final class DoJaEncoding {
         if (explicitFileEncodingLaunchArgument() != null) {
             return Charset.defaultCharset();
         }
+        try {
+            return DoJaSjisCharsetProvider.sjisCharset();
+        } catch (RuntimeException ignored) {
+        }
         for (String candidate : DEFAULT_ENCODING_CANDIDATES) {
             try {
                 return Charset.forName(candidate);
@@ -132,4 +136,5 @@ public final class DoJaEncoding {
                     () -> "hidden API exemption failed: " + throwable);
         }
     }
+
 }

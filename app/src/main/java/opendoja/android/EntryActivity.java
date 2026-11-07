@@ -734,13 +734,12 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
             android.util.Log.i("OpenDoJa", "dex ready: " + dex + " (" + dex.length() + " bytes)");
 
             opendoja.host.DoJaEncoding.installDefaultCharsetOverride();
-            byte[] sjisA = {(byte) 0x82, (byte) 0xA0};
-            String decoded = new String(sjisA);
-            StringBuilder probe = new StringBuilder();
-            for (char ch : decoded.toCharArray()) {
-                probe.append(String.format("%04X ", (int) ch));
+            try {
+                android.util.Log.i("OpenDoJa", "forName SJIS_i="
+                        + java.nio.charset.Charset.forName("SJIS_i").getClass().getName());
+            } catch (Throwable throwable) {
+                android.util.Log.w("OpenDoJa", "forName SJIS_i failed: " + throwable);
             }
-            android.util.Log.i("OpenDoJa", "sjis probe chars=" + probe);
 
             android.content.Context appContext = getApplicationContext();
             JamGameClassLoaderFactory.setProvider((jamPath, parent) -> {
