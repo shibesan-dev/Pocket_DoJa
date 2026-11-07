@@ -3,7 +3,6 @@ package opendoja.android;
 import android.content.Context;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
-import android.util.Log;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -73,10 +72,10 @@ public class ThemeRenderer implements GLSurfaceView.Renderer {
                 timeUniform = GLES20.glGetUniformLocation(program, "iTime");
                 resolutionUniform = GLES20.glGetUniformLocation(program, "iResolution");
                 } else {
-                    Log.e(TAG, "onDrawFrame: compilation failed for " + themeId);
+                    opendoja.host.OpenDoJaLog.error(ThemeRenderer.class, "onDrawFrame: compilation failed for " + themeId);
                 }
             } else {
-                Log.e(TAG, "onDrawFrame: failed to load shader code for " + themeId);
+                opendoja.host.OpenDoJaLog.error(ThemeRenderer.class, "onDrawFrame: failed to load shader code for " + themeId);
             }
         }
         if (program != 0) {
@@ -111,7 +110,7 @@ public class ThemeRenderer implements GLSurfaceView.Renderer {
             JSONObject pass = rp.getJSONObject(0);
             return pass.getString("code");
         } catch (Exception e) {
-            Log.e(TAG, "Failed to load theme " + id, e);
+            opendoja.host.OpenDoJaLog.error(ThemeRenderer.class, "Failed to load theme " + id, e);
             return null;
         }
     }
@@ -136,7 +135,7 @@ public class ThemeRenderer implements GLSurfaceView.Renderer {
                 GLES20.glDeleteShader(fs);
                 return prog;
             }
-            Log.e(TAG, "Link failed (" + p + "): " + GLES20.glGetProgramInfoLog(prog));
+            opendoja.host.OpenDoJaLog.error(ThemeRenderer.class, "Link failed (" + p + "): " + GLES20.glGetProgramInfoLog(prog));
             GLES20.glDeleteProgram(prog);
             GLES20.glDeleteShader(fs);
         }
@@ -151,7 +150,7 @@ public class ThemeRenderer implements GLSurfaceView.Renderer {
         int[] status = new int[1];
         GLES20.glGetShaderiv(shader, GLES20.GL_COMPILE_STATUS, status, 0);
         if (status[0] == 0) {
-            Log.e(TAG, "Compile failed: " + GLES20.glGetShaderInfoLog(shader));
+            opendoja.host.OpenDoJaLog.error(ThemeRenderer.class, "Compile failed: " + GLES20.glGetShaderInfoLog(shader));
             GLES20.glDeleteShader(shader);
             return 0;
         }

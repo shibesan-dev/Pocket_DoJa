@@ -6,7 +6,6 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -105,6 +104,11 @@ public class JamSurfaceView extends View {
     private boolean rotated;
     private int rotationAngle;
     private boolean keypadVisible = true;
+
+    // Cached display settings to avoid reading SharedPreferences on every frame.
+    private String cachedSettingsGameId;
+    private String cachedOrientation;
+    private String cachedDisplayMode;
 
     private int lastPointerX;
     private int lastPointerY;
@@ -498,18 +502,27 @@ public class JamSurfaceView extends View {
     }
 
     private int computeRotationAngle() {
-        android.content.SharedPreferences prefs = getContext().getSharedPreferences(DisplayActivity.PREFS_NAME, android.content.Context.MODE_PRIVATE);
         String gameId = EntryActivity.gameId;
         String orientation;
         if (gameId != null && !gameId.isEmpty()) {
-            String override = prefs.getString(gameId + "_" + DisplayActivity.KEY_ORIENTATION, DisplayActivity.INHERIT);
-            if (!override.equals(DisplayActivity.INHERIT)) {
-                orientation = override;
-            } else {
-                orientation = prefs.getString(DisplayActivity.KEY_ORIENTATION, DisplayActivity.ORIENTATION_PORTRAIT);
+            if (!gameId.equals(cachedSettingsGameId) || cachedOrientation == null) {
+                android.content.SharedPreferences prefs = getContext().getSharedPreferences(DisplayActivity.PREFS_NAME, android.content.Context.MODE_PRIVATE);
+                String override = prefs.getString(gameId + "_" + DisplayActivity.KEY_ORIENTATION, DisplayActivity.INHERIT);
+                if (!override.equals(DisplayActivity.INHERIT)) {
+                    cachedOrientation = override;
+                } else {
+                    cachedOrientation = prefs.getString(DisplayActivity.KEY_ORIENTATION, DisplayActivity.ORIENTATION_PORTRAIT);
+                }
+                cachedSettingsGameId = gameId;
             }
+            orientation = cachedOrientation;
         } else {
-            orientation = prefs.getString(DisplayActivity.KEY_ORIENTATION, DisplayActivity.ORIENTATION_PORTRAIT);
+            if (cachedSettingsGameId != null || cachedOrientation == null) {
+                android.content.SharedPreferences prefs = getContext().getSharedPreferences(DisplayActivity.PREFS_NAME, android.content.Context.MODE_PRIVATE);
+                cachedOrientation = prefs.getString(DisplayActivity.KEY_ORIENTATION, DisplayActivity.ORIENTATION_PORTRAIT);
+                cachedSettingsGameId = gameId;
+            }
+            orientation = cachedOrientation;
         }
         boolean desiredPortrait = orientation.startsWith("portrait");
         boolean devicePortrait = getHeight() >= getWidth();
@@ -523,18 +536,27 @@ public class JamSurfaceView extends View {
     }
 
     private boolean isFullScreenMode() {
-        android.content.SharedPreferences prefs = getContext().getSharedPreferences(DisplayActivity.PREFS_NAME, android.content.Context.MODE_PRIVATE);
         String gameId = EntryActivity.gameId;
         String mode;
         if (gameId != null && !gameId.isEmpty()) {
-            String override = prefs.getString(gameId + "_" + DisplayActivity.KEY_DISPLAY_MODE, DisplayActivity.INHERIT);
-            if (!override.equals(DisplayActivity.INHERIT)) {
-                mode = override;
-            } else {
-                mode = prefs.getString(DisplayActivity.KEY_DISPLAY_MODE, DisplayActivity.MODE_ORIGINAL);
+            if (!gameId.equals(cachedSettingsGameId) || cachedDisplayMode == null) {
+                // orientation cached above may have set cachedSettingsGameId; read mode now
+                android.content.SharedPreferences prefs = getContext().getSharedPreferences(DisplayActivity.PREFS_NAME, android.content.Context.MODE_PRIVATE);
+                String override = prefs.getString(gameId + "_" + DisplayActivity.KEY_DISPLAY_MODE, DisplayActivity.INHERIT);
+                if (!override.equals(DisplayActivity.INHERIT)) {
+                    cachedDisplayMode = override;
+                } else {
+                    cachedDisplayMode = prefs.getString(DisplayActivity.KEY_DISPLAY_MODE, DisplayActivity.MODE_ORIGINAL);
+                }
             }
+            mode = cachedDisplayMode;
         } else {
-            mode = prefs.getString(DisplayActivity.KEY_DISPLAY_MODE, DisplayActivity.MODE_ORIGINAL);
+            if (cachedSettingsGameId != null || cachedDisplayMode == null) {
+                android.content.SharedPreferences prefs = getContext().getSharedPreferences(DisplayActivity.PREFS_NAME, android.content.Context.MODE_PRIVATE);
+                cachedDisplayMode = prefs.getString(DisplayActivity.KEY_DISPLAY_MODE, DisplayActivity.MODE_ORIGINAL);
+                cachedSettingsGameId = gameId;
+            }
+            mode = cachedDisplayMode;
         }
         return DisplayActivity.MODE_FULLSCREEN.equals(mode);
     }

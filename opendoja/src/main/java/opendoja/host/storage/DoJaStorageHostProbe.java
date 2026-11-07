@@ -34,7 +34,7 @@ public final class DoJaStorageHostProbe {
 
     public static void main(String[] args) throws Exception {
         System.setProperty("opendoja.compat.awt.headless", "true");
-        OpenDoJaLog.configure(OpenDoJaLog.Level.WARN);
+        OpenDoJaLog.configure(OpenDoJaLog.Level.OFF);
 
         verifyDeviceRootCreationHelper();
         verifyBundledGundamMapping();

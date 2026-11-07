@@ -88,7 +88,7 @@ public final class OpenDoJaLauncher {
         if (effectiveArgs.size() == 2 && OpenDoJaCliFlags.SPAWN_JAM.equals(effectiveArgs.get(0))) {
             GameLaunchSelection selection = new JamGameJarResolver().resolve(Path.of(effectiveArgs.get(1)));
             Process process = new LauncherProcessSupport().startInBackground(selection);
-            OpenDoJaLog.configureIfUnset(OpenDoJaLog.Level.INFO);
+            OpenDoJaLog.configureIfUnset(OpenDoJaLog.Level.OFF);
             OpenDoJaLog.info(OpenDoJaLauncher.class,
                     "Spawned " + selection.jamPath() + " as pid " + process.pid());
             return;

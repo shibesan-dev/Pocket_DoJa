@@ -23,7 +23,7 @@ public final class JamScratchpadProbe {
 
     public static void main(String[] args) throws Exception {
         System.setProperty("java.awt.headless", "true");
-        OpenDoJaLog.configure(OpenDoJaLog.Level.WARN);
+        OpenDoJaLog.configure(OpenDoJaLog.Level.OFF);
 
         verifyScratchpadIsDisabledWithoutSpSize();
         verifyJamFieldsAreCaseInsensitive();

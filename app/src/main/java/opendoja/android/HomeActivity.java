@@ -26,7 +26,6 @@ import android.text.TextWatcher;
 import android.widget.EditText;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
-import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.ImageView;
@@ -66,13 +65,19 @@ import opendoja.host.OpenDoJaLog;
  */
 public class HomeActivity extends Activity {
     private static final String TAG = "OpenDoJa";
+    @Override
+    protected void attachBaseContext(android.content.Context newBase) {
+        super.attachBaseContext(LocaleHelper.wrap(newBase));
+    }
+
     private static final int REQUEST_CHANGE_ICON = 2;
     private static final int REQUEST_IMPORT_FOLDER = 1;
     private static final int REQUEST_EXPORT_SAVE = 3;
     private static final int REQUEST_IMPORT_SAVE = 4;
     private GameEntry pendingIconGame;
     private GameEntry pendingSaveGame;
-    private static final String[] MENU_ITEMS = {"Import .JAM", "Key Mapping", "Settings", "Theme", "About", "Exit"};
+    private String[] menuItems;
+    private String[] gameOptions;
 
     private final Map<String, Bitmap> iconCache = new ConcurrentHashMap<>();
     private ExecutorService worker = Executors.newFixedThreadPool(2);
@@ -86,7 +91,7 @@ public class HomeActivity extends Activity {
     private int columns = 4;
     private int iconSizePx;
 
-    private static HomeActivity instance;
+    public static HomeActivity instance;
     public static volatile boolean bgmSuppressed = false;
 
     @Override
@@ -106,10 +111,13 @@ public class HomeActivity extends Activity {
             pi.cancel();
         } catch (Exception ignored) {
         }
-        android.util.Log.i("OpenDoJa", "HomeActivity.onCreate pid=" + android.os.Process.myPid() + " taskId=" + getTaskId());
+        opendoja.host.OpenDoJaLog.info(HomeActivity.class, "HomeActivity.onCreate pid=" + android.os.Process.myPid() + " taskId=" + getTaskId());
         applyDisplayOrientation(this);
         getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(themeSurfaceColor()));
         computeGridMetrics();
+
+        menuItems = getResources().getStringArray(R.array.home_menu_items);
+        gameOptions = getResources().getStringArray(R.array.game_options);
 
         FrameLayout root = new FrameLayout(this);
 
@@ -205,12 +213,12 @@ public class HomeActivity extends Activity {
             this.themeRenderer = newRenderer;
             glView.onResume();
             glView.requestRender();
-            android.util.Log.i("OpenDoJa", "HomeActivity.onResume: GLSurfaceView recreated");
+            opendoja.host.OpenDoJaLog.info(HomeActivity.class, "HomeActivity.onResume: GLSurfaceView recreated");
         }
         if (topBar != null) {
             int color = themeSurfaceColor();
             topBar.setBackgroundColor(color);
-            android.util.Log.i("PocketDoJa", "onResume: topBar color=" + Integer.toHexString(color) + " theme=" + getSharedPreferences(ThemeActivity.PREFS_NAME, MODE_PRIVATE).getString(ThemeActivity.KEY_THEME, "flow"));
+            opendoja.host.OpenDoJaLog.info(HomeActivity.class, () -> "onResume: topBar color=" + Integer.toHexString(color) + " theme=" + getSharedPreferences(ThemeActivity.PREFS_NAME, MODE_PRIVATE).getString(ThemeActivity.KEY_THEME, "flow"));
         }
         if (!gameRunning) playBgm();
     }
@@ -220,7 +228,7 @@ public class HomeActivity extends Activity {
         super.onPause();
         if (glView != null) {
             glView.onPause();
-            android.util.Log.i("OpenDoJa", "HomeActivity.onPause: glView.onPause() called");
+            opendoja.host.OpenDoJaLog.info(HomeActivity.class, "HomeActivity.onPause: glView.onPause() called");
         }
         stopBgm();
     }
@@ -382,7 +390,9 @@ public class HomeActivity extends Activity {
         panel.setCornerRadius(dp(8));
         menu.setBackground(panel);
 
-        for (String label : MENU_ITEMS) {
+        for (int i = 0; i < menuItems.length; i++) {
+            final int menuIndex = i;
+            String label = menuItems[i];
             TextView item = new TextView(this);
             item.setText(label);
             item.setTextColor(0xFFE8E8E8);
@@ -397,7 +407,7 @@ public class HomeActivity extends Activity {
                     menuPopup.dismiss();
                     menuPopup = null;
                 }
-                onMenuAction(label);
+                onMenuAction(menuIndex);
             });
             menu.addView(item, new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -414,24 +424,24 @@ public class HomeActivity extends Activity {
         menuPopup = popup;
     }
 
-    private void onMenuAction(String label) {
-        switch (label) {
-            case "Import .JAM":
+    private void onMenuAction(int index) {
+        switch (index) {
+            case 0:
                 pickImportFolder();
                 break;
-            case "Key Mapping":
+            case 1:
                 startActivity(new Intent(this, KeyMappingActivity.class));
                 break;
-            case "Settings":
+            case 2:
                 startActivity(new Intent(this, DisplayActivity.class));
                 break;
-            case "Theme":
+            case 3:
                 startActivity(new Intent(this, ThemeActivity.class));
                 break;
-            case "About":
+            case 4:
                 showAboutDialog();
                 break;
-            case "Exit":
+            case 5:
                 releaseBgm();
                 try {
                     opendoja.audio.mld.MLDPCMPlayer.releaseAll();
@@ -443,7 +453,7 @@ public class HomeActivity extends Activity {
                     com.nttdocomo.ui.AudioPresenter.releaseAll();
                 } catch (Throwable ignored) {
                 }
-                android.util.Log.i("OpenDoJa", "Exit pressed: class=" + getClass().getName()
+                opendoja.host.OpenDoJaLog.info(HomeActivity.class, "Exit pressed: class=" + getClass().getName()
                         + " taskId=" + getTaskId() + " isTaskRoot=" + isTaskRoot());
                 android.app.ActivityManager am = (android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE);
                 if (am != null) {
@@ -472,7 +482,7 @@ public class HomeActivity extends Activity {
         String orientation;
         if (gameId != null && !gameId.isEmpty()) {
             String override = prefs.getString(gameId + "_" + DisplayActivity.KEY_ORIENTATION, DisplayActivity.INHERIT);
-            android.util.Log.i("OpenDoJa", "applyDisplayOrientation: gameId=" + gameId + " override=" + override);
+            opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: gameId=" + gameId + " override=" + override);
             if (!override.equals(DisplayActivity.INHERIT)) {
                 orientation = override;
             } else {
@@ -481,7 +491,7 @@ public class HomeActivity extends Activity {
         } else {
             orientation = prefs.getString(DisplayActivity.KEY_ORIENTATION, DisplayActivity.ORIENTATION_PORTRAIT);
         }
-        android.util.Log.i("OpenDoJa", "applyDisplayOrientation: effective=" + orientation);
+        opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: effective=" + orientation);
         int requested = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT;
         if (DisplayActivity.ORIENTATION_LANDSCAPE.equals(orientation)) {
             requested = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
@@ -490,7 +500,7 @@ public class HomeActivity extends Activity {
         } else if (DisplayActivity.ORIENTATION_LANDSCAPE_REV.equals(orientation)) {
             requested = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE;
         }
-android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested);
+opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: requested=" + requested);
         activity.setRequestedOrientation(requested);
     }
     @Override
@@ -518,7 +528,7 @@ android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested
         title.setTextSize(18f);
         title.setTextColor(0xFFE0E0E0);
         content.addView(title);
-
+    // About section for Pocket Doja
         TextView body = new TextView(this);
         body.setText("Pocket DoJa is an Android-based emulator project based on OpenDoJa, dedicated to exploring and preserving the experience of classic NTT DoCoMo i-mode Java games.\n\n" +
                 "The project aims to make these nostalgic mobile games more accessible on modern Android devices, with features including game library management, customizable animated themes, and background music support.\n\n" +
@@ -644,7 +654,7 @@ android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested
 
     private void playBgm() {
         if (gameRunning || bgmSuppressed) {
-            android.util.Log.i("PocketDoJa", "playBgm: gameRunning, skip");
+            opendoja.host.OpenDoJaLog.info(HomeActivity.class, "playBgm: gameRunning, skip");
             return;
         }
         SharedPreferences prefs = getSharedPreferences(ThemeActivity.PREFS_NAME, MODE_PRIVATE);
@@ -667,7 +677,7 @@ android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested
                 if (!bgmPlayer.isPlaying()) {
                     bgmPlayer.start();
                 }
-                android.util.Log.i("PocketDoJa", "playBgm: resumed from " + bgmPosition);
+                opendoja.host.OpenDoJaLog.info(HomeActivity.class, "playBgm: resumed from " + bgmPosition);
             } catch (Exception e) {
                 releaseBgm();
                 createBgmPlayer(path);
@@ -677,7 +687,7 @@ android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested
         }
         createBgmPlayer(path);
         bgmCurrentPath = path;
-        android.util.Log.i("PocketDoJa", "playBgm: created new player");
+        opendoja.host.OpenDoJaLog.info(HomeActivity.class, "playBgm: created new player");
     }
 
     private void createBgmPlayer(String path) {
@@ -740,7 +750,7 @@ android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested
                     bgmPosition = bgmPlayer.getCurrentPosition();
                     bgmPlayer.pause();
                     bgmPaused = true;
-                    android.util.Log.i("PocketDoJa", "stopBgm: paused at " + bgmPosition);
+                    opendoja.host.OpenDoJaLog.info(HomeActivity.class, "stopBgm: paused at " + bgmPosition);
                 }
             } catch (Exception ignored) {
             }
@@ -840,7 +850,7 @@ android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested
                     name = appName.trim();
                 }
             } catch (IOException | RuntimeException exception) {
-                Log.w(TAG, "cannot read jam metadata: " + jam.getName(), exception);
+                opendoja.host.OpenDoJaLog.warn(HomeActivity.class, "cannot read jam metadata: " + jam.getName(), exception);
             }
             File nameFile = new File(jam.getParentFile(), stripExtension(jam.getName()) + ".name.txt");
             if (nameFile.exists()) {
@@ -899,7 +909,7 @@ android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested
                     }
                 }
             } catch (IOException | RuntimeException exception) {
-                Log.w(TAG, "cannot read app icon: " + jam.getName(), exception);
+                opendoja.host.OpenDoJaLog.warn(HomeActivity.class, "cannot read app icon: " + jam.getName(), exception);
             }
         }
         if (icon == null) {
@@ -935,7 +945,7 @@ android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested
                 return scaled;
             }
         } catch (IOException | RuntimeException exception) {
-            Log.w(TAG, "cannot decode " + entryName + " from " + jar.getName(), exception);
+            opendoja.host.OpenDoJaLog.warn(HomeActivity.class, "cannot decode " + entryName + " from " + jar.getName(), exception);
             return null;
         }
     }
@@ -1141,10 +1151,9 @@ android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested
                 .setNegativeButton("Cancel", null)
                 .show();
     }
-        String[] options = {"Change Icon", "Reset Icon", "Rename", "Display", "Export Save", "Import Save", "Remove From Library"};
     private void showGameOptions(GameEntry game) {
         new AlertDialog.Builder(this)
-                .setItems(options, (dialog, which) -> {
+                .setItems(gameOptions, (dialog, which) -> {
                     if (which == 0) {
                         pendingIconGame = game;
                         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -1166,6 +1175,10 @@ android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested
                         startExportSave(game);
                     } else if (which == 5) {
                         startImportSave(game);
+                    } else if (which == 6) {
+                        Intent kmIntent = new Intent(this, KeyMappingActivity.class);
+                        kmIntent.putExtra("gameId", game.jam.getName());
+                        startActivity(kmIntent);
                     } else {
                         File jam = game.jam;
                         File jar = siblingFile(jam, ".jar");
@@ -1765,7 +1778,7 @@ android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested
                 }
             }
         } catch (Exception exception) {
-            Log.w(TAG, "scan failed", exception);
+            opendoja.host.OpenDoJaLog.warn(HomeActivity.class, "scan failed", exception);
             return result;
         }
         if (hasJam) {
@@ -1834,7 +1847,7 @@ android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested
                 childDocs.put(displayName.toLowerCase(), new Child(documentId, displayName));
             }
         } catch (RuntimeException exception) {
-            Log.w(TAG, "folder listing failed", exception);
+            opendoja.host.OpenDoJaLog.warn(HomeActivity.class, "folder listing failed", exception);
             result.errors.add("?????????: " + exception.getMessage());
             return result;
         }
@@ -1940,7 +1953,7 @@ android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested
                 }
                 result.files++;
             } catch (IOException | SecurityException exception) {
-                Log.w(TAG, "cannot import " + source.displayName, exception);
+                opendoja.host.OpenDoJaLog.warn(HomeActivity.class, "cannot import " + source.displayName, exception);
                 result.failed++;
                 result.errors.add("????: " + source.displayName);
                 continue;
@@ -1963,7 +1976,7 @@ android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested
             String spSize = properties.getProperty("SPsize");
             return spSize != null && !spSize.isBlank();
         } catch (IOException | RuntimeException exception) {
-            Log.w(TAG, "cannot read jam properties of " + jamChild.displayName, exception);
+            opendoja.host.OpenDoJaLog.warn(HomeActivity.class, "cannot read jam properties of " + jamChild.displayName, exception);
             // Be strict: when in doubt the game needs its .sp next to the .jam.
             return true;
         }

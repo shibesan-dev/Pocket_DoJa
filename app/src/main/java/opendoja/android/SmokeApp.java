@@ -45,7 +45,7 @@ public class SmokeApp extends IApplication {
             int w = Display.getWidth();
             int h = Display.getHeight();
             if (paintCount == 0 || paintCount % 120 == 0) {
-                android.util.Log.i("OpenDoJa", "smoke paint#" + paintCount + " " + w + "x" + h
+                opendoja.host.OpenDoJaLog.info(SmokeApp.class, "smoke paint#" + paintCount + " " + w + "x" + h
                         + " frame=" + frame);
             }
             paintCount++;

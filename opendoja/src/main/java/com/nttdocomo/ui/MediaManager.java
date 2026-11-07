@@ -38,7 +38,7 @@ public final class MediaManager {
 
     private static void logMediaLookup(String result) {
         if (LOGGED_MEDIA_LOOKUPS.add(result)) {
-            android.util.Log.i("OpenDoJa", result);
+            opendoja.host.OpenDoJaLog.info(MediaManager.class, result);
         }
     }
 

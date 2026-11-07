@@ -30,7 +30,21 @@ import opendoja.host.HostControlAction;
 public class KeyMappingActivity extends Activity {
     static final String PREFS_NAME = "keymap";
 
+    public static String prefsNameForGame(String gameId) {
+        if (gameId == null || gameId.isEmpty()) {
+            return PREFS_NAME;
+        }
+        return PREFS_NAME + "_" + gameId;
+    }
+
+    @Override
+    protected void attachBaseContext(android.content.Context newBase) {
+        super.attachBaseContext(LocaleHelper.wrap(newBase));
+    }
+
     private SharedPreferences prefs;
+    private String prefsName;
+    private String gameId;
     private LinearLayout rowsContainer;
     private TextView headerView;
     private HostControlAction capturing;
@@ -44,9 +58,18 @@ public class KeyMappingActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        gameId = getIntent() != null ? getIntent().getStringExtra("gameId") : null;
+        prefsName = (gameId == null || gameId.isEmpty()) ? PREFS_NAME : PREFS_NAME + "_" + gameId;
+
+        SharedPreferences initialPrefs = getSharedPreferences(prefsName, MODE_PRIVATE);
+        SharedPreferences fallbackPrefs = null;
+        if (gameId != null && !gameId.isEmpty() && initialPrefs.getAll().isEmpty()) {
+            fallbackPrefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        }
+        prefs = initialPrefs;
+        SharedPreferences sourcePrefs = (fallbackPrefs != null) ? fallbackPrefs : prefs;
         for (HostControlAction action : HostControlAction.values()) {
-            int keyCode = prefs.getInt(action.id(), -1);
+            int keyCode = sourcePrefs.getInt(action.id(), -1);
             if (keyCode >= 0) {
                 pending.put(action.id(), keyCode);
             }
@@ -60,7 +83,7 @@ public class KeyMappingActivity extends Activity {
         root.setPadding(pad, pad, pad, pad);
 
         TextView title = new TextView(this);
-        title.setText("Key Mapping");
+        title.setText(R.string.key_mapping_title);
         title.setTextSize(24f);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         root.addView(title, matchWrap());
@@ -82,13 +105,13 @@ public class KeyMappingActivity extends Activity {
         buttons.setOrientation(LinearLayout.HORIZONTAL);
         buttons.setGravity(Gravity.END);
         TextView ok = new TextView(this);
-        ok.setText("OK");
+        ok.setText(R.string.ok);
         ok.setTextSize(16f);
         ok.setPadding(dp(16), dp(10), dp(16), dp(10));
         ok.setOnClickListener(v -> commitAndFinish());
         buttons.addView(ok);
         TextView reset = new TextView(this);
-        reset.setText("Reset");
+        reset.setText(R.string.reset);
         reset.setTextSize(16f);
         reset.setPadding(dp(16), dp(10), dp(16), dp(10));
         reset.setOnClickListener(v -> {
@@ -98,7 +121,7 @@ public class KeyMappingActivity extends Activity {
         });
         buttons.addView(reset);
         TextView cancel = new TextView(this);
-        cancel.setText("Cancel");
+        cancel.setText(R.string.cancel);
         cancel.setTextSize(16f);
         cancel.setPadding(dp(16), dp(10), dp(16), dp(10));
         cancel.setOnClickListener(v -> finish());
@@ -129,7 +152,7 @@ public class KeyMappingActivity extends Activity {
         row.addView(name, weighted());
 
         TextView summary = new TextView(this);
-        summary.setText(describeDispatch(action));
+        summary.setText(describeDispatch(this, action));
         summary.setTextSize(12f);
         summary.setAlpha(0.7f);
         row.addView(summary, weighted());
@@ -174,20 +197,20 @@ public class KeyMappingActivity extends Activity {
         return params;
     }
 
-    private static String describeDispatch(HostControlAction action) {
+    private static String describeDispatch(android.content.Context context, HostControlAction action) {
         if (action.dispatchKind() == HostControlAction.DispatchKind.HOST_SOFT_KEY) {
                 return "Key";
         }
         if (action.dispatchKind() == HostControlAction.DispatchKind.HOST_ACTION) {
-                return "Exit game";
+                return context.getString(R.string.exit_game_action);
         }
-        return "DoJa key " + action.dispatchCode();
+        return context.getString(R.string.doja_key, action.dispatchCode());
     }
 
     private String bindingLabel(HostControlAction action) {
         Integer keyCode = pending.get(action.id());
         if (keyCode == null || keyCode < 0) {
-            return "Unbound";
+            return getString(R.string.unbound);
         }
         return keyLabel(keyCode);
     }
@@ -236,10 +259,10 @@ public class KeyMappingActivity extends Activity {
 
     private void updateHeader(HostControlAction target) {
         if (target != null) {
-            headerView.setText("Binding: " + target.displayName() + " - press a hardware key (Back cancels)");
+            headerView.setText(getString(R.string.binding_capturing, target.displayName()));
             headerView.setTextColor(0x66CCFFFF);
         } else {
-            headerView.setText("Tap a row then press a hardware key to bind; long-press clears. Back exits.");
+            headerView.setText(R.string.binding_hint);
             headerView.setTextColor(0xAAFFFFFF);
         }
     }

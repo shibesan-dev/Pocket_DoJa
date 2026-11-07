@@ -2,7 +2,6 @@ package opendoja.android;
 
 import android.content.Context;
 import android.os.SystemClock;
-import android.util.Log;
 
 import java.io.File;
 import java.io.IOException;
@@ -67,7 +66,7 @@ public final class JamDexHost {
             result = 0;
         } catch (Throwable throwable) {
             result = -1;
-            Log.e(TAG, "jar2dex threw", throwable);
+            opendoja.host.OpenDoJaLog.error(JamDexHost.class, "jar2dex threw", throwable);
         } finally {
             System.setOut(previousOut);
             System.setErr(previousErr);
@@ -75,10 +74,10 @@ public final class JamDexHost {
         String outText = capturedOut.toString();
         String errText = capturedErr.toString();
         if (!outText.isBlank()) {
-            Log.i(TAG, "jar2dex stdout: " + outText);
+            opendoja.host.OpenDoJaLog.info(JamDexHost.class, "jar2dex stdout: " + outText);
         }
         if (!errText.isBlank()) {
-            Log.w(TAG, "jar2dex stderr: " + errText);
+            opendoja.host.OpenDoJaLog.warn(JamDexHost.class, "jar2dex stderr: " + errText);
         }
         long elapsed = SystemClock.uptimeMillis() - start;
         if (result != 0 || !dexFile.exists() || dexFile.length() == 0) {
@@ -88,7 +87,7 @@ public final class JamDexHost {
         // ART refuses to open dex files that are still writable on newer Android builds.
         //noinspection ResultOfMethodCallIgnored
         dexFile.setReadOnly();
-        Log.i(TAG, "jar2dex " + jarFile.getName() + " -> " + dexFile.getName()
+        opendoja.host.OpenDoJaLog.info(JamDexHost.class, "jar2dex " + jarFile.getName() + " -> " + dexFile.getName()
                 + " (" + dexFile.length() + " bytes) in " + elapsed + "ms");
         return dexFile;
     }
@@ -225,7 +224,7 @@ public final class JamDexHost {
         optimized.mkdirs();
         if (dexFile.canWrite()) {
             if (!dexFile.setReadOnly()) {
-                Log.w(TAG, "cannot mark dex read-only: " + dexFile);
+                opendoja.host.OpenDoJaLog.warn(JamDexHost.class, "cannot mark dex read-only: " + dexFile);
             }
         }
         return new GameResourceClassLoader(dexFile.getAbsolutePath(), optimized.getAbsolutePath(),
@@ -305,7 +304,7 @@ public final class JamDexHost {
                                 + " read=" + read + " hex=[" + hex + "]");
                 return openZip().getInputStream(entry);
             } catch (IOException exception) {
-                Log.w(TAG, "game jar resource read failed: " + name, exception);
+                opendoja.host.OpenDoJaLog.warn(JamDexHost.class, "game jar resource read failed: " + name, exception);
                 return null;
             }
         }
@@ -317,7 +316,7 @@ public final class JamDexHost {
             try {
                 return openZip().getEntry(name);
             } catch (IOException exception) {
-                Log.w(TAG, "cannot open game jar " + jarFile, exception);
+                opendoja.host.OpenDoJaLog.warn(JamDexHost.class, "cannot open game jar " + jarFile, exception);
                 return null;
             }
         }
@@ -347,7 +346,7 @@ public final class JamDexHost {
                     try {
                         original = rewriteSjisInClass(original);
                     } catch (Throwable throwable) {
-                        Log.w(TAG, "SJIS rewrite failed for " + entry.getName(), throwable);
+                        opendoja.host.OpenDoJaLog.warn(JamDexHost.class, "SJIS rewrite failed for " + entry.getName(), throwable);
                     }
                 }
                 zos.write(original);

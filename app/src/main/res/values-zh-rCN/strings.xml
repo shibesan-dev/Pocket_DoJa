@@ -1,0 +1,96 @@
+<resources>
+    <string name="app_name">Pocket DoJa</string>
+    <string name="title_pocket_doja">Pocket DoJa</string>
+    <string name="no_installed_games">没有已安装的游戏\n请使用右上角菜单导入 .JAM</string>
+    <string name="search">搜索</string>
+    <string name="about_title">关于 Pocket DoJa v1.1.0</string>
+    <string name="about_body">Pocket DoJa 是一个基于 OpenDoJa 的 Android 模拟器项目，致力于探索与保存经典 NTT DoCoMo i-mode Java 游戏的体验。</string>
+    <string name="paypal_label">PayPal: </string>
+    <string name="wallet_label">钱包地址: </string>
+    <string name="footer_donations">\n捐赠完全自愿，用于支持持续开发与保存工作。\n\n感谢您对 Pocket DoJa 的关注！\n\n</string>
+    <string name="copied">已复制</string>
+    <string name="about">关于</string>
+    <string name="invalid_image">无效图片</string>
+    <string name="menu_import_jam">导入 .JAM</string>
+    <string name="menu_key_mapping">按键映射</string>
+    <string name="menu_settings">设置</string>
+    <string name="menu_theme">主题</string>
+    <string name="menu_about">关于</string>
+    <string name="menu_exit">退出</string>
+
+    <string-array name="home_menu_items">
+        <item>@string/menu_import_jam</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/menu_settings</item>
+        <item>@string/menu_theme</item>
+        <item>@string/menu_about</item>
+        <item>@string/menu_exit</item>
+    </string-array>
+
+    <string name="opt_change_icon">更换图标</string>
+    <string name="opt_reset_icon">重置图标</string>
+    <string name="opt_rename">重命名</string>
+    <string name="opt_display">显示</string>
+    <string name="opt_export_save">导出存档</string>
+    <string name="opt_import_save">导入存档</string>
+    <string name="opt_remove">从库中移除</string>
+
+    <string-array name="game_options">
+        <item>@string/opt_change_icon</item>
+        <item>@string/opt_reset_icon</item>
+        <item>@string/opt_rename</item>
+        <item>@string/opt_display</item>
+        <item>@string/opt_export_save</item>
+        <item>@string/opt_import_save</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/opt_remove</item>
+    </string-array>
+
+    <string name="rename_title">重命名</string>
+    <string name="ok">确定</string>
+    <string name="cancel">取消</string>
+    <string name="delete">删除</string>
+    <string name="load_jam">加载 JAM</string>
+    <string name="invalid_image_msg">无效图片: %1$s</string>
+    <string name="save_exported">存档已导出</string>
+    <string name="export_failed">导出失败: %1$s</string>
+    <string name="save_imported">存档导入成功</string>
+    <string name="import_failed">导入失败: %1$s</string>
+    <string name="no_valid_games">未找到有效游戏</string>
+
+    <string name="key_mapping_title">按键映射</string>
+    <string name="binding_hint">点击一行然后按硬件键进行绑定；长按清除。返回键退出。</string>
+    <string name="binding_capturing">正在绑定: %1$s - 请按硬件键 (返回取消)</string>
+    <string name="unbound">未绑定</string>
+    <string name="reset">重置</string>
+    <string name="doja_key">DoJa 键 %1$d</string>
+    <string name="exit_game_action">退出游戏</string>
+
+    <string name="display_title">显示</string>
+    <string name="display_title_game">显示: %1$s</string>
+    <string name="orientation">方向</string>
+    <string name="game_screen">游戏画面</string>
+    <string name="debugging">调试</string>
+    <string name="inherit_global">继承全局</string>
+    <string name="portrait">竖屏</string>
+    <string name="landscape">横屏</string>
+    <string name="portrait_reverse">竖屏 (反转)</string>
+    <string name="landscape_reverse">横屏 (反转)</string>
+    <string name="original">原始</string>
+    <string name="full_screen">全屏</string>
+    <string name="enable">启用</string>
+    <string name="disable">禁用</string>
+    <string name="reset_to_global">重置为全局默认</string>
+
+    <string name="theme_title">主题与背景音乐</string>
+    <string name="theme">主题</string>
+    <string name="no_track_selected">未选择音轨</string>
+    <string name="default_builtin">默认 (内置)</string>
+    <string name="select_audio">选择音频文件 (.mp3/.ogg)</string>
+    <string name="no_bgm">无背景音乐</string>
+    <string name="bgm">背景音乐</string>
+    <string name="default_bgm">默认背景音乐</string>
+    <string name="game_menu">游戏菜单</string>
+    <string name="hide_keypad">隐藏键盘</string>
+    <string name="exit_game">退出游戏</string>
+</resources>

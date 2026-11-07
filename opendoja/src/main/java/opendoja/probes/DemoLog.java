@@ -9,7 +9,7 @@ final class DemoLog {
     }
 
     static void enableInfoLogging() {
-        OpenDoJaLog.configureIfUnset(OpenDoJaLog.Level.INFO);
+        OpenDoJaLog.configureIfUnset(OpenDoJaLog.Level.OFF);
     }
 
     static void info(Class<?> source, String message) {

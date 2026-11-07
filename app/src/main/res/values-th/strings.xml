@@ -1,0 +1,97 @@
+<resources>
+    <string name="app_name">Pocket DoJa</string>
+    <string name="title_pocket_doja">Pocket DoJa</string>
+    <string name="no_installed_games">ไม่มีเกมที่ติดตั้ง\nใช้เมนูด้านขวาบนเพื่อนำเข้า .JAM</string>
+    <string name="search">ค้นหา</string>
+    <string name="about_title">เกี่ยวกับ Pocket DoJa v1.1.0</string>
+    <string name="about_body">Pocket DoJa เป็นโปรเจกต์อีมูเลเตอร์บน Android ที่อิงจาก OpenDoJa เพื่อสำรวจและรักษาประสบการณ์ของเกม Java i-mode คลาสสิกของ NTT DoCoMo</string>
+    <string name="paypal_label">PayPal: </string>
+    <string name="wallet_label">ที่อยู่กระเป๋า: </string>
+    <string name="footer_donations">\nการบริจาคเป็นความสมัครใจและช่วยสนับสนุนการพัฒนาและการรักษาต่อไป\n\nขอบคุณที่สนใจ Pocket DoJa!\n\n</string>
+    <string name="copied">คัดลอกแล้ว</string>
+    <string name="about">เกี่ยวกับ</string>
+    <string name="invalid_image">รูปภาพไม่ถูกต้อง</string>
+    <string name="menu_import_jam">นำเข้า .JAM</string>
+    <string name="menu_key_mapping">แมปปิ้งปุ่ม</string>
+    <string name="menu_settings">ตั้งค่า</string>
+    <string name="menu_theme">ธีม</string>
+    <string name="menu_about">เกี่ยวกับ</string>
+    <string name="menu_exit">ออก</string>
+
+    <string-array name="home_menu_items">
+        <item>@string/menu_import_jam</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/menu_settings</item>
+        <item>@string/menu_theme</item>
+        <item>@string/menu_about</item>
+        <item>@string/menu_exit</item>
+    </string-array>
+
+    <string name="opt_change_icon">เปลี่ยนไอคอน</string>
+    <string name="opt_reset_icon">รีเซ็ตไอคอน</string>
+    <string name="opt_rename">เปลี่ยนชื่อ</string>
+    <string name="opt_display">แสดงผล</string>
+    <string name="opt_export_save">ส่งออกบันทึก</string>
+    <string name="opt_import_save">นำเข้าบันทึก</string>
+    <string name="opt_remove">ลบออกจากคลัง</string>
+
+    <string-array name="game_options">
+        <item>@string/opt_change_icon</item>
+        <item>@string/opt_reset_icon</item>
+        <item>@string/opt_rename</item>
+        <item>@string/opt_display</item>
+        <item>@string/opt_export_save</item>
+        <item>@string/opt_import_save</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/opt_remove</item>
+    </string-array>
+
+    <string name="rename_title">เปลี่ยนชื่อ</string>
+    <string name="ok">ตกลง</string>
+    <string name="cancel">ยกเลิก</string>
+    <string name="delete">ลบ</string>
+    <string name="load_jam">โหลด JAM</string>
+    <string name="invalid_image_msg">รูปภาพไม่ถูกต้อง: %1$s</string>
+    <string name="save_exported">ส่งออกบันทึกแล้ว</string>
+    <string name="export_failed">ส่งออกล้มเหลว: %1$s</string>
+    <string name="save_imported">นำเข้าบันทึกสำเร็จ</string>
+    <string name="import_failed">นำเข้าล้มเหลว: %1$s</string>
+    <string name="no_valid_games">ไม่พบเกมที่ใช้ได้</string>
+
+    <string name="key_mapping_title">แมปปิ้งปุ่ม</string>
+    <string name="binding_hint">แตะแถวแล้วกดปุ่มฮาร์ดแวร์เพื่อผูก; กดค้างเพื่อล้าง ปุ่มย้อนกลับเพื่อออก</string>
+    <string name="binding_capturing">กำลังผูก: %1$s - กดปุ่มฮาร์ดแวร์ (ย้อนกลับเพื่อยกเลิก)</string>
+    <string name="unbound">ยังไม่ผูก</string>
+    <string name="reset">รีเซ็ต</string>
+    <string name="doja_key">ปุ่ม DoJa %1$d</string>
+    <string name="exit_game_action">ออกจากเกม</string>
+
+    <string name="display_title">แสดงผล</string>
+    <string name="display_title_game">แสดงผล: %1$s</string>
+    <string name="orientation">แนวตั้ง/แนวนอน</string>
+    <string name="game_screen">หน้าจอเกม</string>
+    <string name="debugging">ดีบัก</string>
+    <string name="inherit_global">สืบทอดค่าทั่วไป</string>
+    <string name="portrait">แนวตั้ง</string>
+    <string name="landscape">แนวนอน</string>
+    <string name="portrait_reverse">แนวตั้ง (กลับด้าน)</string>
+    <string name="landscape_reverse">แนวนอน (กลับด้าน)</string>
+    <string name="original">ต้นฉบับ</string>
+    <string name="full_screen">เต็มจอ</string>
+    <string name="enable">เปิด</string>
+    <string name="disable">ปิด</string>
+    <string name="reset_to_global">รีเซ็ตเป็นค่าทั่วไป</string>
+
+    <string name="game_menu">เมนูเกม</string>
+    <string name="hide_keypad">ซ่อนแป้นพิมพ์</string>
+    <string name="exit_game">ออกจากเกม</string>
+
+    <string name="theme_title">ธีมและเพลงพื้นหลัง</string>
+    <string name="theme">ธีม</string>
+    <string name="no_track_selected">ไม่ได้เลือกเพลง</string>
+    <string name="default_builtin">ค่าเริ่มต้น (ในตัว)</string>
+    <string name="select_audio">เลือกไฟล์เสียง (.mp3/.ogg)</string>
+    <string name="no_bgm">ไม่มีเพลงพื้นหลัง</string>
+    <string name="bgm">เพลงพื้นหลัง</string>
+    <string name="default_bgm">เพลงพื้นหลังเริ่มต้น</string>
+</resources>

@@ -34,6 +34,20 @@ public class EntryActivity extends Activity {
     private android.os.Handler loadingHandler;
     private volatile boolean loadingHidden = false;
     private int loadingDot = 0;
+    private android.widget.FrameLayout exitingOverlay;
+    private android.widget.TextView exitingText;
+    private int exitingDot = 0;
+    private final Runnable exitingTick = new Runnable() {
+        @Override
+        public void run() {
+            if (exitingOverlay == null || exitingOverlay.getVisibility() != android.view.View.VISIBLE) return;
+            StringBuilder sb = new StringBuilder("Exiting");
+            for (int i = 0; i < exitingDot; i++) sb.append('.');
+            if (exitingText != null) exitingText.setText(sb.toString());
+            exitingDot = (exitingDot + 1) % 4;
+            if (loadingHandler != null) loadingHandler.postDelayed(this, 400);
+        }
+    };
     private final Runnable loadingTick = new Runnable() {
         @Override
         public void run() {
@@ -71,7 +85,7 @@ public class EntryActivity extends Activity {
 
     @Override
     protected void attachBaseContext(android.content.Context newBase) {
-        super.attachBaseContext(newBase);
+        super.attachBaseContext(LocaleHelper.wrap(newBase));
         // Apply the requested orientation as early as possible (before the window
         // is created) so the activity does not flash in portrait first.
         try {
@@ -95,7 +109,7 @@ public class EntryActivity extends Activity {
             gameId = f.getName();
         }
         EntryActivity.gameId = gameId;
-        android.util.Log.i("OpenDoJa", "EntryActivity.onCreate: gameId=" + gameId);
+        opendoja.host.OpenDoJaLog.info(EntryActivity.class, "EntryActivity.onCreate: gameId=" + gameId);
         String platformOverride = getIntent() != null ? getIntent().getStringExtra("microeditionPlatform") : null;
         if (platformOverride != null && !platformOverride.isBlank()) {
             System.setProperty(OpenDoJaLaunchArgs.MICROEDITION_PLATFORM_OVERRIDE, platformOverride);
@@ -104,7 +118,7 @@ public class EntryActivity extends Activity {
         OpenDoJaLog.configure(OpenDoJaLog.Level.OFF);
         DoJaRuntime.setGlobalShutdownCallback(runtime -> {
             if (runtime.sessionId() != activeSessionId) {
-                android.util.Log.i("OpenDoJa", "shutdown callback ignored: session=" + runtime.sessionId() + " active=" + activeSessionId);
+                opendoja.host.OpenDoJaLog.info(EntryActivity.class, "shutdown callback ignored: session=" + runtime.sessionId() + " active=" + activeSessionId);
                 return;
             }
         try {
@@ -113,6 +127,7 @@ public class EntryActivity extends Activity {
         }
         try {
             com.nttdocomo.ui.AudioPresenter.setAudioEnabled(false);
+            com.nttdocomo.ui.AudioPresenter.bumpAudioGeneration();
         } catch (Throwable ignored) {
         }
             try {
@@ -179,6 +194,25 @@ public class EntryActivity extends Activity {
                 android.widget.FrameLayout.LayoutParams.WRAP_CONTENT);
         lp.gravity = android.view.Gravity.CENTER;
         root.addView(loadingView, lp);
+
+        exitingOverlay = new android.widget.FrameLayout(this);
+        exitingOverlay.setBackgroundColor(0xCC000000);
+        exitingOverlay.setVisibility(android.view.View.GONE);
+        exitingText = new android.widget.TextView(this);
+        exitingText.setText("Exiting...");
+        exitingText.setTextColor(0xFFFFFFFF);
+        exitingText.setTextSize(24f);
+        exitingText.setTypeface(android.graphics.Typeface.createFromAsset(getAssets(), "fonts/PixelifySans-Bold.ttf"), android.graphics.Typeface.BOLD);
+        exitingText.setGravity(android.view.Gravity.CENTER);
+        android.widget.FrameLayout.LayoutParams exitingLp = new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT);
+        exitingLp.gravity = android.view.Gravity.CENTER;
+        exitingOverlay.addView(exitingText, exitingLp);
+        root.addView(exitingOverlay, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+
         setContentView(root);
         loadingHandler = new android.os.Handler(android.os.Looper.getMainLooper());
         loadingHandler.post(loadingTick);
@@ -272,7 +306,7 @@ public class EntryActivity extends Activity {
         root.setPadding(pad, pad, pad, pad);
 
         android.widget.CheckBox hideCheck = new android.widget.CheckBox(this);
-        hideCheck.setText("Hide Keypad");
+        hideCheck.setText(R.string.hide_keypad);
         hideCheck.setChecked(!keypadShown);
         hideCheck.setTextSize(16f);
         hideCheck.setTypeface(null, android.graphics.Typeface.BOLD);
@@ -299,7 +333,7 @@ public class EntryActivity extends Activity {
         exitPressedBg.setCornerRadius(corner);
 
         android.widget.TextView exit = new android.widget.TextView(this);
-        exit.setText("Exit Game");
+        exit.setText(R.string.exit_game);
         exit.setTextSize(16f);
         exit.setTypeface(null, android.graphics.Typeface.BOLD);
         exit.setGravity(android.view.Gravity.CENTER);
@@ -321,7 +355,7 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
         root.addView(exit, exitLp);
 
         gameMenu = new android.app.AlertDialog.Builder(this)
-                .setTitle("Game menu")
+                .setTitle(R.string.game_menu)
                 .setView(root)
                 .setOnDismissListener(dialog -> gameMenu = null)
                 .create();
@@ -336,7 +370,7 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
     }
 
     private void exitGame() {
-        android.util.Log.i("OpenDoJa", "exitGame called");
+        opendoja.host.OpenDoJaLog.info(EntryActivity.class, "exitGame called");
         HomeActivity.gameRunning = false;
         try {
             opendoja.host.DoJaRuntime.markShutdown();
@@ -357,10 +391,15 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
             } catch (Throwable ignored) {
             }
         }
-        stopGame();
-        if (!isFinishing()) {
-            finish();
-        }
+        showExitingOverlay();
+        new Thread(() -> {
+            stopGame();
+            runOnUiThread(() -> {
+                if (!isFinishing()) {
+                    finish();
+                }
+            });
+        }, "jam-exit").start();
     }
 
     public void hideLoadingOverlay() {
@@ -369,6 +408,20 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
         runOnUiThread(() -> {
             if (loadingView != null) loadingView.setVisibility(android.view.View.GONE);
             if (loadingHandler != null) loadingHandler.removeCallbacksAndMessages(null);
+        });
+    }
+
+    private void showExitingOverlay() {
+        runOnUiThread(() -> {
+            if (exitingOverlay != null) {
+                exitingOverlay.setVisibility(android.view.View.VISIBLE);
+                exitingOverlay.bringToFront();
+            }
+            exitingDot = 0;
+            if (loadingHandler != null) {
+                loadingHandler.removeCallbacks(exitingTick);
+                loadingHandler.post(exitingTick);
+            }
         });
     }
 
@@ -396,9 +449,9 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
     /** Kills the running game: wakes input waiters, interrupts game threads, shuts the
      *  runtime down without exiting the process, so the title screen stays alive. */
     private void stopGame() {
-        android.util.Log.i("OpenDoJa", "stopGame called, thread=" + Thread.currentThread().getName() + " session=" + sessionId);
+        opendoja.host.OpenDoJaLog.info(EntryActivity.class, "stopGame called, thread=" + Thread.currentThread().getName() + " session=" + sessionId);
         if (gameStopped) {
-            android.util.Log.i("OpenDoJa", "stopGame: already stopped");
+            opendoja.host.OpenDoJaLog.info(EntryActivity.class, "stopGame: already stopped");
             return;
         }
         gameStopped = true;
@@ -411,7 +464,7 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
         gameReady = false;
         presentedFrameCount = 0;
         hasUserInteracted = false;
-        android.util.Log.i("OpenDoJa", "stopGame: runtime=" + DoJaRuntime.current()
+        opendoja.host.OpenDoJaLog.info(EntryActivity.class, "stopGame: runtime=" + DoJaRuntime.current()
                 + " gameRuntime=" + gameRuntime
                 + " audioGeneration=" + audioGeneration);
         if (surfaceView != null) {
@@ -500,11 +553,16 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
                         opendoja.audio.mld.MLDPCMPlayer.releaseGenerationsUpTo(Long.MAX_VALUE);
                     } catch (Throwable ignored) {
                     }
-                    android.util.Log.i("OpenDoJa", "runtime shutdown done, audio released");
+                    opendoja.host.OpenDoJaLog.info(EntryActivity.class, "runtime shutdown done, audio released");
                 }
             }, "jam-shutdown");
             shutdownThread.setDaemon(true);
             shutdownThread.start();
+            try {
+                shutdownThread.join(2000L);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 
@@ -512,12 +570,12 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
         try {
             opendoja.audio.mld.MLDPCMPlayer.releaseGenerationsUpTo(generation);
         } catch (Throwable throwable) {
-            android.util.Log.e("OpenDoJa", "releaseGameAudio failed", throwable);
+            opendoja.host.OpenDoJaLog.error(EntryActivity.class, "releaseGameAudio failed", throwable);
         }
         try {
             opendoja.audio.mld.MLDPCMPlayer.releaseAll();
         } catch (Throwable throwable) {
-            android.util.Log.e("OpenDoJa", "releaseAll MLD failed", throwable);
+            opendoja.host.OpenDoJaLog.error(EntryActivity.class, "releaseAll MLD failed", throwable);
         }
     }
 
@@ -573,7 +631,7 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
         previousCrashHandler = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
             if (doomedThreads.contains(thread) || (exiting && looksLikeGameThread(thread))) {
-                android.util.Log.w("OpenDoJa", "ignored game-thread crash after exit: " + thread,
+                opendoja.host.OpenDoJaLog.warn(EntryActivity.class, "ignored game-thread crash after exit: " + thread,
                         throwable);
                 return;
             }
@@ -594,8 +652,18 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
     }
 
     private opendoja.host.HostControlAction mappedAction(int keyCode) {
-        java.util.Map<String, ?> bindings = getSharedPreferences(KeyMappingActivity.PREFS_NAME, MODE_PRIVATE)
-                .getAll();
+        String gameId = EntryActivity.gameId;
+        // Per-game bindings take precedence over the global keymap.
+        opendoja.host.HostControlAction gameAction = mappedActionFromPrefs(
+                getSharedPreferences(KeyMappingActivity.prefsNameForGame(gameId), MODE_PRIVATE), keyCode);
+        if (gameAction != null) {
+            return gameAction;
+        }
+        return mappedActionFromPrefs(getSharedPreferences(KeyMappingActivity.PREFS_NAME, MODE_PRIVATE), keyCode);
+    }
+
+    private opendoja.host.HostControlAction mappedActionFromPrefs(android.content.SharedPreferences prefs, int keyCode) {
+        java.util.Map<String, ?> bindings = prefs.getAll();
         for (java.util.Map.Entry<String, ?> entry : bindings.entrySet()) {
             if (entry.getValue() instanceof Integer && (Integer) entry.getValue() == keyCode) {
                 opendoja.host.HostControlAction action = opendoja.host.HostControlAction.fromId(entry.getKey());
@@ -649,10 +717,10 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
                     .scratchpadRoot(getFilesDir().toPath().resolve("scratchpad"))
                     .build();
             DesktopLauncher.launch(config);
-            android.util.Log.i("OpenDoJa", "launch returned normally");
+            opendoja.host.OpenDoJaLog.info(EntryActivity.class, "launch returned normally");
         } catch (Throwable throwable) {
             OpenDoJaLog.error(EntryActivity.class, "launch failed", throwable);
-            android.util.Log.e("OpenDoJa", "launch failed", throwable);
+            opendoja.host.OpenDoJaLog.error(EntryActivity.class, "launch failed", throwable);
         }
     }
 
@@ -678,7 +746,7 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
         activeLaunchSession = sessionId;
         threadSession.set(sessionId);
         activeSessionId = sessionId;
-        android.util.Log.i("OpenDoJa", "launchGame: session=" + sessionId);
+        opendoja.host.OpenDoJaLog.info(EntryActivity.class, "launchGame: session=" + sessionId);
         gameReady = false;
         presentedFrameCount = 0;
         hasUserInteracted = false;
@@ -692,7 +760,7 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
             com.nttdocomo.ui.AudioPresenter.setAudioEnabled(true);
         } catch (Throwable ignored) {
         }
-        android.util.Log.i("OpenDoJa", "launchGame: audioGeneration=" + audioGeneration);
+        opendoja.host.OpenDoJaLog.info(EntryActivity.class, "launchGame: audioGeneration=" + audioGeneration);
         try {
             File dataRoot = new File(getFilesDir(), ".opendoja");
             if (dataRoot.exists()) {
@@ -735,17 +803,17 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
             File jar = opendoja.host.JamGameJarLocator.locate(jam.toPath()).toFile();
             File dex = JamDexHost.ensureDex(jar);
             if (cancelledLaunchSession == activeLaunchSession) {
-                android.util.Log.i("OpenDoJa", "launch cancelled after conversion");
+                opendoja.host.OpenDoJaLog.info(EntryActivity.class, "launch cancelled after conversion");
                 return;
             }
-            android.util.Log.i("OpenDoJa", "dex ready: " + dex + " (" + dex.length() + " bytes)");
+            opendoja.host.OpenDoJaLog.info(EntryActivity.class, "dex ready: " + dex + " (" + dex.length() + " bytes)");
 
             opendoja.host.DoJaEncoding.installDefaultCharsetOverride();
             try {
-                android.util.Log.i("OpenDoJa", "forName SJIS_i="
+                opendoja.host.OpenDoJaLog.info(EntryActivity.class, "forName SJIS_i="
                         + java.nio.charset.Charset.forName("SJIS_i").getClass().getName());
             } catch (Throwable throwable) {
-                android.util.Log.w("OpenDoJa", "forName SJIS_i failed: " + throwable);
+                opendoja.host.OpenDoJaLog.warn(EntryActivity.class, "forName SJIS_i failed: " + throwable);
             }
 
             android.content.Context appContext = getApplicationContext();
@@ -813,10 +881,10 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
                 surfaceView.prepareForNewGame();
             }
             if (cancelledLaunchSession == activeLaunchSession) {
-                android.util.Log.i("OpenDoJa", "launch cancelled after DesktopLauncher.launch");
+                opendoja.host.OpenDoJaLog.info(EntryActivity.class, "launch cancelled after DesktopLauncher.launch");
                 return;
             }
-            android.util.Log.i("OpenDoJa", "jam launch returned normally: " + application);
+            opendoja.host.OpenDoJaLog.info(EntryActivity.class, "jam launch returned normally: " + application);
             gameRuntime = DoJaRuntime.current();
             if (gameRuntime == null) {
                 gameRuntime = DoJaRuntime.lastRuntime();
@@ -829,7 +897,7 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
                 final int sessionForCallback = sessionId;
                 gameRuntime.setShutdownCallback(runtime -> {
                     if (runtime.sessionId() != sessionForCallback || runtime.sessionId() != activeSessionId) {
-                        android.util.Log.i("OpenDoJa", "per-session shutdown callback ignored: session=" + runtime.sessionId() + " this=" + sessionForCallback + " active=" + activeSessionId);
+                        opendoja.host.OpenDoJaLog.info(EntryActivity.class, "per-session shutdown callback ignored: session=" + runtime.sessionId() + " this=" + sessionForCallback + " active=" + activeSessionId);
                         return;
                     }
                     runOnUiThread(this::exitGame);
@@ -845,19 +913,19 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
             DoJaRuntime runtime = DoJaRuntime.current();
             if (runtime != null && gameThread != null && gameThread.isAlive()) {
                 try {
-                    android.util.Log.i("OpenDoJa", "awaitShutdown: entering");
+                    opendoja.host.OpenDoJaLog.info(EntryActivity.class, "awaitShutdown: entering");
                     runtime.awaitShutdown();
-                    android.util.Log.i("OpenDoJa", "awaitShutdown: returned");
+                    opendoja.host.OpenDoJaLog.info(EntryActivity.class, "awaitShutdown: returned");
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
             } else {
-                android.util.Log.i("OpenDoJa", "game thread not alive, skipping awaitShutdown");
+                opendoja.host.OpenDoJaLog.info(EntryActivity.class, "game thread not alive, skipping awaitShutdown");
             }
             runOnUiThread(this::exitGame);
         } catch (Throwable throwable) {
             OpenDoJaLog.error(EntryActivity.class, "game launch failed", throwable);
-            android.util.Log.e("OpenDoJa", "game launch failed", throwable);
+            opendoja.host.OpenDoJaLog.error(EntryActivity.class, "game launch failed", throwable);
         }
     }
 

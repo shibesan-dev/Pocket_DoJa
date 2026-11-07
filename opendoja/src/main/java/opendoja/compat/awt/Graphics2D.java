@@ -398,7 +398,7 @@ public class Graphics2D extends opendoja.compat.awt.Graphics {
 
     private static void logProbe(String message) {
         if (probeCount <= 3) {
-            android.util.Log.i("OpenDoJa", "G2D " + message);
+            opendoja.host.OpenDoJaLog.info(Graphics2D.class, "G2D " + message);
         }
     }
 

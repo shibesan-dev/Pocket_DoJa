@@ -2,13 +2,13 @@ package opendoja.android;
 
 import android.os.Handler;
 import android.os.Looper;
-import android.util.Log;
 
 import com.nttdocomo.ui.Display;
 import com.nttdocomo.ui.Frame;
 
 import opendoja.host.DesktopKeyInputAdapter;
 import opendoja.host.DoJaRuntime;
+import opendoja.host.OpenDoJaLog;
 
 /**
  * Bridges Android touch/key input into the DoJa runtime using the same
@@ -44,18 +44,18 @@ public final class JamInputController {
                 (softKey, eventType) -> {
                     DoJaRuntime r = runtime;
                     if (r == null) r = DoJaRuntime.current();
-                    if (r != null) {
-                        Log.i(TAG, "soft sink: dispatching softKey=" + softKey + " to runtime=" + r);
-                        r.dispatchHostSoftKey(softKey, eventType);
-                    } else {
-                        Log.w(TAG, "soft sink: NO runtime, softKey=" + softKey + " dropped");
-                    }
+                        if (r != null) {
+                            opendoja.host.OpenDoJaLog.info(JamInputController.class, "soft sink: dispatching softKey=" + softKey + " to runtime=" + r);
+                            r.dispatchHostSoftKey(softKey, eventType);
+                        } else {
+                            opendoja.host.OpenDoJaLog.warn(JamInputController.class, "soft sink: NO runtime, softKey=" + softKey + " dropped");
+                        }
                 },
                 RELEASE_DEBOUNCE_MS);
     }
 
     public void pressDojaKey(int dojaKey) {
-        log("press key " + dojaKey);
+        log(() -> "press key " + dojaKey);
         DoJaRuntime r = runtime;
         if (r == null) r = DoJaRuntime.current();
         if (r == null || r.isShutdown() || opendoja.host.DoJaRuntime.isShuttingDown()) {
@@ -74,7 +74,7 @@ public final class JamInputController {
     }
 
     public void pressSoft(int softKey) {
-        log("press soft " + softKey + " current=" + DoJaRuntime.current() + " stored=" + runtime);
+        log(() -> "press soft " + softKey + " current=" + DoJaRuntime.current() + " stored=" + runtime);
         DoJaRuntime r = runtime;
         if (r == null) r = DoJaRuntime.current();
         if (r == null || r.isShutdown() || opendoja.host.DoJaRuntime.isShuttingDown()) {
@@ -110,7 +110,7 @@ public final class JamInputController {
     }
 
     public void pressPointer(int canvasX, int canvasY) {
-        log("pointer press " + canvasX + "," + canvasY);
+        log(() -> "pointer press " + canvasX + "," + canvasY);
         DoJaRuntime runtime = DoJaRuntime.current();
         if (runtime != null) {
             runtime.dispatchPointerEvent(DoJaRuntime.TOUCH_PRESSED_EVENT, canvasX, canvasY);
@@ -118,7 +118,7 @@ public final class JamInputController {
     }
 
     public void releasePointer(int canvasX, int canvasY) {
-        log("pointer release " + canvasX + "," + canvasY);
+        log(() -> "pointer release " + canvasX + "," + canvasY);
         DoJaRuntime runtime = DoJaRuntime.current();
         if (runtime != null) {
             runtime.dispatchPointerEvent(DoJaRuntime.TOUCH_RELEASED_EVENT, canvasX, canvasY);
@@ -132,9 +132,13 @@ public final class JamInputController {
         }
     }
 
-    private void log(String message) {
+    private void log(java.util.function.Supplier<String> messageSupplier) {
+        if (!OpenDoJaLog.isInfoEnabled()) {
+            logCount++;
+            return;
+        }
         if (logCount < 200 || logCount % 100 == 0) {
-            Log.i(TAG, "input#" + logCount + " " + message);
+            OpenDoJaLog.info(JamInputController.class, () -> "input#" + logCount + " " + messageSupplier.get());
         }
         logCount++;
     }

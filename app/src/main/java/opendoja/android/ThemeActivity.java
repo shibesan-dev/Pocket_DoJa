@@ -21,6 +21,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ThemeActivity extends Activity {
+    @Override
+    protected void attachBaseContext(android.content.Context newBase) {
+        super.attachBaseContext(LocaleHelper.wrap(newBase));
+    }
+
     static final String PREFS_NAME = "theme_bgm";
     static final String KEY_THEME = "theme";
     static final String KEY_BGM_ENABLED = "bgm_enabled";
@@ -57,13 +62,13 @@ public class ThemeActivity extends Activity {
         root.setPadding(pad, pad, pad, pad);
 
         TextView title = new TextView(this);
-        title.setText("Theme & BGM");
+        title.setText(R.string.theme_title);
         title.setTextSize(24f);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         root.addView(title, matchWrap());
 
         TextView section1 = new TextView(this);
-        section1.setText("Theme");
+        section1.setText(R.string.theme);
         section1.setTextSize(18f);
         section1.setTypeface(Typeface.DEFAULT_BOLD);
         section1.setPadding(0, pad, 0, pad / 2);
@@ -87,20 +92,20 @@ public class ThemeActivity extends Activity {
         updateHighlights(themeRows, pendingTheme);
 
         TextView section2 = new TextView(this);
-        section2.setText("BGM");
+        section2.setText(R.string.bgm);
         section2.setTextSize(18f);
         section2.setTypeface(Typeface.DEFAULT_BOLD);
         section2.setPadding(0, pad, 0, pad / 2);
         root.addView(section2, matchWrap());
 
         bgmLabel = new TextView(this);
-        bgmLabel.setText(pendingBgmName.isEmpty() ? "No track selected" : pendingBgmName);
+        bgmLabel.setText(pendingBgmName.isEmpty() ? getString(R.string.no_track_selected) : pendingBgmName);
         bgmLabel.setTextSize(14f);
         bgmLabel.setPadding(0, 0, 0, dp(8));
         root.addView(bgmLabel, matchWrap());
 
         defaultBgmRow = new TextView(this);
-        defaultBgmRow.setText("Default (built-in)");
+        defaultBgmRow.setText(R.string.default_builtin);
         defaultBgmRow.setTextSize(16f);
         defaultBgmRow.setPadding(dp(12), dp(10), dp(12), dp(10));
         defaultBgmRow.setOnClickListener(v -> {
@@ -113,7 +118,7 @@ public class ThemeActivity extends Activity {
         root.addView(defaultBgmRow, matchWrap());
 
         selectBgmButton = new TextView(this);
-        selectBgmButton.setText("Select Audio File (.mp3/.ogg)");
+        selectBgmButton.setText(R.string.select_audio);
         selectBgmButton.setTextSize(16f);
         selectBgmButton.setPadding(dp(12), dp(10), dp(12), dp(10));
         selectBgmButton.setOnClickListener(v -> {
@@ -125,7 +130,7 @@ public class ThemeActivity extends Activity {
         root.addView(selectBgmButton, matchWrap());
 
         noBgmRow = new TextView(this);
-        noBgmRow.setText("No BGM");
+        noBgmRow.setText(R.string.no_bgm);
         noBgmRow.setTextSize(16f);
         noBgmRow.setPadding(dp(12), dp(10), dp(12), dp(10));
         noBgmRow.setOnClickListener(v -> {
@@ -142,13 +147,13 @@ public class ThemeActivity extends Activity {
         buttons.setOrientation(LinearLayout.HORIZONTAL);
         buttons.setGravity(Gravity.END);
         TextView ok = new TextView(this);
-        ok.setText("OK");
+        ok.setText(R.string.ok);
         ok.setTextSize(16f);
         ok.setPadding(dp(16), dp(10), dp(16), dp(10));
         ok.setOnClickListener(v -> commitAndFinish());
         buttons.addView(ok);
         TextView cancel = new TextView(this);
-        cancel.setText("Cancel");
+        cancel.setText(R.string.cancel);
         cancel.setTextSize(16f);
         cancel.setPadding(dp(16), dp(10), dp(16), dp(10));
         cancel.setOnClickListener(v -> finish());
@@ -175,7 +180,7 @@ public class ThemeActivity extends Activity {
         editor.putString(KEY_BGM_PATH, pendingBgmPath);
         editor.putString(KEY_BGM_NAME, pendingBgmName);
         editor.commit();
-        android.util.Log.i("PocketDoJa", "Theme saved: " + pendingTheme);
+        opendoja.host.OpenDoJaLog.info(ThemeActivity.class, "Theme saved: " + pendingTheme);
         finish();
     }
 
@@ -228,10 +233,10 @@ public class ThemeActivity extends Activity {
         }
         if (bgmLabel != null) {
             if (!pendingBgmEnabled) {
-                bgmLabel.setText("No track selected");
+                bgmLabel.setText(R.string.no_track_selected);
             } else if (pendingBgmPath == null || pendingBgmPath.isEmpty()
                     || !(new java.io.File(pendingBgmPath).exists())) {
-                bgmLabel.setText("Default BGM");
+                bgmLabel.setText(R.string.default_bgm);
             } else {
                 bgmLabel.setText((pendingBgmName == null || pendingBgmName.isEmpty())
                         ? "Custom track" : pendingBgmName);

@@ -72,7 +72,7 @@ public final class DoJaRuntime {
     private static void logResourceLookup(String session, String normalized, String mechanism, String result) {
         String key = session + "|" + normalized + "|" + mechanism + "|" + result;
         if (LOGGED_RESOURCE_LOOKUPS.add(key)) {
-            android.util.Log.i("OpenDoJa", "resource lookup: session=" + session
+            opendoja.host.OpenDoJaLog.info(DoJaRuntime.class, "resource lookup: session=" + session
                     + " name=" + normalized + " via " + mechanism + " -> " + result);
         }
     }

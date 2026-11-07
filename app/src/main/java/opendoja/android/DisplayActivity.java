@@ -14,6 +14,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class DisplayActivity extends Activity {
+    @Override
+    protected void attachBaseContext(android.content.Context newBase) {
+        super.attachBaseContext(LocaleHelper.wrap(newBase));
+    }
+
     static final String PREFS_NAME = "display";
     static final String KEY_ORIENTATION = "orientation";
     static final String KEY_DISPLAY_MODE = "displayMode";
@@ -34,6 +39,8 @@ public class DisplayActivity extends Activity {
     private String pendingOrientation;
     private String pendingMode;
     private String pendingDebug;
+    private boolean pendingUseSystem;
+    private String pendingLanguage;
 
     private final List<OptionRow> orientationRows = new ArrayList<>();
     private final List<OptionRow> modeRows = new ArrayList<>();
@@ -50,10 +57,18 @@ public class DisplayActivity extends Activity {
             pendingOrientation = prefs.getString(gameId + "_" + KEY_ORIENTATION, INHERIT);
             pendingMode = prefs.getString(gameId + "_" + KEY_DISPLAY_MODE, INHERIT);
         } else {
-            pendingOrientation = prefs.getString(KEY_ORIENTATION, ORIENTATION_PORTRAIT);
+            if (prefs.contains(KEY_ORIENTATION)) {
+                pendingOrientation = prefs.getString(KEY_ORIENTATION, ORIENTATION_PORTRAIT);
+            } else {
+                int devOri = getResources().getConfiguration().orientation;
+                pendingOrientation = (devOri == android.content.res.Configuration.ORIENTATION_LANDSCAPE)
+                        ? ORIENTATION_LANDSCAPE : ORIENTATION_PORTRAIT;
+            }
             pendingMode = prefs.getString(KEY_DISPLAY_MODE, MODE_ORIGINAL);
         }
         pendingDebug = prefs.getString(KEY_DEBUG, "disable");
+        pendingUseSystem = prefs.getBoolean(LocaleHelper.KEY_USE_SYSTEM_LANGUAGE, true);
+        pendingLanguage = prefs.getString(LocaleHelper.KEY_LANGUAGE, "en");
 
         float density = getResources().getDisplayMetrics().density;
         int pad = (int) (16 * density);
@@ -63,13 +78,13 @@ public class DisplayActivity extends Activity {
         root.setPadding(pad, pad, pad, pad);
 
         TextView title = new TextView(this);
-        title.setText(perGame ? "Display: " + gameId : "Display");
+        title.setText(perGame ? "Settings: " + gameId : getString(R.string.menu_settings));
         title.setTextSize(24f);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         root.addView(title, matchWrap());
 
         TextView section1 = new TextView(this);
-        section1.setText("Orientation");
+        section1.setText(R.string.orientation);
         section1.setTextSize(18f);
         section1.setTypeface(Typeface.DEFAULT_BOLD);
         section1.setPadding(0, pad, 0, pad / 2);
@@ -77,20 +92,20 @@ public class DisplayActivity extends Activity {
 
         if (perGame) {
             addOptionGroup(root, orientationRows,
-                    new String[]{"Inherit global", "Portrait", "Landscape", "Portrait (reverse)", "Landscape (reverse)"},
+                    new String[]{getString(R.string.inherit_global), getString(R.string.portrait), getString(R.string.landscape), getString(R.string.portrait_reverse), getString(R.string.landscape_reverse)},
                     new String[]{INHERIT, ORIENTATION_PORTRAIT, ORIENTATION_LANDSCAPE, ORIENTATION_PORTRAIT_REV, ORIENTATION_LANDSCAPE_REV},
                     pendingOrientation,
                     value -> pendingOrientation = value);
         } else {
             addOptionGroup(root, orientationRows,
-                    new String[]{"Portrait", "Landscape", "Portrait (reverse)", "Landscape (reverse)"},
+                    new String[]{getString(R.string.portrait), getString(R.string.landscape), getString(R.string.portrait_reverse), getString(R.string.landscape_reverse)},
                     new String[]{ORIENTATION_PORTRAIT, ORIENTATION_LANDSCAPE, ORIENTATION_PORTRAIT_REV, ORIENTATION_LANDSCAPE_REV},
                     pendingOrientation,
                     value -> pendingOrientation = value);
         }
 
         TextView section2 = new TextView(this);
-        section2.setText("Game screen");
+        section2.setText(R.string.game_screen);
         section2.setTextSize(18f);
         section2.setTypeface(Typeface.DEFAULT_BOLD);
         section2.setPadding(0, pad, 0, pad / 2);
@@ -98,13 +113,13 @@ public class DisplayActivity extends Activity {
 
         if (perGame) {
             addOptionGroup(root, modeRows,
-                    new String[]{"Inherit global", "Original", "Full Screen"},
+                    new String[]{getString(R.string.inherit_global), getString(R.string.original), getString(R.string.full_screen)},
                     new String[]{INHERIT, MODE_ORIGINAL, MODE_FULLSCREEN},
                     pendingMode,
                     value -> pendingMode = value);
         } else {
             addOptionGroup(root, modeRows,
-                    new String[]{"Original", "Full Screen"},
+                    new String[]{getString(R.string.original), getString(R.string.full_screen)},
                     new String[]{MODE_ORIGINAL, MODE_FULLSCREEN},
                     pendingMode,
                     value -> pendingMode = value);
@@ -112,19 +127,19 @@ public class DisplayActivity extends Activity {
 
         // Debugging (global)
         TextView sectionDebug = new TextView(this);
-        sectionDebug.setText("Debugging");
+        sectionDebug.setText(R.string.debugging);
         sectionDebug.setTextSize(18f);
         sectionDebug.setTypeface(Typeface.DEFAULT_BOLD);
         sectionDebug.setPadding(0, pad, 0, pad / 2);
         root.addView(sectionDebug, matchWrap());
         addOptionGroup(root, debugRows,
-                new String[]{"Enable", "Disable"},
+                new String[]{getString(R.string.enable), getString(R.string.disable)},
                 new String[]{"enable", "disable"},
                 pendingDebug,
                 value -> pendingDebug = value);
         if (perGame) {
             TextView reset = new TextView(this);
-            reset.setText("Reset to Global Defaults");
+            reset.setText(R.string.reset_to_global);
             reset.setTextSize(16f);
             reset.setPadding(dp(12), dp(10), dp(12), dp(10));
             reset.setOnClickListener(v -> {
@@ -135,17 +150,56 @@ public class DisplayActivity extends Activity {
             root.addView(reset, matchWrap());
         }
 
+        // Language section
+        TextView sectionLang = new TextView(this);
+        sectionLang.setText("Language");
+        sectionLang.setTextSize(18f);
+        sectionLang.setTypeface(Typeface.DEFAULT_BOLD);
+        sectionLang.setPadding(0, pad, 0, pad / 2);
+        root.addView(sectionLang, matchWrap());
+
+        android.widget.CheckBox useSystemCb = new android.widget.CheckBox(this);
+        useSystemCb.setText("Use System Language");
+        useSystemCb.setChecked(pendingUseSystem);
+        useSystemCb.setOnCheckedChangeListener((b, checked) -> pendingUseSystem = checked);
+        root.addView(useSystemCb, matchWrap());
+
+        TextView langRow = new TextView(this);
+        langRow.setTextSize(16f);
+        langRow.setPadding(dp(12), dp(10), dp(12), dp(10));
+        Runnable updateLangLabel = () -> {
+            String name = pendingLanguage;
+            for (int i = 0; i < LocaleHelper.LANGUAGE_TAGS.length; i++) {
+                if (LocaleHelper.LANGUAGE_TAGS[i].equals(pendingLanguage)) {
+                    name = LocaleHelper.LANGUAGE_NAMES[i];
+                    break;
+                }
+            }
+            langRow.setText(name);
+        };
+        updateLangLabel.run();
+        langRow.setOnClickListener(v -> {
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle("Language")
+                    .setItems(LocaleHelper.LANGUAGE_NAMES, (d, which) -> {
+                        pendingLanguage = LocaleHelper.LANGUAGE_TAGS[which];
+                        updateLangLabel.run();
+                    })
+                    .show();
+        });
+        root.addView(langRow, matchWrap());
+
         LinearLayout buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
         buttons.setGravity(Gravity.END);
         TextView ok = new TextView(this);
-        ok.setText("OK");
+        ok.setText(R.string.ok);
         ok.setTextSize(16f);
         ok.setPadding(dp(16), dp(10), dp(16), dp(10));
         ok.setOnClickListener(v -> commitAndFinish());
         buttons.addView(ok);
         TextView cancel = new TextView(this);
-        cancel.setText("Cancel");
+        cancel.setText(R.string.cancel);
         cancel.setTextSize(16f);
         cancel.setPadding(dp(16), dp(10), dp(16), dp(10));
         cancel.setOnClickListener(v -> finish());
@@ -191,7 +245,7 @@ public class DisplayActivity extends Activity {
     }
 
     private void commitAndFinish() {
-        android.util.Log.i("OpenDoJa", "commitAndFinish: gameId=" + gameId + " orientation=" + pendingOrientation + " mode=" + pendingMode);
+        opendoja.host.OpenDoJaLog.info(DisplayActivity.class, "commitAndFinish: gameId=" + gameId + " orientation=" + pendingOrientation + " mode=" + pendingMode);
         SharedPreferences.Editor editor = prefs.edit();
         String gameId = this.gameId;
         if (gameId != null && !gameId.isEmpty()) {
@@ -210,8 +264,14 @@ public class DisplayActivity extends Activity {
             editor.putString(KEY_DISPLAY_MODE, pendingMode);
         }
          editor.putString(KEY_DEBUG, pendingDebug);
+         editor.putBoolean(LocaleHelper.KEY_USE_SYSTEM_LANGUAGE, pendingUseSystem);
+         editor.putString(LocaleHelper.KEY_LANGUAGE, pendingLanguage);
          editor.commit();
         HomeActivity.applyDisplayOrientation(this, gameId);
+        if (HomeActivity.instance != null) {
+            HomeActivity.applyDisplayOrientation(HomeActivity.instance, gameId);
+            HomeActivity.instance.recreate();
+        }
         finish();
     }
 
