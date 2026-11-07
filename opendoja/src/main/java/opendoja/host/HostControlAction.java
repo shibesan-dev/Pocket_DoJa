@@ -66,7 +66,8 @@ public enum HostControlAction {
     MENU("menu", "Menu", DispatchKind.DOJA_KEY, Display.KEY_MENU,
             HostInputBinding.keyboard(KeyEvent.VK_M)),
     CAMERA("camera", "Camera", DispatchKind.DOJA_KEY, Display.KEY_CAMERA,
-            HostInputBinding.keyboard(KeyEvent.VK_C));
+            HostInputBinding.keyboard(KeyEvent.VK_C)),
+    EXIT_GAME("exitGame", "Exit Game", DispatchKind.HOST_ACTION, 0);
 
     private final String id;
     private final String displayName;
@@ -118,6 +119,7 @@ public enum HostControlAction {
 
     public enum DispatchKind {
         DOJA_KEY,
-        HOST_SOFT_KEY
+        HOST_SOFT_KEY,
+        HOST_ACTION
     }
 }

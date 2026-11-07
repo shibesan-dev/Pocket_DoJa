@@ -178,6 +178,9 @@ public class KeyMappingActivity extends Activity {
         if (action.dispatchKind() == HostControlAction.DispatchKind.HOST_SOFT_KEY) {
                 return "Key";
         }
+        if (action.dispatchKind() == HostControlAction.DispatchKind.HOST_ACTION) {
+                return "Exit game";
+        }
         return "DoJa key " + action.dispatchCode();
     }
 

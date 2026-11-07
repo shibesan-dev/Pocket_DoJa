@@ -219,6 +219,13 @@ public class EntryActivity extends Activity {
         }
         opendoja.host.HostControlAction mapped = mappedAction(event.getKeyCode());
         if (mapped != null) {
+            if (mapped == opendoja.host.HostControlAction.EXIT_GAME) {
+                if (event.getAction() == android.view.KeyEvent.ACTION_DOWN
+                        && event.getRepeatCount() == 0) {
+                    exitGame();
+                }
+                return true;
+            }
             if (mapped == opendoja.host.HostControlAction.SOFT_KEY_LEFT) {
                 routeAction(mapped, event.getAction() == android.view.KeyEvent.ACTION_DOWN);
                 if (event.getAction() == android.view.KeyEvent.ACTION_DOWN) {

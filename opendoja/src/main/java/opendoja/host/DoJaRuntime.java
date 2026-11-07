@@ -2148,6 +2148,12 @@ public final class DoJaRuntime {
         }
 
         private void dispatchMappedAction(HostControlAction action, boolean pressed) {
+            if (action == HostControlAction.EXIT_GAME) {
+                if (pressed) {
+                    new Thread(() -> runtime.shutdown(), "exit-game").start();
+                }
+                return;
+            }
             if (action.dispatchKind() == HostControlAction.DispatchKind.HOST_SOFT_KEY) {
                 int softKey = action.dispatchCode();
                 if (pressed) {
