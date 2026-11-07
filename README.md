@@ -14,6 +14,12 @@ This is a personal hobby project by Shibesan. The only official source of update
 
 Any social media accounts, websites, or channels claiming to be me or this project outside of the link above are **scams**. Please follow updates here only. Official channels will be listed in this README if they become available in the future.
 
+## 🎮 Game Compatibility
+
+Want to know which DoJa games work with Pocket DoJa?
+
+Check out the **[Game Compatibility Tracker](https://github.com/shibesan-dev/Pocket_DoJa/wiki)** for tested games, compatibility statuses, and known issues.
+
 ## Features
 
 - Emulator for classic DoJa / i-mode Java games
