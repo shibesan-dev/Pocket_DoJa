@@ -237,7 +237,7 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
     protected AudioPresenter(int explicitPort) {
         this.session = currentSession;
         this.audioGeneration = currentAudioGeneration;
-        this.runtime = opendoja.host.DoJaRuntime.current();
+        this.runtime = DoJaRuntime.current();
         DEBUG_PRESENTER_IDS.put(this, debugId);
         try {
             Throwable caller = new Throwable("presenter constructor");
@@ -338,6 +338,9 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
      */
     @Override
     public void play() {
+        if (runtime != DoJaRuntime.current()) {
+            return;
+        }
         if (!audioEnabled) {
             return;
         }
@@ -355,6 +358,9 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
      * @throws IllegalArgumentException if {@code time} is negative
      */
     public void play(int time) {
+        if (runtime != DoJaRuntime.current()) {
+            return;
+        }
         if (!audioEnabled) {
             return;
         }
@@ -515,6 +521,9 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
      * Pauses playback.
      */
     public void pause() {
+        if (runtime != DoJaRuntime.current()) {
+            return;
+        }
         if (!audioEnabled) {
             return;
         }
@@ -545,6 +554,9 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
      * Restarts playback after a pause.
      */
     public void restart() {
+        if (runtime != DoJaRuntime.current()) {
+            return;
+        }
         if (!audioEnabled) {
             return;
         }
@@ -639,6 +651,9 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
      */
     @Override
     public void stop() {
+        if (runtime != DoJaRuntime.current()) {
+            return;
+        }
         if (!audioEnabled) {
             return;
         }
