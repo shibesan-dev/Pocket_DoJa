@@ -150,8 +150,10 @@ If you enjoy Pocket DoJa and would like to support its continued development, yo
 
 Donations are entirely optional and help support ongoing development and preservation efforts.
 
-Additionally, feel free to donate to official OpenDoJa team if you want to support the community. Please visit "https://github.com/GrenderG/openDoJa"
-If you need more information or related resources, please visit "https://keitaiarchive.org/"
+Additionally, feel free to donate to official OpenDoJa team if you want to support the community. <br>
+Please visit https://github.com/GrenderG/openDoJa <br>
+If you need more information or related resources, <br> 
+visit https://keitaiarchive.org/
 
 Thank you for your interest in Pocket DoJa!
 
