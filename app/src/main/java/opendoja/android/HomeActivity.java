@@ -333,7 +333,7 @@ public class HomeActivity extends Activity {
         menuButton.setClickable(true);
         menuButton.setFocusable(true);
         menuButton.setBackground(new RippleDrawable(
-                ColorStateList.valueOf(0x33FFFFFF), null, new ColorDrawable(0x1FFFFFFF)));
+                new ColorStateList(new int[][]{new int[0]}, new int[]{0x33FFFFFF}), null, new ColorDrawable(0x1FFFFFFF)));
         menuButton.setOnClickListener(this::showOptionsMenu);
         bar.addView(menuButton, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT));
@@ -401,7 +401,7 @@ public class HomeActivity extends Activity {
             item.setPadding(dp(18), dp(14), dp(18), dp(14));
             item.setClickable(true);
             item.setForeground(new RippleDrawable(
-                    ColorStateList.valueOf(0x2FFFFFFF), null, null));
+                    new ColorStateList(new int[][]{new int[0]}, new int[]{0x2FFFFFFF}), null, null));
             item.setOnClickListener(v -> {
                 if (menuPopup != null) {
                     menuPopup.dismiss();
@@ -523,7 +523,12 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         android.graphics.Typeface regular = android.graphics.Typeface.createFromAsset(getAssets(), "fonts/PixelifySans-Regular.ttf");
 
         TextView title = new TextView(this);
-        title.setText("About Pocket DoJa v1.1.0");
+        String versionName = "1.1.0"; // this one doesn't matter, it uses PackageManager versionName.
+        try {
+            versionName = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception ignored) {
+        }
+        title.setText("About Pocket DoJa (" + versionName + ")");
         title.setTypeface(regular);
         title.setTextSize(18f);
         title.setTextColor(0xFFE0E0E0);
@@ -1430,7 +1435,7 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         tile.setStroke(dp(1), 0xFF2A2E36);
         cell.setBackground(tile);
         cell.setForeground(new RippleDrawable(
-                ColorStateList.valueOf(0x33FFFFFF), null, tile));
+                new ColorStateList(new int[][]{new int[0]}, new int[]{0x33FFFFFF}), null, tile));
 
         ImageView icon = new ImageView(this);
         icon.setScaleType(ImageView.ScaleType.FIT_CENTER);

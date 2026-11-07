@@ -29,12 +29,12 @@ android {
 
     defaultConfig {
         applicationId 'com.shibesan.pocketdoja'
-        minSdk 28
+        minSdk 21
         // 30 keeps java.nio.charset.Charset->defaultCharset (max-target-r) visible to
         // reflection so installDefaultCharsetOverride() can fix new String(byte[]) mojibake.
         targetSdk 30
-        versionCode 2
-        versionName '1.1.0'
+        versionCode 3
+        versionName '1.2.0'
     }
 
     compileOptions {
