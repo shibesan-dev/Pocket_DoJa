@@ -139,9 +139,9 @@ public class Panel extends Frame {
      *
      * @param softKeyListener the listener object to register
      */
-    /**
-     * Unregisters the key listener.
-     */
+    public void setSoftKeyListener(SoftKeyListener softKeyListener) {
+        this.softKeyListener = softKeyListener;
+    }
     public void removeKeyListener() {
         this.keyListener = null;
     }

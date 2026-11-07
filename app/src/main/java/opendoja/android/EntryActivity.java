@@ -846,12 +846,10 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
             android.content.SharedPreferences logPrefs = getSharedPreferences(DisplayActivity.PREFS_NAME, MODE_PRIVATE);
             boolean logEnabled = "enable".equals(logPrefs.getString(DisplayActivity.KEY_DEBUG, "disable"));
             if (logEnabled) {
-                java.io.File logFile = new java.io.File(getExternalFilesDir(null), "pocketdoja-log.txt");
-                if (logFile.getParentFile() == null) {
-                    logFile = new java.io.File(getFilesDir(), "pocketdoja-log.txt");
-                }
+                java.io.File logFile = new java.io.File(getFilesDir(), "pocketdoja-log.txt");
                 OpenDoJaLog.setFileLoggingEnabled(true, logFile);
                 OpenDoJaLog.configure(OpenDoJaLog.Level.DEBUG);
+                runOnUiThread(() -> android.widget.Toast.makeText(this, "Log file: " + logFile.getAbsolutePath(), android.widget.Toast.LENGTH_LONG).show());
             } else {
                 OpenDoJaLog.setFileLoggingEnabled(false, null);
                 OpenDoJaLog.configure(OpenDoJaLog.Level.OFF);
