@@ -171,6 +171,10 @@ public class Sprite {
      *                 {@link Graphics#FLIP_ROTATE_RIGHT_VERTICAL}
      * @throws IllegalArgumentException if {@code flipMode} is invalid
      */
+    public int getFlipMode() {
+        return flipMode;
+    }
+
     public void setFlipMode(int flipMode) {
         if (flipMode < Graphics.FLIP_NONE || flipMode > Graphics.FLIP_ROTATE_RIGHT_VERTICAL) {
             throw new IllegalArgumentException("flipMode");
@@ -237,6 +241,10 @@ public class Sprite {
      *                 fifth and later elements are ignored.
      * @throws ArrayIndexOutOfBoundsException if {@code rotation.length < 4}
      */
+    public int[] getRotation() {
+        return rotation == null ? null : new int[] {rotation[0], rotation[1], rotation[2], rotation[3]};
+    }
+
     public void setRotation(int[] rotation) {
         if (rotation == null) {
             this.rotation = null;

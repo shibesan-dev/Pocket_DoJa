@@ -368,11 +368,17 @@ public final class JamDexHost {
         // constructor/method descriptor, so frame types are unchanged, and COMPUTE_FRAMES
         // would fail on game classes that cannot be loaded by the host class loader.
         org.objectweb.asm.ClassWriter writer = new org.objectweb.asm.ClassWriter(org.objectweb.asm.ClassWriter.COMPUTE_MAXS);
+        final String[] classNameHolder = {null};
         org.objectweb.asm.ClassVisitor visitor = new org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9, writer) {
+            @Override
+            public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
+                classNameHolder[0] = name;
+                super.visit(version, access, name, signature, superName, interfaces);
+            }
             @Override
             public org.objectweb.asm.MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
                 org.objectweb.asm.MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
-                return new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9, mv) {
+                org.objectweb.asm.MethodVisitor sjisMv = new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9, mv) {
                     @Override
                     public void visitLdcInsn(Object value) {
                         if (value instanceof String && isSjisCharsetName((String) value)) {
@@ -421,9 +427,39 @@ public final class JamDexHost {
                         super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
                     }
                 };
+                if ("GameScreen".equals(classNameHolder[0]) && "d".equals(name) && "(II)I".equals(descriptor)) {
+                    return new GameScreenDFixMV(org.objectweb.asm.Opcodes.ASM9, sjisMv);
+                }
+                return sjisMv;
             }
         };
         reader.accept(visitor, org.objectweb.asm.ClassReader.EXPAND_FRAMES);
         return writer.toByteArray();
+    }
+
+    /** Guards {@code GameScreen.d(int,int)} against an out-of-range first argument. */
+    static final class GameScreenDFixMV extends org.objectweb.asm.MethodVisitor {
+        GameScreenDFixMV(int api, org.objectweb.asm.MethodVisitor mv) {
+            super(api, mv);
+        }
+
+        @Override
+        public void visitCode() {
+            super.visitCode();
+            org.objectweb.asm.Label ok1 = new org.objectweb.asm.Label();
+            super.visitVarInsn(org.objectweb.asm.Opcodes.ILOAD, 0);
+            super.visitJumpInsn(org.objectweb.asm.Opcodes.IFGE, ok1);
+            super.visitInsn(org.objectweb.asm.Opcodes.ICONST_M1);
+            super.visitInsn(org.objectweb.asm.Opcodes.IRETURN);
+            super.visitLabel(ok1);
+
+            org.objectweb.asm.Label ok2 = new org.objectweb.asm.Label();
+            super.visitVarInsn(org.objectweb.asm.Opcodes.ILOAD, 0);
+            super.visitIntInsn(org.objectweb.asm.Opcodes.BIPUSH, 12);
+            super.visitJumpInsn(org.objectweb.asm.Opcodes.IF_ICMPLT, ok2);
+            super.visitInsn(org.objectweb.asm.Opcodes.ICONST_M1);
+            super.visitInsn(org.objectweb.asm.Opcodes.IRETURN);
+            super.visitLabel(ok2);
+        }
     }
 }

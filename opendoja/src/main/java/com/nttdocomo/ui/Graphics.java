@@ -815,12 +815,15 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
         if (offset < 0 || count < 0 || offset + count > spriteSet.getCount()) {
             throw new ArrayIndexOutOfBoundsException();
         }
+        int previousFlipMode = flipMode;
         for (int i = offset; i < offset + count; i++) {
             Sprite sprite = spriteSet.getSprite(i);
             if (sprite != null && sprite.isVisible()) {
+                setFlipMode(sprite.getFlipMode());
                 drawImage(sprite.image(), sprite.getX(), sprite.getY(), sprite.sourceX(), sprite.sourceY(), sprite.getWidth(), sprite.getHeight());
             }
         }
+        setFlipMode(previousFlipMode);
     }
 
     /**
