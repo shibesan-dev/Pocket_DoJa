@@ -4,7 +4,7 @@ package com.docomostar.ui;
  * Static methods are re-exposed because Java does not inherit them; Star
  * titles call them as com.docomostar.ui.Graphics.getColorOfRGB(...).
  */
-public abstract class Graphics extends com.nttdocomo.ui.Graphics {
+public abstract class Graphics extends com.nttdocomo.ui.Graphics implements com.docomostar.opt.ui.j3d.Graphics3D {
     protected Graphics() {
         super();
     }
@@ -47,5 +47,49 @@ public abstract class Graphics extends com.nttdocomo.ui.Graphics {
 
     public static int getColorOfRGB(int red, int green, int blue, int alpha) {
         return com.nttdocomo.ui.Graphics.getColorOfRGB(red, green, blue, alpha);
+    }
+
+    public void setViewTrans(com.docomostar.opt.ui.j3d.AffineTrans transform) {
+        super.setViewTrans(transform);
+    }
+
+    public void setViewTransArray(com.docomostar.opt.ui.j3d.AffineTrans[] transforms) {
+        if (transforms == null) {
+            super.setViewTransArray(null);
+            return;
+        }
+        com.nttdocomo.opt.ui.j3d.AffineTrans[] converted = new com.nttdocomo.opt.ui.j3d.AffineTrans[transforms.length];
+        System.arraycopy(transforms, 0, converted, 0, transforms.length);
+        super.setViewTransArray(converted);
+    }
+
+    public void setDirectionLight(com.docomostar.opt.ui.j3d.Vector3D direction, int color) {
+        super.setDirectionLight(direction, color);
+    }
+
+    public void setSphereTexture(com.docomostar.opt.ui.j3d.Texture texture) {
+        super.setSphereTexture(texture);
+    }
+
+    public void setPrimitiveTextureArray(com.docomostar.opt.ui.j3d.Texture texture) {
+        super.setPrimitiveTextureArray(texture);
+    }
+
+    public void setPrimitiveTextureArray(com.docomostar.opt.ui.j3d.Texture[] textures) {
+        if (textures == null) {
+            super.setPrimitiveTextureArray((com.nttdocomo.opt.ui.j3d.Texture[]) null);
+            return;
+        }
+        com.nttdocomo.opt.ui.j3d.Texture[] converted = new com.nttdocomo.opt.ui.j3d.Texture[textures.length];
+        System.arraycopy(textures, 0, converted, 0, textures.length);
+        super.setPrimitiveTextureArray(converted);
+    }
+
+    public void renderPrimitives(com.docomostar.opt.ui.j3d.PrimitiveArray primitives, int attr) {
+        super.renderPrimitives(primitives, attr);
+    }
+
+    public void renderPrimitives(com.docomostar.opt.ui.j3d.PrimitiveArray primitives, int start, int count, int attr) {
+        super.renderPrimitives(primitives, start, count, attr);
     }
 }

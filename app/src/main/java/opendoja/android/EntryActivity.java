@@ -72,6 +72,7 @@ public class EntryActivity extends Activity {
     private static volatile int sessionId = 0;
     private static volatile int activeSessionId = 0;
     public static String gameId;
+    private static ClassLoader gameClassLoader;
     private static volatile Thread threadToSkip;
     private static volatile DoJaRuntime gameRuntime;
     private static volatile int presentedFrameCount = 0;
@@ -851,7 +852,7 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
                     logFile = new java.io.File(getFilesDir(), "pocketdoja-log.txt");
                 }
                 OpenDoJaLog.setFileLoggingEnabled(true, logFile);
-                OpenDoJaLog.configure(OpenDoJaLog.Level.DEBUG);
+                OpenDoJaLog.configure(OpenDoJaLog.Level.OFF);
             } else {
                 OpenDoJaLog.setFileLoggingEnabled(false, null);
                 OpenDoJaLog.configure(OpenDoJaLog.Level.OFF);
@@ -886,7 +887,7 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
                 return;
             }
             opendoja.host.OpenDoJaLog.info(EntryActivity.class, "jam launch returned normally: " + application);
-            gameRuntime = DoJaRuntime.current();
+            gameClassLoader = application.getClass().getClassLoader();
             if (gameRuntime == null) {
                 gameRuntime = DoJaRuntime.lastRuntime();
             }

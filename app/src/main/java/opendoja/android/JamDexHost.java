@@ -379,6 +379,32 @@ public final class JamDexHost {
             public org.objectweb.asm.MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
                 org.objectweb.asm.MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
                 org.objectweb.asm.MethodVisitor sjisMv = new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9, mv) {
+                    private boolean pendingAstore1 = false;
+
+                    @Override
+                    public void visitCode() {
+                        pendingAstore1 = false;
+                        super.visitCode();
+                    }
+
+                    @Override
+                    public void visitVarInsn(int opcode, int var) {
+                        pendingAstore1 = false;
+                        super.visitVarInsn(opcode, var);
+                    }
+
+                    @Override
+                    public void visitInsn(int opcode) {
+                        pendingAstore1 = false;
+                        super.visitInsn(opcode);
+                    }
+
+                    @Override
+                    public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
+                        pendingAstore1 = false;
+                        super.visitFieldInsn(opcode, owner, name, descriptor);
+                    }
+
                     @Override
                     public void visitLdcInsn(Object value) {
                         if (value instanceof String && isSjisCharsetName((String) value)) {
@@ -390,6 +416,16 @@ public final class JamDexHost {
                     @Override
                     public void visitMethodInsn(int opcode, String owner, String name,
                                                 String descriptor, boolean isInterface) {
+                        if (opcode == org.objectweb.asm.Opcodes.INVOKEVIRTUAL
+                                && "java/lang/Throwable".equals(owner)
+                                && "toString".equals(name)
+                                && "()Ljava/lang/String;".equals(descriptor)
+                                && "GameCanvas".equals(classNameHolder[0])) {
+                            super.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESTATIC,
+                                    "opendoja/host/OpenDoJaLog", "throwableToString",
+                                    "(Ljava/lang/Throwable;)Ljava/lang/String;", false);
+                            return;
+                        }
                         // DoJa titles rely on the handset's Shift_JIS default charset, but ART
                         // decodes new String(byte[]) as UTF-8. Force the explicit DoJa charset
                         // without changing the surrounding new/dup sequence.

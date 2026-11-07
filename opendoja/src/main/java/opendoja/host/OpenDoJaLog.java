@@ -143,6 +143,17 @@ public final class OpenDoJaLog {
         log(Level.ERROR, source, throwable == null ? "Unexpected failure" : throwable.toString(), throwable);
     }
 
+    public static String throwableToString(Throwable throwable) {
+        if (throwable == null) {
+            return "null";
+        }
+        StringBuilder sb = new StringBuilder(throwable.toString());
+        for (StackTraceElement e : throwable.getStackTrace()) {
+            sb.append("\n  at ").append(e);
+        }
+        return sb.toString();
+    }
+
     private static void log(Level level, Class<?> source, Supplier<String> messageSupplier, Throwable throwable) {
         if (!isEnabled(level)) {
             return;
