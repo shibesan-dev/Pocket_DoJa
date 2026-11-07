@@ -192,44 +192,11 @@ public abstract class IApplication {
     /**
      * Terminates the current application.
      */
-    /**
-     * Terminates the current application.
-     * <p>
-     * DoJa games call this to exit, but some games use it as flow control
-     * (e.g. returning to a menu after an error) rather than a true application
-     * exit. Suppressing the actual shutdown here prevents games from
-     * unintentionally terminating the emulator session. Users should use the
-     * emulator's "Exit Game" button to exit properly, which performs a full
-     * session reset matching force-stop behavior.
-     */
     public final void terminate() {
-        try {
-            Class<?> logClass = Class.forName("android.util.Log");
-            java.lang.reflect.Method m = logClass.getMethod("i", String.class, String.class);
-            DoJaRuntime runtime = DoJaRuntime.current();
-            String sessionId = runtime == null ? "none" : String.valueOf(runtime.sessionId());
-            boolean alreadyShuttingDown = runtime != null && runtime.isShutdownRequested();
-            int keypadState = runtime != null ? runtime.keypadState() : -1;
-            boolean bit4Set = (keypadState & 0x10) != 0;
-            long ts = System.nanoTime();
-            String threadName = Thread.currentThread().getName();
-            StringBuilder sb = new StringBuilder("IApplication.terminate() SUPPRESSED, game=" + getClass().getName()
-                    + " session=" + sessionId + " thread=" + threadName
-                    + " runtimeAlreadyShuttingDown=" + alreadyShuttingDown
-                    + " tsNs=" + ts
-                    + " keypadState=0x" + Integer.toHexString(keypadState) + " (" + Integer.toBinaryString(keypadState) + ")"
-                    + " bit4Set(0x10)=" + bit4Set
-                    + " display=" + (Display.getCurrent() == null ? "null" : Display.getCurrent().getWidth() + "x" + Display.getCurrent().getHeight())
-                    + " sourceUrl=" + sourceUrl
-                    + " launchType=" + launchType);
-            for (StackTraceElement e : Thread.currentThread().getStackTrace()) {
-                sb.append("\n  at ").append(e);
-            }
-            m.invoke(null, "OpenDoJa", sb.toString());
-        } catch (Throwable ignored) {
+        DoJaRuntime runtime = DoJaRuntime.current();
+        if (runtime != null) {
+            runtime.shutdown();
         }
-        // Intentionally do NOT call runtime.shutdown() — suppress game-initiated
-        // termination so the game continues running. Use "Exit Game" to exit properly.
     }
 
     public String getUtn() {
