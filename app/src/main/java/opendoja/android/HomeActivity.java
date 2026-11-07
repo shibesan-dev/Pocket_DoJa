@@ -68,7 +68,10 @@ public class HomeActivity extends Activity {
     private static final String TAG = "OpenDoJa";
     private static final int REQUEST_CHANGE_ICON = 2;
     private static final int REQUEST_IMPORT_FOLDER = 1;
+    private static final int REQUEST_EXPORT_SAVE = 3;
+    private static final int REQUEST_IMPORT_SAVE = 4;
     private GameEntry pendingIconGame;
+    private GameEntry pendingSaveGame;
     private static final String[] MENU_ITEMS = {"Import .JAM", "Key Mapping", "Settings", "Theme", "About", "Exit"};
 
     private final Map<String, Bitmap> iconCache = new ConcurrentHashMap<>();
@@ -1138,7 +1141,7 @@ android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested
                 .setNegativeButton("Cancel", null)
                 .show();
     }
-        String[] options = {"Change Icon", "Reset Icon", "Rename", "Display", "Remove From Library"};
+        String[] options = {"Change Icon", "Reset Icon", "Rename", "Display", "Export Save", "Import Save", "Remove From Library"};
     private void showGameOptions(GameEntry game) {
         new AlertDialog.Builder(this)
                 .setItems(options, (dialog, which) -> {
@@ -1159,6 +1162,10 @@ android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested
                         Intent intent = new Intent(this, DisplayActivity.class);
                         intent.putExtra("gameId", game.jam.getName());
                         startActivity(intent);
+                    } else if (which == 4) {
+                        startExportSave(game);
+                    } else if (which == 5) {
+                        startImportSave(game);
                     } else {
                         File jam = game.jam;
                         File jar = siblingFile(jam, ".jar");
@@ -1173,6 +1180,229 @@ android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested
                 })
                 .show();
     }
+    private void startExportSave(GameEntry game) {
+        pendingSaveGame = game;
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("application/zip");
+        intent.putExtra(Intent.EXTRA_TITLE, stripExtension(game.jam.getName()) + ".pdsave");
+        startActivityForResult(intent, REQUEST_EXPORT_SAVE);
+    }
+
+    private void startImportSave(GameEntry game) {
+        pendingSaveGame = game;
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        startActivityForResult(intent, REQUEST_IMPORT_SAVE);
+    }
+
+    private void exportSaveToUri(GameEntry game, Uri uri) throws Exception {
+        File jam = game.jam;
+        String base = stripExtension(jam.getName());
+        File sp = siblingFile(jam, ".sp");
+
+        opendoja.host.LaunchConfig config = null;
+        try {
+            config = opendoja.host.JamLauncher.buildLaunchConfig(
+                    jam.toPath(), false, getFilesDir().toPath().resolve("scratchpad"));
+        } catch (Exception ignored) {
+        }
+        String namespace = null;
+        if (config != null) {
+            String raw = config.sourceUrl();
+            if (raw == null || raw.isBlank()) {
+                raw = config.applicationClass() == null ? null : config.applicationClass().getName();
+            }
+            if (raw == null || raw.isBlank()) {
+                raw = config.parameters().get("AppName");
+            }
+            if (raw != null && !raw.isBlank()) {
+                namespace = java.util.UUID.nameUUIDFromBytes(
+                        raw.getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+            }
+        }
+
+        java.util.List<String[]> entries = new java.util.ArrayList<>(); // relPath, absPath
+        if (sp.exists()) {
+            entries.add(new String[]{"games/" + base + ".sp", sp.getAbsolutePath()});
+        }
+        File scratchDir = new File(getFilesDir(), "scratchpad");
+        if (scratchDir.isDirectory() && namespace != null) {
+            final String ns = namespace;
+            File[] files = scratchDir.listFiles((d, n) ->
+                    n.startsWith("sp-" + ns + "-") && n.endsWith(".bin"));
+            if (files != null) {
+                for (File f : files) {
+                    entries.add(new String[]{"scratchpad/" + f.getName(), f.getAbsolutePath()});
+                }
+            }
+        }
+
+        // SD storage scope (best effort)
+        String scopeKey = null;
+        String scopeDisplayName = null;
+        if (config != null) {
+            scopeKey = config.sourceUrl();
+            if (scopeKey == null || scopeKey.isBlank()) {
+                scopeKey = config.applicationClass() == null ? null : config.applicationClass().getName();
+            }
+            if (scopeKey == null || scopeKey.isBlank()) {
+                scopeKey = config.parameters().get("AppName");
+            }
+            scopeDisplayName = config.parameters().get("AppName");
+            if (scopeDisplayName == null || scopeDisplayName.isBlank()) {
+                scopeDisplayName = config.applicationClass() == null ? null
+                        : config.applicationClass().getSimpleName();
+            }
+        }
+        if (scopeKey != null && !scopeKey.isBlank()) {
+            String stableId = java.util.UUID.nameUUIDFromBytes(
+                    scopeKey.getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString()
+                    .replace("-", "").toLowerCase(java.util.Locale.ROOT);
+            File bindingRoot = new File(getFilesDir(), ".opendoja/storage/ext0");
+            java.util.List<String> candidateDirs = new java.util.ArrayList<>();
+            String sanitized = scopeDisplayName == null ? null : scopeDisplayName.trim();
+            if (sanitized != null && !sanitized.isEmpty()) {
+                StringBuilder sb = new StringBuilder();
+                for (char ch : sanitized.toCharArray()) {
+                    if (Character.isLetterOrDigit(ch) || ch == '-' || ch == '_' || ch == '.') {
+                        sb.append(ch);
+                    } else {
+                        sb.append('_');
+                    }
+                }
+                candidateDirs.add(sb.toString());
+            }
+            candidateDirs.add("app-" + stableId);
+            if (bindingRoot.isDirectory()) {
+                for (String cand : candidateDirs) {
+                    File scopeDir = new File(bindingRoot, cand);
+                    if (scopeDir.isDirectory()) {
+                        collectFiles(scopeDir, scopeDir, "storage/ext0/" + cand, entries);
+                    }
+                }
+            }
+        }
+
+        if (entries.isEmpty()) {
+            throw new IOException("No save data found for this game");
+        }
+
+        java.util.Properties manifest = new java.util.Properties();
+        manifest.setProperty("pocketdoja.save.version", "1");
+        manifest.setProperty("game.baseName", base);
+        manifest.setProperty("game.jamName", jam.getName());
+        manifest.setProperty("game.displayName", game.displayName == null ? "" : game.displayName);
+        if (namespace != null) manifest.setProperty("legacy.namespace", namespace);
+
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(baos);
+        // manifest
+        java.util.zip.ZipEntry me = new java.util.zip.ZipEntry("manifest.properties");
+        zos.putNextEntry(me);
+        java.io.ByteArrayOutputStream mbos = new java.io.ByteArrayOutputStream();
+        manifest.store(mbos, null);
+        zos.write(mbos.toByteArray());
+        zos.closeEntry();
+        for (String[] e : entries) {
+            File src = new File(e[1]);
+            if (!src.isFile()) continue;
+            java.util.zip.ZipEntry ze = new java.util.zip.ZipEntry(e[0]);
+            zos.putNextEntry(ze);
+            java.io.FileInputStream fis = new java.io.FileInputStream(src);
+            byte[] buf = new byte[8192];
+            int r;
+            while ((r = fis.read(buf)) > 0) zos.write(buf, 0, r);
+            fis.close();
+            zos.closeEntry();
+        }
+        zos.finish();
+        zos.close();
+
+        try (java.io.OutputStream out = getContentResolver().openOutputStream(uri)) {
+            if (out == null) throw new IOException("Cannot open destination");
+            baos.writeTo(out);
+            out.flush();
+        }
+    }
+
+    private void collectFiles(File root, File dir, String prefix, java.util.List<String[]> entries) {
+        File[] children = dir.listFiles();
+        if (children == null) return;
+        for (File c : children) {
+            if (c.isDirectory()) {
+                collectFiles(root, c, prefix + "/" + c.getName(), entries);
+            } else if (c.isFile()) {
+                entries.add(new String[]{prefix + "/" + c.getName(), c.getAbsolutePath()});
+            }
+        }
+    }
+
+    private void importSaveFromUri(GameEntry game, Uri uri) throws Exception {
+        File jam = game.jam;
+        String base = stripExtension(jam.getName());
+        java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(getContentResolver().openInputStream(uri));
+        java.util.Properties manifest = null;
+        java.util.Map<String, byte[]> files = new java.util.LinkedHashMap<>();
+        java.util.zip.ZipEntry entry;
+        while ((entry = zis.getNextEntry()) != null) {
+            if (entry.isDirectory()) { zis.closeEntry(); continue; }
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int r;
+            while ((r = zis.read(buf)) > 0) bos.write(buf, 0, r);
+            if ("manifest.properties".equals(entry.getName())) {
+                manifest = new java.util.Properties();
+                manifest.load(new java.io.ByteArrayInputStream(bos.toByteArray()));
+            } else {
+                files.put(entry.getName(), bos.toByteArray());
+            }
+            zis.closeEntry();
+        }
+        zis.close();
+        if (manifest == null) {
+            throw new IOException("Invalid save file (missing manifest)");
+        }
+        String savedBase = manifest.getProperty("game.baseName");
+        if (savedBase == null || !savedBase.equals(base)) {
+            throw new IOException("Save file is for a different game");
+        }
+        String savedJam = manifest.getProperty("game.jamName");
+        if (savedJam != null && !savedJam.isEmpty() && !savedJam.equals(jam.getName())) {
+            throw new IOException("Save file is for a different game");
+        }
+
+        // Extract files
+        for (java.util.Map.Entry<String, byte[]> fe : files.entrySet()) {
+            String rel = fe.getKey();
+            if (rel.contains("..")) throw new IOException("Invalid entry path");
+            File target;
+            if (rel.startsWith("games/")) {
+                target = new File(JamAssets.gamesDir(this), rel.substring("games/".length()));
+            } else if (rel.startsWith("scratchpad/")) {
+                target = new File(getFilesDir(), rel);
+            } else if (rel.startsWith("storage/ext0/") || rel.startsWith(".opendoja/")) {
+                // normalize
+                String path = rel;
+                if (path.startsWith("storage/")) {
+                    path = ".opendoja/" + path;
+                }
+                target = new File(getFilesDir(), path);
+            } else if (rel.startsWith(".opendoja/")) {
+                target = new File(getFilesDir(), rel);
+            } else {
+                // skip unknown
+                continue;
+            }
+            File parent = target.getParentFile();
+            if (parent != null) parent.mkdirs();
+            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(target)) {
+                fos.write(fe.getValue());
+            }
+        }
+    }
+
     private LinearLayout createGameCell(GameEntry game) {
         LinearLayout cell = new LinearLayout(this);
         cell.setOrientation(LinearLayout.VERTICAL);
@@ -1390,6 +1620,38 @@ android.util.Log.i("OpenDoJa", "applyDisplayOrientation: requested=" + requested
                 }
             }
             pendingIconGame = null;
+            return;
+        }
+        if (requestCode == REQUEST_EXPORT_SAVE) {
+            if (resultCode == RESULT_OK && data != null && data.getData() != null && pendingSaveGame != null) {
+                final GameEntry game = pendingSaveGame;
+                final Uri uri = data.getData();
+                new Thread(() -> {
+                    try {
+                        exportSaveToUri(game, uri);
+                        runOnUiThread(() -> Toast.makeText(this, "Save exported", Toast.LENGTH_SHORT).show());
+                    } catch (Exception e) {
+                        runOnUiThread(() -> Toast.makeText(this, "Export failed: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                    }
+                }).start();
+            }
+            pendingSaveGame = null;
+            return;
+        }
+        if (requestCode == REQUEST_IMPORT_SAVE) {
+            if (resultCode == RESULT_OK && data != null && data.getData() != null && pendingSaveGame != null) {
+                final GameEntry game = pendingSaveGame;
+                final Uri uri = data.getData();
+                new Thread(() -> {
+                    try {
+                        importSaveFromUri(game, uri);
+                        runOnUiThread(() -> Toast.makeText(this, "Save imported successfully", Toast.LENGTH_SHORT).show());
+                    } catch (Exception e) {
+                        runOnUiThread(() -> Toast.makeText(this, "Import failed: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                    }
+                }).start();
+            }
+            pendingSaveGame = null;
             return;
         }
         if (requestCode != REQUEST_IMPORT_FOLDER || resultCode != RESULT_OK || data == null) {
