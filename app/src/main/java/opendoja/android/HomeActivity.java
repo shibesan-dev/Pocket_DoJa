@@ -81,7 +81,6 @@ public class HomeActivity extends Activity {
 
     private final Map<String, Bitmap> iconCache = new ConcurrentHashMap<>();
     private ExecutorService worker = Executors.newFixedThreadPool(2);
-    private LinearLayout topBar;
     private EditText searchBox;
     private TextView titleView;
     private String searchQuery = "";
@@ -90,6 +89,7 @@ public class HomeActivity extends Activity {
     private PopupWindow menuPopup;
     private int columns = 4;
     private int iconSizePx;
+    private View fixedTopBar;
 
     public static HomeActivity instance;
     public static volatile boolean bgmSuppressed = false;
@@ -141,20 +141,10 @@ public class HomeActivity extends Activity {
         this.glView = glView;
         this.themeRenderer = renderer;
 
-        this.glView = glView;
-        this.themeRenderer = renderer;
-
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.addView(buildTitleBar(), new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(48)));
-        content.addView(buildDivider(), new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(1)));
-
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        int pad = dp(12);
-        content.setPadding(pad, pad, pad, pad);
+        // Add top padding to account for fixed top bar
+        content.setPadding(dp(12), dp(56) + dp(12), dp(12), dp(12));
 
         emptyView = new TextView(this);
         emptyView.setText("No installed games\nUse the top-right menu to Import .JAM");
@@ -170,10 +160,19 @@ public class HomeActivity extends Activity {
         gridContainer.setPadding(0, dp(8), 0, 0);
         content.addView(gridContainer, matchWrap());
 
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
         scroll.addView(content, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
         root.addView(scroll, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+
+        // Build fixed top bar (stays at top, doesn't scroll) - add LAST so it's on top
+        fixedTopBar = buildFixedTopBar();
+        FrameLayout.LayoutParams topBarParams = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, dp(56));
+        topBarParams.gravity = Gravity.TOP;
+        root.addView(fixedTopBar, topBarParams);
 
         // icon picker registered via startActivityForResult (see onActivityResult)
         setContentView(root);
@@ -215,10 +214,10 @@ public class HomeActivity extends Activity {
             glView.requestRender();
             opendoja.host.OpenDoJaLog.info(HomeActivity.class, "HomeActivity.onResume: GLSurfaceView recreated");
         }
-        if (topBar != null) {
-            int color = themeSurfaceColor();
-            topBar.setBackgroundColor(color);
-            opendoja.host.OpenDoJaLog.info(HomeActivity.class, () -> "onResume: topBar color=" + Integer.toHexString(color) + " theme=" + getSharedPreferences(ThemeActivity.PREFS_NAME, MODE_PRIVATE).getString(ThemeActivity.KEY_THEME, "flow"));
+        // Ensure fixed top bar stays on top and clickable
+        if (fixedTopBar != null) {
+            fixedTopBar.bringToFront();
+            updateFixedTopBarTheme();
         }
         if (pendingCustomImport) {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
@@ -273,13 +272,12 @@ public class HomeActivity extends Activity {
         super.onDestroy();
     }
 
-    private LinearLayout buildTitleBar() {
-        topBar = new LinearLayout(this);
-        LinearLayout bar = topBar;
+    private View buildFixedTopBar() {
+        LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setBackgroundColor(themeSurfaceColor());
         bar.setPadding(0, 0, dp(4), 0);
+        applyTopBarGradient(bar);
 
         titleView = new TextView(this);
         titleView.setText("Pocket DoJa");
@@ -371,7 +369,80 @@ public class HomeActivity extends Activity {
         menuButton.setOnClickListener(this::showOptionsMenu);
         bar.addView(menuButton, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT));
-        return bar;
+
+        // Add a subtle bottom divider line for retro phone feel
+        View divider = new View(this);
+        divider.setBackgroundColor(0xFF3A3D45);
+        FrameLayout.LayoutParams dividerParams = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, dp(1));
+        dividerParams.gravity = Gravity.BOTTOM;
+        FrameLayout container = new FrameLayout(this);
+        container.setClickable(true);
+        container.setFocusable(true);
+        container.addView(bar, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, dp(56)));
+        container.addView(divider, dividerParams);
+        return container;
+    }
+
+    private void applyTopBarGradient(View bar) {
+        SharedPreferences prefs = getSharedPreferences(ThemeActivity.PREFS_NAME, MODE_PRIVATE);
+        String theme = prefs.getString(ThemeActivity.KEY_THEME, "flow");
+        android.graphics.drawable.GradientDrawable gradient = new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                getTopBarGradientColors(theme));
+        gradient.setCornerRadius(0);
+        bar.setBackground(gradient);
+    }
+
+    private int[] getTopBarGradientColors(String theme) {
+        switch (theme) {
+            case "flow-dream":
+                // Pink gradient for Flow Dream
+                return new int[]{0xFFF8BBD0, 0xFFF48FB1, 0xFFEC407A};
+            case "flow-azure":
+                // Light blue gradient for Flow Azure
+                return new int[]{0xFFB3E5FC, 0xFF81D4FA, 0xFF4FC3F7};
+            case "flow-green":
+                // Light tea green gradient for Flow Green
+                return new int[]{0xFFDCEDC8, 0xFFC5E1A5, 0xFFAED581};
+            case "flow-midnight":
+                // Dark grey/midnight gradient for Flow Midnight
+                return new int[]{0xFF37474F, 0xFF263238, 0xFF1A2327};
+            default:
+                // White/light gradient for Flow
+                return new int[]{0xFFFFFFFF, 0xFFF5F5F5, 0xFFEEEEEE};
+        }
+    }
+
+    private void updateFixedTopBarTheme() {
+        if (fixedTopBar == null) return;
+        // The fixedTopBar is a FrameLayout containing the bar and divider
+        // Find the LinearLayout (bar) inside the FrameLayout
+        if (fixedTopBar instanceof FrameLayout) {
+            FrameLayout container = (FrameLayout) fixedTopBar;
+            if (container.getChildCount() > 0) {
+                View bar = container.getChildAt(0);
+                if (bar instanceof LinearLayout) {
+                    applyTopBarGradient(bar);
+                    // Update text colors
+                    updateTopBarTextColors((LinearLayout) bar);
+                }
+            }
+        }
+    }
+
+    private void updateTopBarTextColors(LinearLayout bar) {
+        int textColor = themeTextColor();
+        for (int i = 0; i < bar.getChildCount(); i++) {
+            View child = bar.getChildAt(i);
+            if (child instanceof TextView) {
+                ((TextView) child).setTextColor(textColor);
+            } else if (child instanceof EditText) {
+                ((EditText) child).setTextColor(textColor);
+                ((EditText) child).setHintTextColor(0x80FFFFFF);
+            }
+        }
     }
 
     private void toggleSearch() {
