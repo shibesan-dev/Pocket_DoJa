@@ -30,20 +30,16 @@ public class EntryActivity extends Activity {
 
     private JamSurfaceView surfaceView;
     private JamInputController input;
-    private android.widget.TextView loadingView;
-    private android.os.Handler loadingHandler;
     private volatile boolean loadingHidden = false;
+    private android.os.Handler loadingHandler;
     private int loadingDot = 0;
-    private android.widget.FrameLayout exitingOverlay;
-    private android.widget.TextView exitingText;
     private int exitingDot = 0;
     private final Runnable exitingTick = new Runnable() {
         @Override
         public void run() {
-            if (exitingOverlay == null || exitingOverlay.getVisibility() != android.view.View.VISIBLE) return;
             StringBuilder sb = new StringBuilder("Exiting");
             for (int i = 0; i < exitingDot; i++) sb.append('.');
-            if (exitingText != null) exitingText.setText(sb.toString());
+            surfaceView.showExitingOverlay(sb.toString());
             exitingDot = (exitingDot + 1) % 4;
             if (loadingHandler != null) loadingHandler.postDelayed(this, 400);
         }
@@ -51,10 +47,9 @@ public class EntryActivity extends Activity {
     private final Runnable loadingTick = new Runnable() {
         @Override
         public void run() {
-            if (loadingView == null || loadingHidden) return;
             StringBuilder sb = new StringBuilder("Booting");
             for (int i = 0; i < loadingDot; i++) sb.append('.');
-            loadingView.setText(sb.toString());
+            surfaceView.showLoadingOverlay(sb.toString());
             loadingDot = (loadingDot + 1) % 4;
             if (loadingHandler != null) loadingHandler.postDelayed(this, 400);
         }
@@ -184,78 +179,9 @@ public class EntryActivity extends Activity {
         root.addView(surfaceView, new android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
-        loadingView = new android.widget.TextView(this);
-        loadingView.setText("Booting...");
-        loadingView.setTextColor(0xFFFFFFFF);
-        loadingView.setTextSize(24f);
-        loadingView.setTypeface(android.graphics.Typeface.createFromAsset(getAssets(), "fonts/PixelifySans-Bold.ttf"), android.graphics.Typeface.BOLD);
-        loadingView.setGravity(android.view.Gravity.CENTER);
-        android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
-                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT);
-        lp.gravity = android.view.Gravity.CENTER;
-        root.addView(loadingView, lp);
-
-        exitingOverlay = new android.widget.FrameLayout(this);
-        exitingOverlay.setBackgroundColor(0xCC000000);
-        exitingOverlay.setVisibility(android.view.View.GONE);
-        exitingText = new android.widget.TextView(this);
-        exitingText.setText("Exiting...");
-        exitingText.setTextColor(0xFFFFFFFF);
-        exitingText.setTextSize(24f);
-        exitingText.setTypeface(android.graphics.Typeface.createFromAsset(getAssets(), "fonts/PixelifySans-Bold.ttf"), android.graphics.Typeface.BOLD);
-        exitingText.setGravity(android.view.Gravity.CENTER);
-        android.widget.FrameLayout.LayoutParams exitingLp = new android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
-                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT);
-        exitingLp.gravity = android.view.Gravity.CENTER;
-        exitingOverlay.addView(exitingText, exitingLp);
-        root.addView(exitingOverlay, new android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-                android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
-
         setContentView(root);
-        root.getViewTreeObserver().addOnGlobalLayoutListener(new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
-            @Override
-            public void onGlobalLayout() {
-                int w = root.getWidth();
-                int h = root.getHeight();
-                if (w <= 0 || h <= 0) return;
-                boolean portrait = h >= w;
-                float cx = portrait ? w * 0.5f : w * 0.32375f;
-                float cy = portrait ? h * 0.40375f : h * 0.5f;
-                int angle = opendoja.android.JamSurfaceView.getGameRotationAngle(EntryActivity.this);
-                if (loadingView != null) {
-                    android.widget.FrameLayout.LayoutParams lp = (android.widget.FrameLayout.LayoutParams) loadingView.getLayoutParams();
-                    lp.gravity = android.view.Gravity.TOP | android.view.Gravity.START;
-                    lp.leftMargin = (int) (cx - loadingView.getWidth() / 2f);
-                    lp.topMargin = (int) (cy - loadingView.getHeight() / 2f);
-                    loadingView.setLayoutParams(lp);
-                    loadingView.setPivotX(loadingView.getWidth() / 2f);
-                    loadingView.setPivotY(loadingView.getHeight() / 2f);
-                    loadingView.setRotation(angle);
-                }
-                if (exitingText != null) {
-                    android.widget.FrameLayout.LayoutParams ep = (android.widget.FrameLayout.LayoutParams) exitingText.getLayoutParams();
-                    ep.gravity = android.view.Gravity.TOP | android.view.Gravity.START;
-                    ep.leftMargin = (int) (cx - exitingText.getWidth() / 2f);
-                    ep.topMargin = (int) (cy - exitingText.getHeight() / 2f);
-                    exitingText.setLayoutParams(ep);
-                    exitingText.setPivotX(exitingText.getWidth() / 2f);
-                    exitingText.setPivotY(exitingText.getHeight() / 2f);
-                    exitingText.setRotation(angle);
-                }
-            }
-        });
         loadingHandler = new android.os.Handler(android.os.Looper.getMainLooper());
         loadingHandler.post(loadingTick);
-        DoJaRuntime.setPlatformPresenter((frame, sessionId) -> {
-            if (frame == null) {
-                runOnUiThread(this::exitGame);
-                return;
-            }
-            surfaceView.present(frame, sessionId);
-        });
         // Direct-draw games paint dozens of primitives per frame without lock()/unlock();
         // coalescing their outside-lock presents keeps half-drawn frames off the screen.
         DoJaRuntime.setPresentDebounceEnabled(false);
@@ -439,17 +365,14 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
         if (loadingHidden) return;
         loadingHidden = true;
         runOnUiThread(() -> {
-            if (loadingView != null) loadingView.setVisibility(android.view.View.GONE);
+            if (surfaceView != null) surfaceView.hideLoadingOverlay();
             if (loadingHandler != null) loadingHandler.removeCallbacksAndMessages(null);
         });
     }
 
     private void showExitingOverlay() {
         runOnUiThread(() -> {
-            if (exitingOverlay != null) {
-                exitingOverlay.setVisibility(android.view.View.VISIBLE);
-                exitingOverlay.bringToFront();
-            }
+            if (surfaceView != null) surfaceView.showExitingOverlay("Exiting");
             exitingDot = 0;
             if (loadingHandler != null) {
                 loadingHandler.removeCallbacks(exitingTick);

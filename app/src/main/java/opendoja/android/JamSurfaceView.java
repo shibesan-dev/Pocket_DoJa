@@ -120,6 +120,12 @@ public class JamSurfaceView extends View {
     private int lastPointerX;
     private int lastPointerY;
 
+    private String loadingText;
+    private boolean loadingVisible;
+    private String exitingText;
+    private boolean exitingVisible;
+    private final Paint overlayTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
     private JamInputController input;
 
     /** Set true after releaseAllControls() so present() from a stale game thread is ignored. */
@@ -167,11 +173,22 @@ public class JamSurfaceView extends View {
         keyTextPaint.setColor(0xFFFFFFFF);
         keyTextPaint.setTextAlign(Paint.Align.CENTER);
         keyTextPaint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        try {
+try {
             android.content.SharedPreferences prefs = getContext().getSharedPreferences(ThemeActivity.PREFS_NAME, android.content.Context.MODE_PRIVATE);
             cachedSkin = prefs.getString(ThemeActivity.KEY_SKIN, "silver");
         } catch (Throwable ignored) {
             cachedSkin = "silver";
+        }
+        try {
+            android.graphics.Typeface font = android.graphics.Typeface.createFromAsset(getContext().getAssets(), "fonts/PixelifySans-Bold.ttf");
+            overlayTextPaint.setColor(0xFFFFFFFF);
+            overlayTextPaint.setTextAlign(Paint.Align.CENTER);
+            overlayTextPaint.setTypeface(font);
+            overlayTextPaint.setAntiAlias(true);
+        } catch (Throwable ignored) {
+            overlayTextPaint.setColor(0xFFFFFFFF);
+            overlayTextPaint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            overlayTextPaint.setAntiAlias(true);
         }
     }
 
@@ -238,6 +255,33 @@ public class JamSurfaceView extends View {
                 pixels = new int[width * height];
             }
         }
+        postInvalidate();
+    }
+
+    /** Display the "Booting..." overlay, centered on the game viewport. */
+    public void showLoadingOverlay(String text) {
+        this.loadingText = text;
+        this.loadingVisible = true;
+        postInvalidate();
+    }
+
+    /** Hide the boot overlay once the game has presented its first frame. */
+    public void hideLoadingOverlay() {
+        this.loadingVisible = false;
+        this.loadingText = null;
+        postInvalidate();
+    }
+
+    /** Display the "Exiting..." overlay, centered on the game viewport. */
+    public void showExitingOverlay(String text) {
+        this.exitingText = text;
+        this.exitingVisible = true;
+        postInvalidate();
+    }
+
+    public void hideExitingOverlay() {
+        this.exitingVisible = false;
+        this.exitingText = null;
         postInvalidate();
     }
 
@@ -341,6 +385,19 @@ public class JamSurfaceView extends View {
         }
         if (keypadVisible) {
             drawKeypad(canvas);
+        }
+        // Draw "Booting..." / "Exiting..." text centered on the game viewport within the skin
+        if (loadingVisible && loadingText != null) {
+            float cx = gameRect.left + gameRect.width() / 2f;
+            float cy = gameRect.top + gameRect.height() / 2f;
+            overlayTextPaint.setTextSize(Math.min(gameRect.height() * 0.12f, gameRect.width() * 0.25f));
+            canvas.drawText(loadingText, cx, cy, overlayTextPaint);
+        }
+        if (exitingVisible && exitingText != null) {
+            float cx = gameRect.left + gameRect.width() / 2f;
+            float cy = gameRect.top + gameRect.height() / 2f;
+            overlayTextPaint.setTextSize(Math.min(gameRect.height() * 0.12f, gameRect.width() * 0.25f));
+            canvas.drawText(exitingText, cx, cy, overlayTextPaint);
         }
         if (rotationAngle != 0) {
             canvas.restore();
