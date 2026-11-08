@@ -220,6 +220,23 @@ public class HomeActivity extends Activity {
             topBar.setBackgroundColor(color);
             opendoja.host.OpenDoJaLog.info(HomeActivity.class, () -> "onResume: topBar color=" + Integer.toHexString(color) + " theme=" + getSharedPreferences(ThemeActivity.PREFS_NAME, MODE_PRIVATE).getString(ThemeActivity.KEY_THEME, "flow"));
         }
+        if (pendingCustomImport) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                if (android.os.Environment.isExternalStorageManager()) {
+                    pendingCustomImport = false;
+                    File start = android.os.Environment.getExternalStorageDirectory();
+                    if (start == null || !start.isDirectory()) start = getFilesDir();
+                    showFileBrowser(start);
+                }
+            } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    pendingCustomImport = false;
+                    File start = android.os.Environment.getExternalStorageDirectory();
+                    if (start == null || !start.isDirectory()) start = getFilesDir();
+                    showFileBrowser(start);
+                }
+            }
+        }
         if (!gameRunning) playBgm();
     }
 
@@ -1621,7 +1638,8 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         try {
             startActivityForResult(intent, REQUEST_IMPORT_FOLDER);
         } catch (RuntimeException exception) {
-            Toast.makeText(this, "Invalid image", Toast.LENGTH_LONG).show();
+            // No system document picker (e.g. missing DocumentsUI) -> use built-in browser.
+            pickImportFolderCustom();
         }
     }
 
@@ -1869,7 +1887,7 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         for (String jamName : jamNames) {
             String base = stripExtension(jamName);
             // Duplicate detection: skip if a game with the same jam name is already imported.
-            File existingJam = new File(JamAssets.gamesDir(this), jamName);
+            File existingJam = new File(JamAssets.gamesDir(this), jamName.toLowerCase(java.util.Locale.ROOT));
             if (existingJam.exists()) {
                 result.skipped++;
                 result.errors.add(jamName + ": already imported, skipped");
@@ -2043,6 +2061,316 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
             this.displayName = displayName;
         }
     }
+
+    // ------------------------------------------------------------------
+    // Custom (non-SAF) file browser used when the device has no DocumentsUI.
+    // ------------------------------------------------------------------
+    private boolean pendingCustomImport = false;
+
+    private void pickImportFolderCustom() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            if (!android.os.Environment.isExternalStorageManager()) {
+                pendingCustomImport = true;
+                try {
+                    Intent intent = new Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                    intent.setData(android.net.Uri.parse("package:" + getPackageName()));
+                    startActivity(intent);
+                } catch (Exception e) {
+                    try {
+                        startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+                    } catch (Exception ignored) {
+                    }
+                }
+                Toast.makeText(this, "Please grant 'All files access', then retry Import .JAM", Toast.LENGTH_LONG).show();
+                return;
+            }
+        } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                pendingCustomImport = true;
+                requestPermissions(new String[]{android.Manifest.permission.READ_EXTERNAL_STORAGE}, 9001);
+                return;
+            }
+        }
+        File start = android.os.Environment.getExternalStorageDirectory();
+        if (start == null || !start.isDirectory()) {
+            start = getFilesDir();
+        }
+        showFileBrowser(start);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 9001 && pendingCustomImport) {
+            if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                pendingCustomImport = false;
+                File start = android.os.Environment.getExternalStorageDirectory();
+                if (start == null || !start.isDirectory()) start = getFilesDir();
+                showFileBrowser(start);
+            } else {
+                pendingCustomImport = false;
+                Toast.makeText(this, "Storage permission denied", Toast.LENGTH_LONG).show();
+            }
+        }
+    }
+
+    private void showFileBrowser(final File dir) {
+        if (dir == null || !dir.isDirectory()) {
+            Toast.makeText(this, "Not a directory", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        android.app.ProgressDialog loading = new android.app.ProgressDialog(this);
+        loading.setMessage("Loading folder...");
+        loading.setIndeterminate(true);
+        loading.show();
+        new Thread(() -> {
+            File[] children = dir.listFiles();
+            List<File> subdirs = new ArrayList<>();
+            if (children != null) {
+                for (File f : children) {
+                    if (f.isDirectory()) subdirs.add(f);
+                }
+            }
+            subdirs.sort((a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+            boolean hasJam = false;
+            if (children != null) {
+                for (File f : children) {
+                    if (f.isFile() && f.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".jam")) {
+                        hasJam = true;
+                        break;
+                    }
+                }
+            }
+            final List<File> finalSubdirs = subdirs;
+            final boolean finalHasJam = hasJam;
+            runOnUiThread(() -> {
+                loading.dismiss();
+                List<String> items = new ArrayList<>();
+                items.add(finalHasJam ? ">> Import this folder (contains .JAM)" : ">> Import this folder (scan subfolders)");
+                File parent = dir.getParentFile();
+                if (parent != null) items.add(".. (parent)");
+                for (File d : finalSubdirs) items.add(d.getName() + "/");
+                final File current = dir;
+                new AlertDialog.Builder(this)
+                        .setTitle(dir.getAbsolutePath())
+                        .setItems(items.toArray(new String[0]), (dialog, which) -> {
+                            if (which == 0) {
+                                new AlertDialog.Builder(this)
+                                        .setTitle("Import games?")
+                                        .setMessage("Scan and import game folders under:\n" + current.getAbsolutePath())
+                                        .setPositiveButton("Import", (d, w) -> startBatchImportFromFiles(current))
+                                        .setNegativeButton("Cancel", null)
+                                        .show();
+                            } else if (parent != null && which == 1) {
+                                showFileBrowser(parent);
+                            } else {
+                                int offset = (parent != null) ? 2 : 1;
+                                int idx = which - offset;
+                                if (idx >= 0 && idx < finalSubdirs.size()) {
+                                    showFileBrowser(finalSubdirs.get(idx));
+                                }
+                            }
+                        })
+                        .setNegativeButton("Cancel", null)
+                        .show();
+            });
+        }).start();
+    }
+
+    private void startBatchImportFromFiles(File root) {
+        android.app.ProgressDialog scanning = new android.app.ProgressDialog(this);
+        scanning.setMessage("Scanning for games...");
+        scanning.setIndeterminate(true);
+        scanning.show();
+        new Thread(() -> {
+            List<File> folders = scanJamFoldersFiles(root);
+            runOnUiThread(() -> {
+                scanning.dismiss();
+                if (folders.isEmpty()) {
+                    Toast.makeText(this, "No valid games found", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                new AlertDialog.Builder(this)
+                        .setTitle("Import " + folders.size() + " game(s)?")
+                        .setMessage("Found " + folders.size() + " game folder(s). Import them now?")
+                        .setPositiveButton("Import", (dialog, which) -> {
+                            android.app.ProgressDialog progress = new android.app.ProgressDialog(this);
+                            progress.setMessage("Importing games...");
+                            progress.setIndeterminate(true);
+                            progress.show();
+                            new Thread(() -> {
+                                ImportResult total = new ImportResult();
+                                for (File folder : folders) {
+                                    ImportResult r = importJamFolderFromFile(folder);
+                                    total.games += r.games;
+                                    total.skipped += r.skipped;
+                                    total.failed += r.failed;
+                                    total.files += r.files;
+                                    total.errors.addAll(r.errors);
+                                }
+                                runOnUiThread(() -> {
+                                    progress.dismiss();
+                                    StringBuilder msg = new StringBuilder();
+                                    msg.append("Imported ").append(total.games).append(" game(s)");
+                                    if (total.skipped > 0) msg.append(", skipped ").append(total.skipped).append(" duplicate(s)");
+                                    if (total.failed > 0) msg.append(", failed ").append(total.failed);
+                                    if (!total.errors.isEmpty()) msg.append("\n").append(String.join("\n", total.errors));
+                                    Toast.makeText(this, msg.toString(),
+                                            total.errors.isEmpty() ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG).show();
+                                    refreshGames();
+                                });
+                            }).start();
+                        })
+                        .setNegativeButton("Cancel", null)
+                        .show();
+            });
+        }).start();
+    }
+
+    private List<File> scanJamFoldersFiles(File root) {
+        List<File> result = new ArrayList<>();
+        int[] counter = new int[]{0};
+        scanJamFoldersFiles(root, 0, counter, result);
+        return result;
+    }
+
+    private void scanJamFoldersFiles(File dir, int depth, int[] counter, List<File> result) {
+        if (dir == null || !dir.isDirectory() || depth > 8 || counter[0] > 2000) return;
+        File[] children = dir.listFiles();
+        if (children == null) return;
+        boolean hasJam = false;
+        List<File> subdirs = new ArrayList<>();
+        for (File c : children) {
+            counter[0]++;
+            if (counter[0] > 2000) break;
+            if (c.isDirectory()) subdirs.add(c);
+            else if (c.isFile() && c.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".jam")) hasJam = true;
+        }
+        if (hasJam) result.add(dir);
+        for (File d : subdirs) scanJamFoldersFiles(d, depth + 1, counter, result);
+    }
+
+    private ImportResult importJamFolderFromFile(File folder) {
+        ImportResult result = new ImportResult();
+        File[] children = folder.listFiles();
+        if (children == null) {
+            result.errors.add("cannot list folder");
+            return result;
+        }
+        Map<String, File> childFiles = new LinkedHashMap<>();
+        File spDir = null;
+        List<String> jamNames = new ArrayList<>();
+        List<String> jarNames = new ArrayList<>();
+        for (File c : children) {
+            if (c.isDirectory()) {
+                if (c.getName().equalsIgnoreCase("sp")) spDir = c;
+            } else {
+                childFiles.put(c.getName().toLowerCase(java.util.Locale.ROOT), c);
+                String lower = c.getName().toLowerCase(java.util.Locale.ROOT);
+                if (lower.endsWith(".jam")) jamNames.add(c.getName());
+                if (lower.endsWith(".jar")) jarNames.add(c.getName());
+            }
+        }
+        if (jamNames.isEmpty()) {
+            result.errors.add("no .jam in folder");
+            return result;
+        }
+
+        Map<String, File> toCopy = new LinkedHashMap<>();
+        for (String jamName : jamNames) {
+            String base = stripExtension(jamName);
+            File existingJam = new File(JamAssets.gamesDir(this), jamName.toLowerCase(java.util.Locale.ROOT));
+            if (existingJam.exists()) {
+                result.skipped++;
+                result.errors.add(jamName + ": already imported, skipped");
+                continue;
+            }
+            List<String> reasons = new ArrayList<>();
+            String jarName = null;
+            File jarFile = childFiles.get((base + ".jar").toLowerCase(java.util.Locale.ROOT));
+            if (jarFile != null) {
+                jarName = jarFile.getName();
+            } else if (jarNames.isEmpty()) {
+                reasons.add("missing .jar");
+            } else if (jarNames.size() == 1) {
+                jarName = jarNames.get(0);
+            } else {
+                reasons.add("multiple .jar, cannot match");
+            }
+
+            File spSrc = childFiles.get((base + ".sp").toLowerCase(java.util.Locale.ROOT));
+            if (spSrc == null && spDir != null) {
+                File[] spEntries = spDir.listFiles();
+                if (spEntries != null) {
+                    for (File spCandidate : spEntries) {
+                        if (spCandidate.isFile() && spCandidate.getName().equalsIgnoreCase(base + ".sp")) {
+                            spSrc = spCandidate;
+                            break;
+                        }
+                    }
+                }
+                if (spSrc == null) {
+                    File cand = new File(spDir, base + ".sp");
+                    if (cand.isFile()) spSrc = cand;
+                }
+            }
+            boolean spDeclared = jamDeclaresScratchpadFromFile(new File(folder, jamName));
+            if (spDeclared && spSrc == null) {
+                reasons.add("missing .sp (SPsize declared)");
+            }
+
+            if (!reasons.isEmpty()) {
+                result.failed++;
+                result.errors.add(jamName + ": " + String.join(", ", reasons));
+                continue;
+            }
+
+            toCopy.put(jamName.toLowerCase(java.util.Locale.ROOT), childFiles.get(jamName.toLowerCase(java.util.Locale.ROOT)));
+            if (jarName != null) {
+                File jf = childFiles.get(jarName.toLowerCase(java.util.Locale.ROOT));
+                if (jf != null) toCopy.put((base + ".jar").toLowerCase(java.util.Locale.ROOT), jf);
+            }
+            if (spSrc != null) {
+                toCopy.put((base + ".sp").toLowerCase(java.util.Locale.ROOT), spSrc);
+            }
+            result.games++;
+        }
+
+        if (toCopy.isEmpty()) return result;
+
+        File gamesDir = JamAssets.gamesDir(this);
+        for (Map.Entry<String, File> entry : toCopy.entrySet()) {
+            String destName = entry.getKey();
+            File src = entry.getValue();
+            try (java.io.InputStream in = new java.io.FileInputStream(src);
+                 java.io.OutputStream out = new java.io.FileOutputStream(new File(gamesDir, destName))) {
+                byte[] buffer = new byte[8192];
+                int read;
+                while ((read = in.read(buffer)) > 0) out.write(buffer, 0, read);
+                result.files++;
+            } catch (java.io.IOException | SecurityException exception) {
+                opendoja.host.OpenDoJaLog.warn(HomeActivity.class, "cannot import " + src.getName(), exception);
+                result.failed++;
+                result.errors.add("import failed: " + src.getName());
+            }
+        }
+        return result;
+    }
+
+    private boolean jamDeclaresScratchpadFromFile(File jamFile) {
+        try (java.io.InputStream in = new java.io.FileInputStream(jamFile)) {
+            Properties p = new Properties();
+            p.load(in);
+            String spSize = p.getProperty("SPsize");
+            return spSize != null && !spSize.isBlank();
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
+    // Handle pending custom import after returning from settings (Android 11+).
+    // (onResume hook added separately.)
 
     private static final class ImportResult {
         int games;
