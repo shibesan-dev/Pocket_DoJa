@@ -61,6 +61,8 @@ public final class JamLauncher {
             throw new IllegalArgumentException("JAM/ADF missing AppClass: " + jamPath);
         }
         Path gameJarPath = locateGameJarIfPresent(jamPath, properties);
+        opendoja.host.OpenDoJaPaths.setGameJarPath(gameJarPath);
+        seedGameStorage(gameJarPath);
         // Install the bridge before any app code runs so bootstrap-owned Class.getResource*
         // lookups can still fall back to the selected JAM jar.
         JamNamedModuleResourceBridge.install(gameJarPath);
@@ -75,9 +77,10 @@ public final class JamLauncher {
         @SuppressWarnings("unchecked")
         Class<? extends IApplication> applicationClass = (Class<? extends IApplication>) rawClass;
         int[] scratchpadSizes = parseScratchpadSizes(properties.getProperty("SPsize"));
+        String sourceUrl = resolvePackageUrl(jamPath, properties.getProperty("PackageURL"));
         LaunchConfig.Builder builder = LaunchConfig.builder(applicationClass)
                 .title(properties.getProperty("AppName", applicationClass.getSimpleName()))
-                .sourceUrl(resolvePackageUrl(jamPath, properties.getProperty("PackageURL")))
+                .sourceUrl(sourceUrl)
                 .scratchpadSizes(scratchpadSizes)
                 .launchType((launchType == null ? LaunchConfig.LaunchTypeOption.NORMAL : launchType).launchType)
                 .iAppliType(LaunchConfig.IAppliType.fromJamProperties(properties))
@@ -97,7 +100,13 @@ public final class JamLauncher {
         }
         Map<String, String> effectiveParameters = JamMetadataResolver.resolveEffectiveParameters(jamPath, properties);
         applyOptionalDrawArea(builder, properties.getProperty("DrawArea"), effectiveParameters.get("TargetDevice"));
+        seedNamespacePlaceholders(effectiveParameters, sourceUrl, appClassName, gameJarPath);
         String appParam = properties.getProperty("AppParam");
+        if (appParam != null && !appParam.isBlank() && gameJarPath != null
+                && jarContainsEntry(gameJarPath, "fat.bin")) {
+            appParam = appParam.replace("PD=0", "PD=1");
+            appParam = removeAppParamToken(appParam, "AUTH");
+        }
         if (appParam != null && !appParam.isBlank()) {
             builder.args(appParam.trim().split("\\s+"));
         }
@@ -362,6 +371,219 @@ public final class JamLauncher {
         int[] compact = new int[count];
         System.arraycopy(result, 0, compact, 0, count);
         return compact;
+    }
+
+    private static void seedGameStorage(Path gameJarPath) {
+        if (gameJarPath == null || !java.nio.file.Files.isRegularFile(gameJarPath)) {
+            return;
+        }
+        java.nio.file.Path storageRoot;
+        try {
+            storageRoot = opendoja.host.storage.DoJaStorageHost.deviceRoot();
+            java.nio.file.Files.createDirectories(storageRoot);
+        } catch (IOException ignored) {
+            return;
+        }
+        try (java.util.jar.JarFile jarFile = new java.util.jar.JarFile(gameJarPath.toFile())) {
+            java.util.Enumeration<java.util.jar.JarEntry> entries = jarFile.entries();
+            while (entries.hasMoreElements()) {
+                java.util.jar.JarEntry entry = entries.nextElement();
+                if (entry.isDirectory()) {
+                    continue;
+                }
+                String name = entry.getName();
+                if (name == null || name.isBlank() || name.endsWith(".class")
+                        || name.regionMatches(true, 0, "META-INF/", 0, "META-INF/".length())) {
+                    continue;
+                }
+                java.nio.file.Path target = storageRoot.resolve(name).normalize();
+                if (!target.startsWith(storageRoot)) {
+                    continue;
+                }
+                if (java.nio.file.Files.exists(target) && !"fat.bin".equalsIgnoreCase(target.getFileName().toString())) {
+                    continue;
+                }
+                if ("fat.bin".equalsIgnoreCase(target.getFileName().toString())) {
+                    continue;
+                }
+                java.nio.file.Path parent = target.getParent();
+                if (parent != null) {
+                    java.nio.file.Files.createDirectories(parent);
+                }
+                try (java.io.InputStream in = jarFile.getInputStream(entry)) {
+                    java.nio.file.Files.copy(in, target);
+                } catch (IOException ignored) {
+                }
+            }
+        } catch (IOException ignored) {
+        }
+    }
+
+    private static void seedNamespacePlaceholders(Map<String, String> parameters, String sourceUrl,
+                                                 String applicationClassName, Path gameJarPath) {
+        String appParam = parameters == null ? null : parameters.get("AppParam");
+        int tr = (appParam != null && appParam.matches("(?i).*\\bTR=1\\b.*")) ? 1 : 0;
+        int access = tr == 1 ? 3 : 0;
+        int share = tr == 1 ? 16 : 8;
+        Path namespaceRoot;
+        try {
+            namespaceRoot = opendoja.host.storage.DoJaStorageHost.resolveNamespaceRoot(
+                    parameters == null ? java.util.Map.of() : parameters,
+                    sourceUrl, applicationClassName, access, share);
+        } catch (RuntimeException ignored) {
+            return;
+        }
+        try {
+            java.nio.file.Files.createDirectories(namespaceRoot);
+        } catch (IOException ignored) {
+            return;
+        }
+        // Seed supporting resources from the JAR (never fat.bin).
+        if (gameJarPath != null && java.nio.file.Files.isRegularFile(gameJarPath)) {
+            try (java.util.jar.JarFile jarFile = new java.util.jar.JarFile(gameJarPath.toFile())) {
+                java.util.Enumeration<java.util.jar.JarEntry> entries = jarFile.entries();
+                while (entries.hasMoreElements()) {
+                    java.util.jar.JarEntry entry = entries.nextElement();
+                    if (entry.isDirectory()) {
+                        continue;
+                    }
+                    String name = entry.getName();
+                    if (name == null || name.isBlank() || name.endsWith(".class")
+                            || name.regionMatches(true, 0, "META-INF/", 0, "META-INF/".length())
+                            || "fat.bin".equalsIgnoreCase(name)) {
+                        continue;
+                    }
+                    java.nio.file.Path target = namespaceRoot.resolve(name).normalize();
+                    if (!target.startsWith(namespaceRoot) || java.nio.file.Files.exists(target)) {
+                        continue;
+                    }
+                    java.nio.file.Path parent = target.getParent();
+                    if (parent != null) {
+                        java.nio.file.Files.createDirectories(parent);
+                    }
+                    try (java.io.InputStream in = jarFile.getInputStream(entry)) {
+                        java.nio.file.Files.copy(in, target);
+                    } catch (IOException ignored) {
+                    }
+                }
+            } catch (IOException ignored) {
+            }
+        }
+        // Obtain fat.bin directly from the JAR (authoritative), refreshing the namespace copy.
+        byte[] data = null;
+        java.nio.file.Path fatBin = namespaceRoot.resolve("fat.bin");
+        if (gameJarPath != null && java.nio.file.Files.isRegularFile(gameJarPath)) {
+            try (java.util.jar.JarFile jarFile = new java.util.jar.JarFile(gameJarPath.toFile())) {
+                java.util.jar.JarEntry entry = (java.util.jar.JarEntry) jarFile.getEntry("fat.bin");
+                if (entry != null) {
+                    try (java.io.InputStream in = jarFile.getInputStream(entry)) {
+                        data = in.readAllBytes();
+                    }
+                }
+            } catch (IOException ignored) {
+            }
+        }
+        if (data == null && java.nio.file.Files.isRegularFile(fatBin)) {
+            try {
+                data = java.nio.file.Files.readAllBytes(fatBin);
+            } catch (IOException ignored) {
+            }
+        }
+        opendoja.host.OpenDoJaLog.info(JamLauncher.class, "seedNamespacePlaceholders: namespace=" + namespaceRoot + " fatBinData=" + (data == null ? 0 : data.length));
+        if (data != null) {
+            try {
+                java.nio.file.Files.write(fatBin, data, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
+            } catch (IOException ignored) {
+            }
+        }
+        if (data == null) {
+            return;
+        }
+        int count = (data.length - 16) / 36;
+        int created = 0;
+        for (int i = 0; i < count; i++) {
+            int rec = 16 + i * 36;
+            if (rec + 36 > data.length) {
+                break;
+            }
+            int len = 0;
+            while (len < 15 && data[rec + 9 + len] != (byte) ' ' && data[rec + 9 + len] != 0) {
+                len++;
+            }
+            if (len <= 0) {
+                continue;
+            }
+            String name = new String(data, rec + 9, len, java.nio.charset.StandardCharsets.US_ASCII).trim();
+            if (name.isEmpty()) {
+                continue;
+            }
+            int size = ((data[rec + 32] & 0xFF) << 24)
+                    | ((data[rec + 33] & 0xFF) << 16)
+                    | ((data[rec + 34] & 0xFF) << 8)
+                    | (data[rec + 35] & 0xFF);
+            if (size <= 0) {
+                continue;
+            }
+            java.nio.file.Path target = namespaceRoot.resolve(name).normalize();
+            if (!target.startsWith(namespaceRoot)) {
+                continue;
+            }
+            try {
+                if (java.nio.file.Files.exists(target)) {
+                    if (java.nio.file.Files.size(target) == size) {
+                        continue;
+                    }
+                    java.nio.file.Files.delete(target);
+                }
+                java.nio.file.Path parent = target.getParent();
+                if (parent != null) {
+                    java.nio.file.Files.createDirectories(parent);
+                }
+                try (java.io.OutputStream out = java.nio.file.Files.newOutputStream(target)) {
+                    byte[] buf = new byte[8192];
+                    java.util.Arrays.fill(buf, (byte) 1);
+                    long remaining = size;
+                    while (remaining > 0) {
+                        int w = (int) Math.min(buf.length, remaining);
+                        out.write(buf, 0, w);
+                        remaining -= w;
+                    }
+                }
+                created++;
+            } catch (IOException exception) {
+                opendoja.host.OpenDoJaLog.warn(JamLauncher.class, "failed to create placeholder " + name + " at " + target, exception);
+            }
+        }
+        opendoja.host.OpenDoJaLog.info(JamLauncher.class, "seedNamespacePlaceholders: created " + created + " placeholders");
+    }
+
+    private static boolean jarContainsEntry(Path jarPath, String entryName) {
+        if (jarPath == null || entryName == null || entryName.isBlank()) {
+            return false;
+        }
+        try (java.util.jar.JarFile jarFile = new java.util.jar.JarFile(jarPath.toFile())) {
+            return jarFile.getEntry(entryName) != null;
+        } catch (IOException ignored) {
+            return false;
+        }
+    }
+
+    private static String removeAppParamToken(String appParam, String tokenName) {
+        if (appParam == null || appParam.isBlank() || tokenName == null || tokenName.isBlank()) {
+            return appParam;
+        }
+        String prefix = tokenName.trim() + "=";
+        StringBuilder result = new StringBuilder();
+        for (String token : appParam.trim().split("\\s+")) {
+            if (token.regionMatches(true, 0, prefix, 0, prefix.length())) {
+                continue;
+            }
+            if (result.length() > 0) {
+                result.append(' ');
+            }
+            result.append(token);
+        }
+        return result.toString();
     }
 
     private record ResolvedScratchpad(Path path, boolean found) {

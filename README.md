@@ -1,6 +1,6 @@
 ![Pocket DoJa Banner](docs/images/banner.png)
 
-# Pocket DoJaâ„¢
+# Pocket DoJaâ„?
 
 **Pocket DoJa** is an Android-based emulator project based on OpenDoJa, dedicated to exploring and preserving the experience of classic NTT DoCoMo i-mode Java games.
 
@@ -42,7 +42,7 @@ Check out the **[Game Compatibility Tracker](https://github.com/shibesan-dev/Poc
 
 Requirements:
 
-- Android SDK (compileSdk 34, minSdk 28)
+- Android SDK (compileSdk 34, minSdk 24)
 - JDK 17
 - Gradle (wrapper included)
 
@@ -120,12 +120,12 @@ Once you have prepared the information:
 
 ## Project Structure
 
-- `app/` â€” Android application module
-- `opendoja/` â€” OpenDoJa host/runtime (Java)
-- `dexlib/` â€” DEX utilities
-- `public/` â€” Themes and assets (game files are *not* distributed)
-- `configs/` â€” Runtime configuration
-- `docs/images/` â€” Screenshots
+- `app/` â€?Android application module
+- `opendoja/` â€?OpenDoJa host/runtime (Java)
+- `dexlib/` â€?DEX utilities
+- `public/` â€?Themes and assets (game files are *not* distributed)
+- `configs/` â€?Runtime configuration
+- `docs/images/` â€?Screenshots
 
 ## Disclaimer
 
@@ -133,9 +133,9 @@ Pocket DoJa does not provide or distribute game files. Users are responsible for
 
 ## Credits
 
-- OpenDoJa â€” For the original project that made Pocket DoJa possible.
-- Wandering Hunter (æµæµªçš„çŒäºº) â€” For creating the original Android port.
-- Shibesan (aka DominicTei) â€” The main developer of Pocket DoJa.
+- OpenDoJa â€?For the original project that made Pocket DoJa possible.
+- Wandering Hunter (æµæµªçš„çŒäº? â€?For creating the original Android port.
+- Shibesan (aka DominicTei) â€?The main developer of Pocket DoJa.
 
 ## Support the Project
 

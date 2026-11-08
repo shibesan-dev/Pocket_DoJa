@@ -26,7 +26,7 @@ public class IndexColorModel extends opendoja.compat.awt.image.ColorModel {
             int b = component(blue, i);
             this.palette[i] = 0xFF000000 | (r << 16) | (g << 8) | b;
         }
-        this.transparentPixel = transparent;
+        this.transparentPixel = (transparent >= 0 && transparent < count) ? transparent : -1;
     }
 
     /** bits, size, red, green, blue, alpha component arrays. */
@@ -41,7 +41,19 @@ public class IndexColorModel extends opendoja.compat.awt.image.ColorModel {
             int b = component(blue, i);
             this.palette[i] = (a << 24) | (r << 16) | (g << 8) | b;
         }
-        this.transparentPixel = -1;
+        int transparent = -1;
+        boolean exact = true;
+        for (int i = 0; i < count; i++) {
+            int a = component(alpha, i);
+            if (a != 0 && a != 0xFF) {
+                exact = false;
+                break;
+            }
+            if (a == 0 && transparent < 0) {
+                transparent = i;
+            }
+        }
+        this.transparentPixel = exact ? transparent : -1;
     }
 
     private static int component(byte[] values, int index) {

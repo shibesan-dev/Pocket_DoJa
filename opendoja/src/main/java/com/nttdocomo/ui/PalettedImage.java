@@ -201,9 +201,8 @@ public class PalettedImage extends Image {
             throw new ArrayIndexOutOfBoundsException(index);
         }
         this.transparentIndex = index;
-        if (transparentEnabled) {
-            this.appliedTransparentIndex = index;
-        }
+        this.transparentEnabled = true;
+        this.appliedTransparentIndex = index;
         mutationVersion++;
     }
 

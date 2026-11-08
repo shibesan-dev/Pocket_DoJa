@@ -107,7 +107,7 @@ public final class DoJaStorageHost {
                 token.getAccess(), token.getShare());
     }
 
-    static Path resolveNamespaceRoot(Map<String, String> parameters,
+    public static Path resolveNamespaceRoot(Map<String, String> parameters,
                                      String sourceUrl,
                                      String applicationClassName,
                                      int access,
@@ -138,6 +138,7 @@ public final class DoJaStorageHost {
         } catch (FileSystemException exception) {
             throw translateCreateFailure(exception);
         }
+        seedNamespaceFromGameJar(namespaceRoot);
     }
 
     public static long getUsableSpace(Path namespaceRoot) throws IOException {
@@ -271,6 +272,46 @@ public final class DoJaStorageHost {
             return new FileNotAccessibleException(FileNotAccessibleException.ACCESS_DENIED, exception.getMessage());
         }
         return exception;
+    }
+
+    private static void seedNamespaceFromGameJar(Path namespaceRoot) {
+        Path gameJarPath = OpenDoJaPaths.gameJarPath();
+        if (gameJarPath == null || !Files.isRegularFile(gameJarPath) || namespaceRoot == null) {
+            return;
+        }
+        try (java.util.jar.JarFile jarFile = new java.util.jar.JarFile(gameJarPath.toFile())) {
+            java.util.Enumeration<java.util.jar.JarEntry> entries = jarFile.entries();
+            while (entries.hasMoreElements()) {
+                java.util.jar.JarEntry entry = entries.nextElement();
+                if (entry.isDirectory()) {
+                    continue;
+                }
+                String name = entry.getName();
+                if (name == null || name.isBlank() || name.endsWith(".class")
+                        || name.regionMatches(true, 0, "META-INF/", 0, "META-INF/".length())) {
+                    continue;
+                }
+                Path target = namespaceRoot.resolve(name).normalize();
+                if (!target.startsWith(namespaceRoot)) {
+                    continue;
+                }
+                if (Files.exists(target) && !"fat.bin".equalsIgnoreCase(target.getFileName().toString())) {
+                    continue;
+                }
+                if ("fat.bin".equalsIgnoreCase(target.getFileName().toString())) {
+                    continue;
+                }
+                Path parent = target.getParent();
+                if (parent != null) {
+                    Files.createDirectories(parent);
+                }
+                try (java.io.InputStream in = jarFile.getInputStream(entry)) {
+                    Files.copy(in, target);
+                } catch (IOException ignored) {
+                }
+            }
+        } catch (IOException ignored) {
+        }
     }
 
     public static Path normalize(Path path) {

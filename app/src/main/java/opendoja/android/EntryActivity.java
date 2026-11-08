@@ -159,7 +159,7 @@ public class EntryActivity extends Activity {
         // directory; SD-card storage init would fail there and titles like the
         // Touhou "reading SD" screen would wait forever. Keep it in app-private
         // storage instead.
-        opendoja.host.OpenDoJaPaths.setHostDataRoot(getFilesDir().toPath().resolve(".opendoja"));
+        opendoja.host.OpenDoJaPaths.setHostDataRoot(java.nio.file.Paths.get(getFilesDir().getAbsolutePath()).resolve(".opendoja"));
         installCrashGuard();
         DoJaRuntime.setPlatformPresenter((frame, sessionId) -> {
             if (frame == null) {
@@ -715,7 +715,7 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
     private void launchSmoke() {
         try {
             LaunchConfig config = LaunchConfig.builder(SmokeApp.class)
-                    .scratchpadRoot(getFilesDir().toPath().resolve("scratchpad"))
+                    .scratchpadRoot(java.nio.file.Paths.get(getFilesDir().getAbsolutePath()).resolve("scratchpad"))
                     .build();
             DesktopLauncher.launch(config);
             opendoja.host.OpenDoJaLog.info(EntryActivity.class, "launch returned normally");
@@ -796,12 +796,12 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
                 File spCandidate = new File(spDir, stripExtension(jam.getName()) + ".sp");
                 if (spCandidate.exists()) {
                     try {
-                        java.nio.file.Files.copy(spCandidate.toPath(), spFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                        java.nio.file.Files.copy(java.nio.file.Paths.get(spCandidate.getAbsolutePath()), java.nio.file.Paths.get(spFile.getAbsolutePath()), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                     } catch (IOException ignored) {
                     }
                 }
             }
-            File jar = opendoja.host.JamGameJarLocator.locate(jam.toPath()).toFile();
+            File jar = opendoja.host.JamGameJarLocator.locate(java.nio.file.Paths.get(jam.getAbsolutePath())).toFile();
             File dex = JamDexHost.ensureDex(jar);
             if (cancelledLaunchSession == activeLaunchSession) {
                 opendoja.host.OpenDoJaLog.info(EntryActivity.class, "launch cancelled after conversion");
@@ -868,8 +868,8 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
             surfaceView.present(frame, sessionId);
         });
 
-            LaunchConfig config = JamLauncher.buildLaunchConfig(jam.toPath(), false,
-                    getFilesDir().toPath().resolve("scratchpad"));
+            LaunchConfig config = JamLauncher.buildLaunchConfig(java.nio.file.Paths.get(jam.getAbsolutePath()), false,
+                    java.nio.file.Paths.get(getFilesDir().getAbsolutePath()).resolve("scratchpad"));
             // Platform presenter is set in onCreate and reads expectedRuntime (volatile)
             IApplication application = DesktopLauncher.launch(config);
             try {

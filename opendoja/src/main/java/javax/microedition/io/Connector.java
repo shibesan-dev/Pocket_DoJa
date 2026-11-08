@@ -46,8 +46,16 @@ public class Connector {
             );
         }
         if (lower.startsWith("file:///")) {
-            // Treat file URIs as simple byte streams backed by an in-memory
-            // buffer so DoJa titles that probe local storage do not fail.
+            int dataLength = tekkenDataLength(name);
+            if (dataLength > 0) {
+                return new SimpleStreamConnection(
+                        new java.io.ByteArrayInputStream(createFilledBuffer(dataLength)),
+                        new java.io.ByteArrayOutputStream(),
+                        name,
+                        "application/octet-stream",
+                        (long) dataLength
+                );
+            }
             return new SimpleStreamConnection(
                     new java.io.ByteArrayInputStream(new byte[0]),
                     new java.io.ByteArrayOutputStream(),
@@ -103,6 +111,10 @@ public class Connector {
             return asDataInputStream(((DesktopHttpConnection) open(name, READ, false)).openInputStream());
         }
         if (lower.startsWith("file:///")) {
+            int dataLength = tekkenDataLength(name);
+            if (dataLength > 0) {
+                return asDataInputStream(new java.io.ByteArrayInputStream(new byte[dataLength]));
+            }
             return asDataInputStream(new java.io.ByteArrayInputStream(new byte[0]));
         }
         throw new ConnectionNotFoundException("Unsupported input connector URI: " + name);
@@ -133,6 +145,92 @@ public class Connector {
     private static OutputStream noOutput() {
         return null;
     }
+
+    private static byte[] createFilledBuffer(int length) {
+        byte[] buffer = new byte[length];
+        java.util.Arrays.fill(buffer, (byte) 1);
+        return buffer;
+    }
+
+
+    private static final java.util.Map<String, Integer> TEKKEN_FAT_SIZES = new java.util.HashMap<>();
+    private static volatile boolean tekkenFatLoaded;
+
+    private static int tekkenDataLength(String name) {
+        if (name == null) {
+            return 0;
+        }
+        String path = name;
+        int query = path.indexOf('?');
+        if (query >= 0) {
+            path = path.substring(0, query);
+        }
+        String marker = "tekken2_SO903i_";
+        int markerIndex = path.indexOf(marker);
+        if (markerIndex < 0 || !path.toLowerCase().endsWith(".dat")) {
+            return 0;
+        }
+        String numberPart = path.substring(markerIndex + marker.length(), path.length() - 4);
+        int number;
+        try {
+            number = Integer.parseInt(numberPart);
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+        int fileIndex = number / 10;
+        String entryName = "tk2_" + String.format(java.util.Locale.ROOT, "%03d", fileIndex);
+        ensureTekkenFatLoaded();
+        Integer size = TEKKEN_FAT_SIZES.get(entryName);
+        return size == null ? 0 : size;
+    }
+
+    private static void ensureTekkenFatLoaded() {
+        if (tekkenFatLoaded) {
+            return;
+        }
+        synchronized (TEKKEN_FAT_SIZES) {
+            if (tekkenFatLoaded) {
+                return;
+            }
+            try {
+                java.io.InputStream in = DoJaRuntime.openLaunchResourceStream("resource:///fat.bin");
+                if (in != null) {
+                    byte[] data = in.readAllBytes();
+                    in.close();
+                    int count = (data.length - 16) / 36;
+                    for (int i = 0; i < count; i++) {
+                        int record = 16 + i * 36;
+                        if (record + 36 > data.length) {
+                            break;
+                        }
+                        int length = 0;
+                        while (length < 15 && data[record + 9 + length] != (byte) ' '
+                                && data[record + 9 + length] != 0) {
+                            length++;
+                        }
+                        if (length <= 0) {
+                            continue;
+                        }
+                        String entryName = new String(data, record + 9, length,
+                                java.nio.charset.StandardCharsets.US_ASCII).trim();
+                        if (entryName.isEmpty()) {
+                            continue;
+                        }
+                        int size = ((data[record + 32] & 0xFF) << 24)
+                                | ((data[record + 33] & 0xFF) << 16)
+                                | ((data[record + 34] & 0xFF) << 8)
+                                | (data[record + 35] & 0xFF);
+                        if (size > 0) {
+                            TEKKEN_FAT_SIZES.put(entryName, size);
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+            tekkenFatLoaded = true;
+        }
+    }
+
 
     private static DataInputStream asDataInputStream(InputStream input) {
         return input instanceof DataInputStream dataInput ? dataInput : new DataInputStream(input);

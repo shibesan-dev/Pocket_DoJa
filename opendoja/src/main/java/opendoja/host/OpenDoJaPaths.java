@@ -21,6 +21,16 @@ public final class OpenDoJaPaths {
         hostDataRootOverride = path == null ? null : path.toAbsolutePath().normalize();
     }
 
+    private static volatile Path gameJarPath;
+
+    public static void setGameJarPath(Path path) {
+        gameJarPath = path == null ? null : path.toAbsolutePath().normalize();
+    }
+
+    public static Path gameJarPath() {
+        return gameJarPath;
+    }
+
     public static Path hostDataRoot() {
         Path override = hostDataRootOverride;
         if (override != null) {

@@ -179,6 +179,7 @@ public class Folder {
      * @throws IOException if the file cannot be accessed
      */
     public File getFile(String fileName) throws IOException {
+        DoJaStorageHost.ensureNamespaceExists(backingPath);
         DoJaStorageHost.validateFileName(fileName);
         Path filePath;
         try {
@@ -187,6 +188,7 @@ public class Folder {
             throw DoJaStorageHost.translateExistingPathFailure(exception);
         }
         if (filePath == null) {
+            opendoja.host.OpenDoJaLog.warn(Folder.class, "File not found in namespace: " + fileName + " root=" + backingPath);
             throw new FileNotAccessibleException(FileNotAccessibleException.NOT_FOUND,
                     "File not found: " + fileName);
         }

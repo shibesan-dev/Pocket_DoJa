@@ -333,7 +333,7 @@ public class HomeActivity extends Activity {
         menuButton.setClickable(true);
         menuButton.setFocusable(true);
         menuButton.setBackground(new RippleDrawable(
-                new ColorStateList(new int[][]{new int[0]}, new int[]{0x33FFFFFF}), null, new ColorDrawable(0x1FFFFFFF)));
+                ColorStateList.valueOf(0x33FFFFFF), null, new ColorDrawable(0x1FFFFFFF)));
         menuButton.setOnClickListener(this::showOptionsMenu);
         bar.addView(menuButton, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT));
@@ -401,7 +401,7 @@ public class HomeActivity extends Activity {
             item.setPadding(dp(18), dp(14), dp(18), dp(14));
             item.setClickable(true);
             item.setForeground(new RippleDrawable(
-                    new ColorStateList(new int[][]{new int[0]}, new int[]{0x2FFFFFFF}), null, null));
+                    ColorStateList.valueOf(0x2FFFFFFF), null, null));
             item.setOnClickListener(v -> {
                 if (menuPopup != null) {
                     menuPopup.dismiss();
@@ -523,7 +523,7 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         android.graphics.Typeface regular = android.graphics.Typeface.createFromAsset(getAssets(), "fonts/PixelifySans-Regular.ttf");
 
         TextView title = new TextView(this);
-        String versionName = "1.1.0"; // this one doesn't matter, it uses PackageManager versionName.
+        String versionName = "1.2.0"; // this one doesn't matter, it uses PackageManager versionName.
         try {
             versionName = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
         } catch (Exception ignored) {
@@ -849,7 +849,7 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         for (File jam : jams) {
             String name = stripExtension(jam.getName());
             try {
-                Properties properties = JamMetadataResolver.loadJamProperties(jam.toPath());
+                Properties properties = JamMetadataResolver.loadJamProperties(java.nio.file.Paths.get(jam.getAbsolutePath()));
                 String appName = properties.getProperty("AppName");
                 if (appName != null && !appName.isBlank()) {
                     name = appName.trim();
@@ -860,7 +860,7 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
             File nameFile = new File(jam.getParentFile(), stripExtension(jam.getName()) + ".name.txt");
             if (nameFile.exists()) {
                 try {
-                    String custom = new String(java.nio.file.Files.readAllBytes(nameFile.toPath())).trim();
+                    String custom = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(nameFile.getAbsolutePath()))).trim();
                     if (!custom.isEmpty()) {
                         name = custom;
                     }
@@ -901,7 +901,7 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         Bitmap icon = null;
         if (jar != null && jar.exists()) {
             try {
-                Properties properties = JamMetadataResolver.loadJamProperties(jam.toPath());
+                Properties properties = JamMetadataResolver.loadJamProperties(java.nio.file.Paths.get(jam.getAbsolutePath()));
                 String appIcon = properties.getProperty("AppIcon");
                 if (appIcon != null && !appIcon.isBlank()) {
                     String[] candidates = appIcon.split(",");
@@ -1223,7 +1223,7 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         opendoja.host.LaunchConfig config = null;
         try {
             config = opendoja.host.JamLauncher.buildLaunchConfig(
-                    jam.toPath(), false, getFilesDir().toPath().resolve("scratchpad"));
+                    java.nio.file.Paths.get(jam.getAbsolutePath()), false, java.nio.file.Paths.get(getFilesDir().getAbsolutePath()).resolve("scratchpad"));
         } catch (Exception ignored) {
         }
         String namespace = null;
@@ -1435,7 +1435,7 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         tile.setStroke(dp(1), 0xFF2A2E36);
         cell.setBackground(tile);
         cell.setForeground(new RippleDrawable(
-                new ColorStateList(new int[][]{new int[0]}, new int[]{0x33FFFFFF}), null, tile));
+                ColorStateList.valueOf(0x33FFFFFF), null, tile));
 
         ImageView icon = new ImageView(this);
         icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -1513,7 +1513,7 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
     private String describeJam(File jam) {
         String name = jam.getName();
         try {
-            Properties properties = JamMetadataResolver.loadJamProperties(jam.toPath());
+            Properties properties = JamMetadataResolver.loadJamProperties(java.nio.file.Paths.get(jam.getAbsolutePath()));
             String appName = properties.getProperty("AppName");
             if (appName != null && !appName.isBlank()) {
                 return appName + " (" + name + ")";

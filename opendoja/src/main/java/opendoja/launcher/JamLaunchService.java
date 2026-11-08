@@ -40,7 +40,7 @@ final class JamLaunchService {
         if (result != JFileChooser.APPROVE_OPTION || chooser.getSelectedFile() == null) {
             return null;
         }
-        Path jamPath = chooser.getSelectedFile().toPath().toAbsolutePath().normalize();
+        Path jamPath = chooser.java.nio.file.Paths.get(getSelectedFile().getAbsolutePath()).toAbsolutePath().normalize();
         if (jamPath != null) {
             preferencesStore.rememberLastDirectory(jamPath.getParent());
         }
