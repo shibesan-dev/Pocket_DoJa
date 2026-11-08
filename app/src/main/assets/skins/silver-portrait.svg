@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="100%" height="100%" viewBox="0 0 400 800"
+     preserveAspectRatio="xMidYMid meet"
+     role="img" aria-labelledby="title desc">
+  <title id="title">Pocket DoJa Silver Portrait Skin</title>
+  <desc id="desc">Scalable silver feature-phone frame. The central game viewport and lower control area are transparent.</desc>
+  <metadata>
+    Pocket DoJa vector skin.
+    ViewBox: 400 x 800.
+    Game viewport: x=42, y=112, width=316, height=422.
+    Viewport aspect ratio: 3:4.
+    Control reservation: x=24, y=568, width=352, height=208.
+    The viewport and control reservation are intentionally transparent.
+    Scale uniformly; preserve the viewBox aspect ratio.
+  </metadata>
+
+  <defs>
+    <linearGradient id="bodyMetal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f9fafb"/>
+      <stop offset=".16" stop-color="#aeb5bd"/>
+      <stop offset=".34" stop-color="#eef1f4"/>
+      <stop offset=".58" stop-color="#858e98"/>
+      <stop offset=".78" stop-color="#dce1e6"/>
+      <stop offset="1" stop-color="#727b85"/>
+    </linearGradient>
+    <linearGradient id="faceMetal" x1="0" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#f5f7f9"/>
+      <stop offset=".22" stop-color="#c8ced4"/>
+      <stop offset=".48" stop-color="#eef1f3"/>
+      <stop offset=".72" stop-color="#a4acb5"/>
+      <stop offset="1" stop-color="#e6e9ec"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#606a74"/>
+      <stop offset=".12" stop-color="#ffffff"/>
+      <stop offset=".5" stop-color="#929ba4"/>
+      <stop offset=".86" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#626b75"/>
+    </linearGradient>
+    <linearGradient id="screenRim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#626b75"/>
+      <stop offset=".18" stop-color="#f8fafb"/>
+      <stop offset=".52" stop-color="#9ba4ad"/>
+      <stop offset=".82" stop-color="#f4f6f8"/>
+      <stop offset="1" stop-color="#59636e"/>
+    </linearGradient>
+    <linearGradient id="panelSheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".68"/>
+      <stop offset=".35" stop-color="#ffffff" stop-opacity=".08"/>
+      <stop offset="1" stop-color="#4e5964" stop-opacity=".12"/>
+    </linearGradient>
+    <pattern id="brushed" width="4" height="4" patternUnits="userSpaceOnUse">
+      <path d="M0 .5H4" stroke="#fff" stroke-opacity=".16" stroke-width=".5"/>
+      <path d="M0 2.5H4" stroke="#56616c" stroke-opacity=".08" stroke-width=".45"/>
+    </pattern>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="5"/>
+    </filter>
+    <clipPath id="bodyClip">
+      <rect x="10" y="10" width="380" height="780" rx="43"/>
+    </clipPath>
+  </defs>
+
+  <!-- Soft grounding shadow, kept inside the SVG canvas. -->
+  <rect x="17" y="18" width="366" height="772" rx="44" fill="#000" opacity=".22" filter="url(#shadow)"/>
+
+  <!-- Main phone shell with a genuinely transparent screen aperture. -->
+  <path fill="url(#bodyMetal)" fill-rule="evenodd"
+        d="M53 10 H347 Q390 10 390 53 V747 Q390 790 347 790 H53 Q10 790 10 747 V53 Q10 10 53 10 Z
+           M55 112 H345 Q358 112 358 125 V521 Q358 534 345 534 H55 Q42 534 42 521 V125 Q42 112 55 112 Z"/>
+  <g clip-path="url(#bodyClip)">
+    <rect x="10" y="10" width="380" height="780" rx="43" fill="url(#brushed)" opacity=".7"/>
+    <rect x="14" y="14" width="372" height="772" rx="39" fill="none" stroke="#fff" stroke-opacity=".82" stroke-width="2"/>
+    <rect x="20" y="20" width="360" height="760" rx="34" fill="none" stroke="#56616c" stroke-opacity=".48" stroke-width="1.5"/>
+    <path d="M24 64 Q24 28 60 28 H340" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="3"/>
+    <path d="M20 700 V742 Q20 780 58 780 H342" fill="none" stroke="#fff" stroke-opacity=".28" stroke-width="3"/>
+    <rect x="12" y="12" width="376" height="776" rx="42" fill="url(#panelSheen)"/>
+  </g>
+
+  <!-- Screen bezel: all strokes surround the opening; no fill is placed inside it. -->
+  <rect x="34" y="104" width="332" height="438" rx="19" fill="none" stroke="#59636e" stroke-width="7"/>
+  <rect x="37" y="107" width="326" height="432" rx="16" fill="none" stroke="url(#screenRim)" stroke-width="5"/>
+  <rect x="42" y="112" width="316" height="422" rx="11" fill="none" stroke="#f9fbfc" stroke-opacity=".9" stroke-width="1.5"/>
+  <path d="M50 120 H350" stroke="#fff" stroke-opacity=".52" stroke-width="1.2"/>
+
+  <!-- Top earpiece and small status lens. -->
+  <rect x="145" y="48" width="110" height="15" rx="7.5" fill="#56616a"/>
+  <rect x="149" y="50" width="102" height="10" rx="5" fill="#20272d"/>
+  <path d="M156 52 H244" stroke="#aeb9c3" stroke-opacity=".55" stroke-width="1"/>
+  <circle cx="292" cy="55" r="7" fill="#68737d" stroke="#f8fafb" stroke-width="2"/>
+  <circle cx="292" cy="55" r="3" fill="#596d7b"/>
+
+  <!-- Lower control reservation: intentionally blank for the emulator's own controls. -->
+  <path d="M28 568 Q28 558 40 558 H360 Q372 558 372 570 V748 Q372 772 348 772 H52 Q28 772 28 748 Z"
+        fill="url(#faceMetal)" opacity=".82"/>
+  <path d="M31 570 Q31 562 42 562 H358 Q369 562 369 573"
+        fill="none" stroke="#fff" stroke-opacity=".8" stroke-width="2"/>
+  <path d="M31 750 Q31 768 52 768 H348 Q369 768 369 750"
+        fill="none" stroke="#68727c" stroke-opacity=".4" stroke-width="1.5"/>
+
+  <!-- Small non-interactive construction details. -->
+  <circle cx="27" cy="91" r="2.2" fill="#707a84"/>
+  <circle cx="373" cy="91" r="2.2" fill="#707a84"/>
+  <circle cx="27" cy="710" r="2.2" fill="#707a84"/>
+  <circle cx="373" cy="710" r="2.2" fill="#707a84"/>
+  <path d="M18 180 V620 M382 180 V620" stroke="#fff" stroke-opacity=".22" stroke-width="1"/>
+</svg>

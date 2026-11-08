@@ -104,6 +104,13 @@ public class JamSurfaceView extends View {
     private boolean rotated;
     private int rotationAngle;
     private boolean keypadVisible = true;
+    private String cachedSkin = "silver";
+    private boolean dpadVisible = true;
+    private long lastDpadActivityMs = android.os.SystemClock.elapsedRealtime();
+    private android.graphics.Bitmap cachedSkinBitmap;
+    private String cachedSkinBitmapId;
+    private String pendingSkinKey;
+    private boolean skinRenderPending;
 
     // Cached display settings to avoid reading SharedPreferences on every frame.
     private String cachedSettingsGameId;
@@ -160,6 +167,12 @@ public class JamSurfaceView extends View {
         keyTextPaint.setColor(0xFFFFFFFF);
         keyTextPaint.setTextAlign(Paint.Align.CENTER);
         keyTextPaint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        try {
+            android.content.SharedPreferences prefs = getContext().getSharedPreferences(ThemeActivity.PREFS_NAME, android.content.Context.MODE_PRIVATE);
+            cachedSkin = prefs.getString(ThemeActivity.KEY_SKIN, "silver");
+        } catch (Throwable ignored) {
+            cachedSkin = "silver";
+        }
     }
 
     private KeyDef addKey(int id, String label, int keyCode, boolean repeatable) {
@@ -295,6 +308,34 @@ public class JamSurfaceView extends View {
             return;
         }
         computeZones();
+        if (isLandscapeOrientation()) {
+            if (dpadVisible && (android.os.SystemClock.elapsedRealtime() - lastDpadActivityMs > 10000L)) {
+                dpadVisible = false;
+            }
+        } else {
+            dpadVisible = true;
+        }
+        boolean fullScreen = isFullScreenMode();
+        if (!fullScreen) {
+            // Draw phone-like skin casing (background) in Original mode.
+            boolean landscape = viewWidth >= viewHeight;
+            android.graphics.Bitmap skinBmp = getSkinBitmap(cachedSkin, landscape, (int) viewWidth, (int) viewHeight);
+            if (skinBmp != null && !skinBmp.isRecycled()) {
+                android.graphics.Rect src = new android.graphics.Rect(0, 0, skinBmp.getWidth(), skinBmp.getHeight());
+                android.graphics.RectF dst = new android.graphics.RectF(0f, 0f, viewWidth, viewHeight);
+                canvas.drawBitmap(skinBmp, src, dst, null);
+            } else {
+                android.graphics.Paint skinPaint = new android.graphics.Paint();
+                skinPaint.setColor(skinColor(cachedSkin));
+                canvas.drawRect(0f, 0f, viewWidth, viewHeight, skinPaint);
+                // subtle rounded bezel highlight
+                android.graphics.Paint bezelPaint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+                bezelPaint.setStyle(android.graphics.Paint.Style.STROKE);
+                bezelPaint.setStrokeWidth(6f);
+                bezelPaint.setColor(0x66FFFFFF);
+                canvas.drawRoundRect(new android.graphics.RectF(3f, 3f, viewWidth - 3f, viewHeight - 3f), 24f, 24f, bezelPaint);
+            }
+        }
         if (bmp != null && !bmp.isRecycled()) {
             drawGameUpscaled(canvas, bmp, sourceVersion);
         }
@@ -326,6 +367,21 @@ public class JamSurfaceView extends View {
             gameH = screenHeight > 0 ? screenHeight : 240;
         }
         boolean fullScreen = isFullScreenMode();
+        boolean svgSkin = isSvgSkin(cachedSkin, false);
+        if (svgSkin) {
+            float vbW = 400f, vbH = 800f;
+            float sx = viewWidth / vbW;
+            float sy = viewHeight / vbH;
+            gameRect.set(42f * sx, 112f * sy, (42f + 316f) * sx, (112f + 422f) * sy);
+            gamePixelW = gameW;
+            gamePixelH = gameH;
+            if (fullScreen) gameRect.set(0f, 0f, viewWidth, viewHeight);
+            if (!keypadVisible) {
+                padRect.set(0f, 0f, 0f, 0f);
+                return;
+            }
+            padRect.set(24f * sx, 568f * sy, (24f + 352f) * sx, (568f + 208f) * sy);
+        } else {
         float gameAreaW, gameAreaH;
         float padHeight;
         if (!keypadVisible) {
@@ -354,18 +410,16 @@ public class JamSurfaceView extends View {
 
         if (!keypadVisible) {
             padRect.set(0f, 0f, 0f, 0f);
-            return;
-        }
-        if (fullScreen) {
-            float bandTop = viewHeight - padHeight;
-            padRect.set(0f, bandTop, viewWidth, viewHeight);
+            // close svg else
         } else {
-            float bandTop = viewHeight - padHeight;
-            padRect.set(0f, bandTop, viewWidth, viewHeight);
-        }
         float bandTop = viewHeight - padHeight;
         padRect.set(0f, bandTop, viewWidth, viewHeight);
-
+        }
+        } // end else svg
+        // now key layout uses padRect
+        if (padRect.height() <= 0f) {
+            // skip key layout if no pad
+        } else {
         float pad = Math.min(padRect.width(), padRect.height()) * 0.05f;
         float innerLeft = padRect.left + pad;
         float innerTop = padRect.top + pad;
@@ -414,6 +468,7 @@ public class JamSurfaceView extends View {
             def.rect.set(dialLeft + col * cellWidth + inset, innerTop + row * cellHeight + inset,
                     dialLeft + (col + 1) * cellWidth - inset, innerTop + (row + 1) * cellHeight - inset);
         }
+        }
     }
 
     private void computeZonesLandscape() {
@@ -426,6 +481,21 @@ public class JamSurfaceView extends View {
             gameH = screenHeight > 0 ? screenHeight : 240;
         }
         boolean fullScreen = isFullScreenMode();
+        boolean svgSkin = isSvgSkin(cachedSkin, true);
+        if (svgSkin) {
+            float vbW = 800f, vbH = 400f;
+            float sx = viewWidth / vbW;
+            float sy = viewHeight / vbH;
+            gameRect.set(48f * sx, 42f * sy, (48f + 422f) * sx, (42f + 316f) * sy);
+            gamePixelW = gameW;
+            gamePixelH = gameH;
+            if (fullScreen) gameRect.set(0f, 0f, viewWidth, viewHeight);
+            if (!keypadVisible) {
+                padRect.set(0f, 0f, 0f, 0f);
+            } else {
+                padRect.set(510f * sx, 26f * sy, (510f + 264f) * sx, (26f + 348f) * sy);
+            }
+        } else {
         float rightW = Math.max(viewWidth * 0.24f, 180f * getResources().getDisplayMetrics().density);
         if (rightW > viewWidth * 0.35f) rightW = viewWidth * 0.35f;
         float gameAreaW = fullScreen ? viewWidth : (viewWidth - rightW);
@@ -444,19 +514,21 @@ public class JamSurfaceView extends View {
         gamePixelH = gameH;
         if (fullScreen) gameRect.set(0f, 0f, viewWidth, viewHeight);
 
-        padRect.set(viewWidth - rightW, 0f, viewWidth, viewHeight);
-
         if (!keypadVisible) {
             padRect.set(0f, 0f, 0f, 0f);
-            return;
+        } else {
+            padRect.set(viewWidth - rightW, 0f, viewWidth, viewHeight);
         }
-
+        } // end svg else
+        if (!keypadVisible) {
+            // no keys
+        } else {
         float density = getResources().getDisplayMetrics().density;
         float leftPad = 6f * density;
-        float innerLeft = viewWidth - rightW + leftPad;
-        float innerTop = leftPad;
-        float innerRight = viewWidth - leftPad;
-        float innerBottom = viewHeight - leftPad;
+        float innerLeft = padRect.left + leftPad;
+        float innerTop = padRect.top + padRect.height() * 0.10f + leftPad;
+        float innerRight = padRect.right - leftPad;
+        float innerBottom = padRect.bottom - leftPad;
         float innerW = innerRight - innerLeft;
         float innerH = innerBottom - innerTop;
 
@@ -499,6 +571,32 @@ public class JamSurfaceView extends View {
         leftKey.rect.set(cx - dpadSize / 2f, cy - arm / 2f, cx, cy + arm / 2f);
         rightKey.rect.set(cx, cy - arm / 2f, cx + dpadSize / 2f, cy + arm / 2f);
         selectKey.rect.set(cx - arm / 2f, cy - arm / 2f, cx + arm / 2f, cy + arm / 2f);
+    }
+    }
+
+    public static int getGameRotationAngle(android.content.Context context) {
+        String gameId = EntryActivity.gameId;
+        String orientation;
+        android.content.SharedPreferences prefs = context.getSharedPreferences(DisplayActivity.PREFS_NAME, android.content.Context.MODE_PRIVATE);
+        if (gameId != null && !gameId.isEmpty()) {
+            String override = prefs.getString(gameId + "_" + DisplayActivity.KEY_ORIENTATION, DisplayActivity.INHERIT);
+            if (!override.equals(DisplayActivity.INHERIT)) {
+                orientation = override;
+            } else {
+                orientation = prefs.getString(DisplayActivity.KEY_ORIENTATION, DisplayActivity.ORIENTATION_PORTRAIT);
+            }
+        } else {
+            orientation = prefs.getString(DisplayActivity.KEY_ORIENTATION, DisplayActivity.ORIENTATION_PORTRAIT);
+        }
+        boolean desiredPortrait = orientation.startsWith("portrait");
+        boolean devicePortrait = context.getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT;
+        boolean reverse = orientation.endsWith("reverse");
+        if (desiredPortrait != devicePortrait) {
+            if (desiredPortrait) return reverse ? 90 : -90;
+            return reverse ? -90 : 90;
+        }
+        if (reverse) return 180;
+        return 0;
     }
 
     private int computeRotationAngle() {
@@ -608,6 +706,9 @@ public class JamSurfaceView extends View {
     private void drawKeypad(Canvas canvas) {
         if (padRect.height() <= 0f) return;
         for (KeyDef def : keys) {
+            if (!dpadVisible && isLandscapeOrientation() && (def.id == CTRL_UP || def.id == CTRL_DOWN || def.id == CTRL_LEFT || def.id == CTRL_RIGHT || def.id == CTRL_SELECT)) {
+                continue;
+            }
             drawKey(canvas, def);
         }
     }
@@ -641,8 +742,15 @@ public class JamSurfaceView extends View {
     }
 
     private int hitTest(float x, float y) {
-        if (selectKey.rect.contains(x, y)) return CTRL_SELECT;
+        if (!dpadVisible && isLandscapeOrientation()) {
+            // skip dpad keys
+        } else {
+            if (selectKey.rect.contains(x, y)) return CTRL_SELECT;
+        }
         for (KeyDef def : keys) {
+            if (!dpadVisible && isLandscapeOrientation() && (def.id == CTRL_UP || def.id == CTRL_DOWN || def.id == CTRL_LEFT || def.id == CTRL_RIGHT || def.id == CTRL_SELECT)) {
+                continue;
+            }
             if (def.rect.contains(x, y)) return def.id;
         }
         return CTRL_NONE;
@@ -683,6 +791,10 @@ public class JamSurfaceView extends View {
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         computeZones();
+        if (isLandscapeOrientation()) {
+            dpadVisible = true;
+            lastDpadActivityMs = android.os.SystemClock.elapsedRealtime();
+        }
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
             case MotionEvent.ACTION_POINTER_DOWN: {
@@ -841,5 +953,130 @@ public class JamSurfaceView extends View {
             if (input != null) input.releasePointer(lastPointerX, lastPointerY);
         }
         postInvalidate();
+    }
+
+    private android.graphics.Bitmap getSkinBitmap(String skin, boolean landscape, int w, int h) {
+        if (skin == null || w <= 0 || h <= 0) return null;
+        String orient = landscape ? "landscape" : "portrait";
+        String key = skin + "|" + orient + "|" + w + "x" + h;
+        if (key.equals(cachedSkinBitmapId)) return cachedSkinBitmap;
+        if (skinRenderPending && key.equals(pendingSkinKey)) return cachedSkinBitmap;
+        // Try immediate PNG first.
+        try {
+            java.io.InputStream is = getContext().getAssets().open("skins/" + skin + "-" + orient + ".png");
+            android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeStream(is);
+            is.close();
+            if (bmp != null) {
+                cachedSkinBitmap = bmp;
+                cachedSkinBitmapId = key;
+                return bmp;
+            }
+        } catch (Exception ignored) {
+        }
+        // Try SVG via WebView (async). Return null (fallback) until rendered.
+        String svgAsset = "skins/" + skin + "-" + orient + ".svg";
+        try {
+            java.io.InputStream is = getContext().getAssets().open(svgAsset);
+            is.close();
+        } catch (Exception e) {
+            cachedSkinBitmap = null;
+            cachedSkinBitmapId = key;
+            return null;
+        }
+        skinRenderPending = true;
+        pendingSkinKey = key;
+        rasterizeSvg(skin, orient, w, h, key);
+        return null;
+    }
+
+    private void rasterizeSvg(String skin, String orient, int w, int h, String key) {
+        String svg;
+        try (java.io.InputStream is = getContext().getAssets().open("skins/" + skin + "-" + orient + ".svg")) {
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = is.read(buf)) > 0) baos.write(buf, 0, n);
+            svg = baos.toString("UTF-8");
+            svg = svg.replace("preserveAspectRatio=\"xMidYMid meet\"", "preserveAspectRatio=\"none\"");
+        } catch (Exception e) {
+            skinRenderPending = false;
+            cachedSkinBitmap = null;
+            cachedSkinBitmapId = key;
+            return;
+        }
+        android.view.ViewGroup rootVar = null;
+        try {
+            rootVar = (android.view.ViewGroup) ((android.app.Activity) getContext()).findViewById(android.R.id.content);
+        } catch (Throwable ignored) {
+        }
+        final android.view.ViewGroup root = rootVar;
+        android.webkit.WebView wv = new android.webkit.WebView(getContext());
+        if (root != null) {
+            wv.setAlpha(0f);
+            root.addView(wv, new android.widget.FrameLayout.LayoutParams(w, h));
+        }
+        wv.setBackgroundColor(0xFF000000);
+        wv.getSettings().setJavaScriptEnabled(false);
+        wv.setWebViewClient(new android.webkit.WebViewClient() {
+            @Override
+            public void onPageFinished(android.webkit.WebView view, String url) {
+                view.postDelayed(() -> {
+                    try {
+                        android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
+                        android.graphics.Canvas c = new android.graphics.Canvas(bmp);
+                        view.draw(c);
+                        cachedSkinBitmap = bmp;
+                        cachedSkinBitmapId = key;
+                    } catch (Throwable ignored) {
+                        cachedSkinBitmap = null;
+                        cachedSkinBitmapId = key;
+                    }
+                    skinRenderPending = false;
+                    try {
+                        if (root != null) root.removeView(view);
+                    } catch (Throwable ignored) {
+                    }
+                    postInvalidate();
+                }, 150);
+            }
+        });
+        wv.layout(0, 0, w, h);
+        wv.loadDataWithBaseURL(null, svg, "image/svg+xml", "UTF-8", null);
+    }
+
+    private boolean isSvgSkin(String skin, boolean landscape) {
+        if (skin == null) return false;
+        String orient = landscape ? "landscape" : "portrait";
+        try {
+            getContext().getAssets().open("skins/" + skin + "-" + orient + ".svg").close();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean isLandscapeOrientation() {
+        String gameId = EntryActivity.gameId;
+        android.content.SharedPreferences prefs = getContext().getSharedPreferences(DisplayActivity.PREFS_NAME, android.content.Context.MODE_PRIVATE);
+        String orientation;
+        if (gameId != null && !gameId.isEmpty()) {
+            String override = prefs.getString(gameId + "_" + DisplayActivity.KEY_ORIENTATION, DisplayActivity.INHERIT);
+            orientation = override.equals(DisplayActivity.INHERIT) ? prefs.getString(DisplayActivity.KEY_ORIENTATION, DisplayActivity.ORIENTATION_PORTRAIT) : override;
+        } else {
+            orientation = prefs.getString(DisplayActivity.KEY_ORIENTATION, DisplayActivity.ORIENTATION_PORTRAIT);
+        }
+        return orientation.startsWith("landscape");
+    }
+
+    private int skinColor(String skin) {
+        if (skin == null) return 0xFF202020;
+        switch (skin) {
+            case "blue": return 0xFF1E88E5;
+            case "red": return 0xFFE53935;
+            case "green": return 0xFF43A047;
+            case "orange": return 0xFFFB8C00;
+            case "silver":
+            default: return 0xFFB0BEC5;
+        }
     }
 }

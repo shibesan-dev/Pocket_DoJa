@@ -125,18 +125,20 @@ public class DisplayActivity extends Activity {
                     value -> pendingMode = value);
         }
 
-        // Debugging (global)
-        TextView sectionDebug = new TextView(this);
-        sectionDebug.setText(R.string.debugging);
-        sectionDebug.setTextSize(18f);
-        sectionDebug.setTypeface(Typeface.DEFAULT_BOLD);
-        sectionDebug.setPadding(0, pad, 0, pad / 2);
-        root.addView(sectionDebug, matchWrap());
-        addOptionGroup(root, debugRows,
-                new String[]{getString(R.string.enable), getString(R.string.disable)},
-                new String[]{"enable", "disable"},
-                pendingDebug,
-                value -> pendingDebug = value);
+        if (!perGame) {
+            // Debugging (global)
+            TextView sectionDebug = new TextView(this);
+            sectionDebug.setText(R.string.debugging);
+            sectionDebug.setTextSize(18f);
+            sectionDebug.setTypeface(Typeface.DEFAULT_BOLD);
+            sectionDebug.setPadding(0, pad, 0, pad / 2);
+            root.addView(sectionDebug, matchWrap());
+            addOptionGroup(root, debugRows,
+                    new String[]{getString(R.string.enable), getString(R.string.disable)},
+                    new String[]{"enable", "disable"},
+                    pendingDebug,
+                    value -> pendingDebug = value);
+        }
         if (perGame) {
             TextView reset = new TextView(this);
             reset.setText(R.string.reset_to_global);
@@ -150,44 +152,46 @@ public class DisplayActivity extends Activity {
             root.addView(reset, matchWrap());
         }
 
-        // Language section
-        TextView sectionLang = new TextView(this);
-        sectionLang.setText("Language");
-        sectionLang.setTextSize(18f);
-        sectionLang.setTypeface(Typeface.DEFAULT_BOLD);
-        sectionLang.setPadding(0, pad, 0, pad / 2);
-        root.addView(sectionLang, matchWrap());
+        if (!perGame) {
+            // Language section
+            TextView sectionLang = new TextView(this);
+            sectionLang.setText("Language");
+            sectionLang.setTextSize(18f);
+            sectionLang.setTypeface(Typeface.DEFAULT_BOLD);
+            sectionLang.setPadding(0, pad, 0, pad / 2);
+            root.addView(sectionLang, matchWrap());
 
-        android.widget.CheckBox useSystemCb = new android.widget.CheckBox(this);
-        useSystemCb.setText("Use System Language");
-        useSystemCb.setChecked(pendingUseSystem);
-        useSystemCb.setOnCheckedChangeListener((b, checked) -> pendingUseSystem = checked);
-        root.addView(useSystemCb, matchWrap());
+            android.widget.CheckBox useSystemCb = new android.widget.CheckBox(this);
+            useSystemCb.setText("Use System Language");
+            useSystemCb.setChecked(pendingUseSystem);
+            useSystemCb.setOnCheckedChangeListener((b, checked) -> pendingUseSystem = checked);
+            root.addView(useSystemCb, matchWrap());
 
-        TextView langRow = new TextView(this);
-        langRow.setTextSize(16f);
-        langRow.setPadding(dp(12), dp(10), dp(12), dp(10));
-        Runnable updateLangLabel = () -> {
-            String name = pendingLanguage;
-            for (int i = 0; i < LocaleHelper.LANGUAGE_TAGS.length; i++) {
-                if (LocaleHelper.LANGUAGE_TAGS[i].equals(pendingLanguage)) {
-                    name = LocaleHelper.LANGUAGE_NAMES[i];
-                    break;
+            TextView langRow = new TextView(this);
+            langRow.setTextSize(16f);
+            langRow.setPadding(dp(12), dp(10), dp(12), dp(10));
+            Runnable updateLangLabel = () -> {
+                String name = pendingLanguage;
+                for (int i = 0; i < LocaleHelper.LANGUAGE_TAGS.length; i++) {
+                    if (LocaleHelper.LANGUAGE_TAGS[i].equals(pendingLanguage)) {
+                        name = LocaleHelper.LANGUAGE_NAMES[i];
+                        break;
+                    }
                 }
-            }
-            langRow.setText(name);
-        };
-        updateLangLabel.run();
-        langRow.setOnClickListener(v -> {
-            new android.app.AlertDialog.Builder(this)
-                    .setTitle("Language")
-                    .setItems(LocaleHelper.LANGUAGE_NAMES, (d, which) -> {
-                        pendingLanguage = LocaleHelper.LANGUAGE_TAGS[which];
-                        updateLangLabel.run();
-                    })
-                    .show();
-        });
-        root.addView(langRow, matchWrap());
+                langRow.setText(name);
+            };
+            updateLangLabel.run();
+            langRow.setOnClickListener(v -> {
+                new android.app.AlertDialog.Builder(this)
+                        .setTitle("Language")
+                        .setItems(LocaleHelper.LANGUAGE_NAMES, (d, which) -> {
+                            pendingLanguage = LocaleHelper.LANGUAGE_TAGS[which];
+                            updateLangLabel.run();
+                        })
+                        .show();
+            });
+            root.addView(langRow, matchWrap());
+        }
 
         LinearLayout buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
@@ -263,9 +267,11 @@ public class DisplayActivity extends Activity {
             editor.putString(KEY_ORIENTATION, pendingOrientation);
             editor.putString(KEY_DISPLAY_MODE, pendingMode);
         }
-         editor.putString(KEY_DEBUG, pendingDebug);
-         editor.putBoolean(LocaleHelper.KEY_USE_SYSTEM_LANGUAGE, pendingUseSystem);
-         editor.putString(LocaleHelper.KEY_LANGUAGE, pendingLanguage);
+         if (gameId == null || gameId.isEmpty()) {
+             editor.putString(KEY_DEBUG, pendingDebug);
+             editor.putBoolean(LocaleHelper.KEY_USE_SYSTEM_LANGUAGE, pendingUseSystem);
+             editor.putString(LocaleHelper.KEY_LANGUAGE, pendingLanguage);
+         }
          editor.commit();
         HomeActivity.applyDisplayOrientation(this, gameId);
         if (HomeActivity.instance != null) {

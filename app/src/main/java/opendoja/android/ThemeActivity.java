@@ -31,15 +31,20 @@ public class ThemeActivity extends Activity {
     static final String KEY_BGM_ENABLED = "bgm_enabled";
     static final String KEY_BGM_PATH = "bgm_path";
     static final String KEY_BGM_NAME = "bgm_name";
+    static final String KEY_SKIN = "skin";
 
     static final String[] THEMES = {"flow", "flow-dream", "flow-azure", "flow-green", "flow-midnight"};
     static final String[] THEME_LABELS = {"Flow", "Flow Dream", "Flow Azure", "Flow Green", "Flow Midnight"};
+
+    static final String[] SKINS = {"silver", "blue", "red", "green", "orange"};
+    static final String[] SKIN_LABELS = {"Silver (Metallic)", "Blue", "Red", "Green", "Orange"};
 
     private SharedPreferences prefs;
     private String pendingTheme;
     private boolean pendingBgmEnabled;
     private String pendingBgmPath;
     private String pendingBgmName;
+    private String pendingSkin;
     private TextView bgmLabel;
     private TextView defaultBgmRow;
     private TextView selectBgmButton;
@@ -53,6 +58,7 @@ public class ThemeActivity extends Activity {
         pendingBgmEnabled = prefs.getBoolean(KEY_BGM_ENABLED, true);
         pendingBgmPath = prefs.getString(KEY_BGM_PATH, "");
         pendingBgmName = prefs.getString(KEY_BGM_NAME, "");
+        pendingSkin = prefs.getString(KEY_SKIN, "silver");
 
         float density = getResources().getDisplayMetrics().density;
         int pad = (int) (16 * density);
@@ -90,6 +96,30 @@ public class ThemeActivity extends Activity {
             root.addView(row, matchWrap());
         }
         updateHighlights(themeRows, pendingTheme);
+
+        TextView sectionSkin = new TextView(this);
+        sectionSkin.setText("Skin");
+        sectionSkin.setTextSize(18f);
+        sectionSkin.setTypeface(Typeface.DEFAULT_BOLD);
+        sectionSkin.setPadding(0, pad, 0, pad / 2);
+        root.addView(sectionSkin, matchWrap());
+
+        List<TextView> skinRows = new ArrayList<>();
+        for (int i = 0; i < SKINS.length; i++) {
+            final String skin = SKINS[i];
+            TextView row = new TextView(this);
+            row.setText(SKIN_LABELS[i]);
+            row.setTextSize(16f);
+            row.setPadding(dp(12), dp(10), dp(12), dp(10));
+            row.setOnClickListener(v -> {
+                pendingSkin = skin;
+                updateHighlights(skinRows, pendingSkin);
+            });
+            row.setTag(skin);
+            skinRows.add(row);
+            root.addView(row, matchWrap());
+        }
+        updateHighlights(skinRows, pendingSkin);
 
         TextView section2 = new TextView(this);
         section2.setText(R.string.bgm);
@@ -179,6 +209,7 @@ public class ThemeActivity extends Activity {
         editor.putBoolean(KEY_BGM_ENABLED, pendingBgmEnabled);
         editor.putString(KEY_BGM_PATH, pendingBgmPath);
         editor.putString(KEY_BGM_NAME, pendingBgmName);
+        editor.putString(KEY_SKIN, pendingSkin);
         editor.commit();
         opendoja.host.OpenDoJaLog.info(ThemeActivity.class, "Theme saved: " + pendingTheme);
         finish();

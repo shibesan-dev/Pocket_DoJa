@@ -215,6 +215,38 @@ public class EntryActivity extends Activity {
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
 
         setContentView(root);
+        root.getViewTreeObserver().addOnGlobalLayoutListener(new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override
+            public void onGlobalLayout() {
+                int w = root.getWidth();
+                int h = root.getHeight();
+                if (w <= 0 || h <= 0) return;
+                boolean portrait = h >= w;
+                float cx = portrait ? w * 0.5f : w * 0.32375f;
+                float cy = portrait ? h * 0.40375f : h * 0.5f;
+                int angle = opendoja.android.JamSurfaceView.getGameRotationAngle(EntryActivity.this);
+                if (loadingView != null) {
+                    android.widget.FrameLayout.LayoutParams lp = (android.widget.FrameLayout.LayoutParams) loadingView.getLayoutParams();
+                    lp.gravity = android.view.Gravity.TOP | android.view.Gravity.START;
+                    lp.leftMargin = (int) (cx - loadingView.getWidth() / 2f);
+                    lp.topMargin = (int) (cy - loadingView.getHeight() / 2f);
+                    loadingView.setLayoutParams(lp);
+                    loadingView.setPivotX(loadingView.getWidth() / 2f);
+                    loadingView.setPivotY(loadingView.getHeight() / 2f);
+                    loadingView.setRotation(angle);
+                }
+                if (exitingText != null) {
+                    android.widget.FrameLayout.LayoutParams ep = (android.widget.FrameLayout.LayoutParams) exitingText.getLayoutParams();
+                    ep.gravity = android.view.Gravity.TOP | android.view.Gravity.START;
+                    ep.leftMargin = (int) (cx - exitingText.getWidth() / 2f);
+                    ep.topMargin = (int) (cy - exitingText.getHeight() / 2f);
+                    exitingText.setLayoutParams(ep);
+                    exitingText.setPivotX(exitingText.getWidth() / 2f);
+                    exitingText.setPivotY(exitingText.getHeight() / 2f);
+                    exitingText.setRotation(angle);
+                }
+            }
+        });
         loadingHandler = new android.os.Handler(android.os.Looper.getMainLooper());
         loadingHandler.post(loadingTick);
         DoJaRuntime.setPlatformPresenter((frame, sessionId) -> {

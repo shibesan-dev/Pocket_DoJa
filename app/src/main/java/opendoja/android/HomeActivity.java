@@ -237,6 +237,23 @@ public class HomeActivity extends Activity {
                 }
             }
         }
+        if (pendingImageIcon && pendingIconGame != null) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                if (android.os.Environment.isExternalStorageManager()) {
+                    pendingImageIcon = false;
+                    File start = android.os.Environment.getExternalStorageDirectory();
+                    if (start == null || !start.isDirectory()) start = getFilesDir();
+                    showImageBrowser(start);
+                }
+            } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    pendingImageIcon = false;
+                    File start = android.os.Environment.getExternalStorageDirectory();
+                    if (start == null || !start.isDirectory()) start = getFilesDir();
+                    showImageBrowser(start);
+                }
+            }
+        }
         if (!gameRunning) playBgm();
     }
 
@@ -976,16 +993,27 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         try (InputStream in = getContentResolver().openInputStream(uri)) {
             if (in == null) throw new IOException("Cannot open selected file");
             byte[] data = readAllBytes(in);
-            Bitmap bmp = decodeIconBytes(data);
-            if (bmp == null) throw new IOException("Unsupported or invalid image");
-            Bitmap scaled = scaleIcon(bmp);
-            File out = new File(game.jam.getParentFile(), stripExtension(game.jam.getName()) + ".icon.png");
-            try (FileOutputStream fos = new FileOutputStream(out)) {
-                scaled.compress(Bitmap.CompressFormat.PNG, 100, fos);
-            }
-            if (scaled != bmp) scaled.recycle();
-            bmp.recycle();
+            saveCustomIconBytes(game, data);
         }
+    }
+
+    private void saveCustomIconFromFile(GameEntry game, File file) throws IOException {
+        try (InputStream in = new java.io.FileInputStream(file)) {
+            byte[] data = readAllBytes(in);
+            saveCustomIconBytes(game, data);
+        }
+    }
+
+    private void saveCustomIconBytes(GameEntry game, byte[] data) throws IOException {
+        Bitmap bmp = decodeIconBytes(data);
+        if (bmp == null) throw new IOException("Unsupported or invalid image");
+        Bitmap scaled = scaleIcon(bmp);
+        File out = new File(game.jam.getParentFile(), stripExtension(game.jam.getName()) + ".icon.png");
+        try (FileOutputStream fos = new FileOutputStream(out)) {
+            scaled.compress(Bitmap.CompressFormat.PNG, 100, fos);
+        }
+        if (scaled != bmp) scaled.recycle();
+        bmp.recycle();
     }
 
     private Bitmap decodeIconBytes(byte[] data) {
@@ -1182,7 +1210,15 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
                         intent.addCategory(Intent.CATEGORY_OPENABLE);
                         intent.setType("*/*");
                         intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/png", "image/jpeg", "image/x-icon", "image/vnd.microsoft.icon"});
-                        startActivityForResult(intent, REQUEST_CHANGE_ICON);
+                        if (intent.resolveActivity(getPackageManager()) == null) {
+                            pickImageFileCustom(game);
+                            return;
+                        }
+                        try {
+                            startActivityForResult(intent, REQUEST_CHANGE_ICON);
+                        } catch (RuntimeException exception) {
+                            pickImageFileCustom(game);
+                        }
                     } else if (which == 1) {
                         File customIcon = new File(game.jam.getParentFile(), stripExtension(game.jam.getName()) + ".icon.png");
                         if (customIcon.exists()) customIcon.delete();
@@ -2066,6 +2102,7 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
     // Custom (non-SAF) file browser used when the device has no DocumentsUI.
     // ------------------------------------------------------------------
     private boolean pendingCustomImport = false;
+    private boolean pendingImageIcon = false;
 
     private void pickImportFolderCustom() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
@@ -2110,6 +2147,17 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
                 showFileBrowser(start);
             } else {
                 pendingCustomImport = false;
+                Toast.makeText(this, "Storage permission denied", Toast.LENGTH_LONG).show();
+            }
+        }
+        if (requestCode == 9002 && pendingImageIcon) {
+            if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                pendingImageIcon = false;
+                File start = android.os.Environment.getExternalStorageDirectory();
+                if (start == null || !start.isDirectory()) start = getFilesDir();
+                if (pendingIconGame != null) showImageBrowser(start);
+            } else {
+                pendingImageIcon = false;
                 Toast.makeText(this, "Storage permission denied", Toast.LENGTH_LONG).show();
             }
         }
@@ -2178,6 +2226,106 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         }).start();
     }
 
+    private void pickImageFileCustom(GameEntry game) {
+        pendingIconGame = game;
+        pendingImageIcon = true;
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            if (!android.os.Environment.isExternalStorageManager()) {
+                try {
+                    Intent intent = new Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                    intent.setData(android.net.Uri.parse("package:" + getPackageName()));
+                    startActivity(intent);
+                } catch (Exception e) {
+                    try {
+                        startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+                    } catch (Exception ignored) {
+                    }
+                }
+                Toast.makeText(this, "Please grant 'All files access', then retry", Toast.LENGTH_LONG).show();
+                return;
+            }
+            pendingImageIcon = false;
+            File start = android.os.Environment.getExternalStorageDirectory();
+            if (start == null || !start.isDirectory()) start = getFilesDir();
+            showImageBrowser(start);
+        } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{android.Manifest.permission.READ_EXTERNAL_STORAGE}, 9002);
+                return;
+            }
+            pendingImageIcon = false;
+            File start = android.os.Environment.getExternalStorageDirectory();
+            if (start == null || !start.isDirectory()) start = getFilesDir();
+            showImageBrowser(start);
+        } else {
+            pendingImageIcon = false;
+            File start = android.os.Environment.getExternalStorageDirectory();
+            if (start == null || !start.isDirectory()) start = getFilesDir();
+            showImageBrowser(start);
+        }
+    }
+
+    private void showImageBrowser(final File dir) {
+        if (dir == null || !dir.isDirectory()) {
+            Toast.makeText(this, "Not a directory", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        android.app.ProgressDialog loading = new android.app.ProgressDialog(this);
+        loading.setMessage("Loading folder...");
+        loading.setIndeterminate(true);
+        loading.show();
+        new Thread(() -> {
+            File[] children = dir.listFiles();
+            List<File> dirs = new ArrayList<>();
+            List<File> files = new ArrayList<>();
+            if (children != null) {
+                for (File f : children) {
+                    if (f.isDirectory()) dirs.add(f);
+                    else if (f.isFile()) files.add(f);
+                }
+            }
+            dirs.sort((a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+            files.sort((a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+            List<File> entries = new ArrayList<>();
+            entries.addAll(dirs);
+            entries.addAll(files);
+            final List<File> finalEntries = entries;
+            runOnUiThread(() -> {
+                loading.dismiss();
+                File parent = dir.getParentFile();
+                List<String> items = new ArrayList<>();
+                if (parent != null) items.add(".. (parent)");
+                for (File f : finalEntries) {
+                    items.add(f.isDirectory() ? f.getName() + "/" : f.getName());
+                }
+                new AlertDialog.Builder(this)
+                        .setTitle(dir.getAbsolutePath())
+                        .setItems(items.toArray(new String[0]), (dialog, which) -> {
+                            if (parent != null && which == 0) {
+                                showImageBrowser(parent);
+                                return;
+                            }
+                            int idx = (parent != null) ? which - 1 : which;
+                            if (idx < 0 || idx >= finalEntries.size()) return;
+                            File selected = finalEntries.get(idx);
+                            if (selected.isDirectory()) {
+                                showImageBrowser(selected);
+                            } else if (pendingIconGame != null) {
+                                try {
+                                    saveCustomIconFromFile(pendingIconGame, selected);
+                                    refreshGames();
+                                    Toast.makeText(this, "Icon updated", Toast.LENGTH_SHORT).show();
+                                } catch (Exception e) {
+                                    Toast.makeText(this, "Invalid image: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                                }
+                            }
+                        })
+                        .setNegativeButton("Cancel", null)
+                        .show();
+            });
+        }).start();
+    }
     private void startBatchImportFromFiles(File root) {
         android.app.ProgressDialog scanning = new android.app.ProgressDialog(this);
         scanning.setMessage("Scanning for games...");
