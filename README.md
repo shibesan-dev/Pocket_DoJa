@@ -7,6 +7,7 @@
 The project aims to make these nostalgic mobile games more accessible on modern Android devices, with features including game library management, customizable animated themes, and background music support.
 
 Compatibility may vary depending on the game, DoJa version, and device. Some games or features may not work as expected.
+**This is a new emulator, still early/experimental phase, so expect bugs and many games might not work yet, be patient while I'm working at it!**
 
 ## Notice
 
