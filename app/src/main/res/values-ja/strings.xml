@@ -37,4 +37,6 @@
     <string name="no_bgm">BGMなし</string>
     <string name="bgm">BGM</string>
     <string name="about">情報</string>
+    <string name="filter">フィルター</string>
+    <string name="filter_none">なし</string>
 </resources>

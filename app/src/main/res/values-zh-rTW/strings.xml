@@ -37,4 +37,6 @@
     <string name="no_bgm">無背景音樂</string>
     <string name="bgm">背景音樂</string>
     <string name="about">關於</string>
+    <string name="filter">濾鏡</string>
+    <string name="filter_none">無</string>
 </resources>

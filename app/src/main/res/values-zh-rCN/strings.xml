@@ -98,4 +98,6 @@
     <string name="game_menu">游戏菜单</string>
     <string name="hide_keypad">隐藏键盘</string>
     <string name="exit_game">退出游戏</string>
+    <string name="filter">滤镜</string>
+    <string name="filter_none">无</string>
 </resources>

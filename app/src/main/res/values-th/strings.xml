@@ -99,4 +99,6 @@
     <string name="no_bgm">ไม่มีเพลงพื้นหลัง</string>
     <string name="bgm">เพลงพื้นหลัง</string>
     <string name="default_bgm">เพลงพื้นหลังเริ่มต้น</string>
+    <string name="filter">ฟิลเตอร์</string>
+    <string name="filter_none">ไม่มี</string>
 </resources>

@@ -37,4 +37,6 @@
     <string name="no_bgm">Sin música</string>
     <string name="bgm">Música</string>
     <string name="about">Acerca de</string>
+    <string name="filter">Filtro</string>
+    <string name="filter_none">Ninguno</string>
 </resources>

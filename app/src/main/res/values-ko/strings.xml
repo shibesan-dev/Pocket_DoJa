@@ -37,4 +37,6 @@
     <string name="no_bgm">BGM 없음</string>
     <string name="bgm">BGM</string>
     <string name="about">정보</string>
+    <string name="filter">필터</string>
+    <string name="filter_none">없음</string>
 </resources>

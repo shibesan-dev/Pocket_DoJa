@@ -37,4 +37,6 @@
     <string name="no_bgm">Tiada BGM</string>
     <string name="bgm">BGM</string>
     <string name="about">Tentang</string>
+    <string name="filter">Penapis</string>
+    <string name="filter_none">Tiada</string>
 </resources>

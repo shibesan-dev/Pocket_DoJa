@@ -94,6 +94,14 @@ public class JamSurfaceView extends View {
     private int upscaledVersion = -1;
     private boolean upscaleLogged = false;
 
+    // Display filter state: the filtered frame is cached per source version so
+    // the filter only runs when the game actually presents a new frame.
+    private Bitmap filterBitmap;
+    private int[] filterPixels;
+    private int filterVersion = -1;
+    private String filterAppliedId;
+    private GameFilter filterInstance;
+
     private final RectF gameRect = new RectF();
     private final RectF padRect = new RectF();
     private int gamePixelW;
@@ -114,6 +122,7 @@ public class JamSurfaceView extends View {
     private String cachedSettingsGameId;
     private String cachedOrientation;
     private String cachedDisplayMode;
+    private String cachedFilter;
 
     private int lastPointerX;
     private int lastPointerY;
@@ -316,6 +325,11 @@ try {
         upSrcHeight = 0;
         upscaledVersion = -1;
         upscaleLogged = false;
+        filterBitmap = null;
+        filterPixels = null;
+        filterVersion = -1;
+        filterAppliedId = null;
+        filterInstance = null;
         postInvalidate();
     }
 
@@ -734,6 +748,74 @@ try {
         return DisplayActivity.MODE_FULLSCREEN.equals(mode);
     }
 
+    private String currentFilterId() {
+        String gameId = EntryActivity.gameId;
+        String filter;
+        if (gameId != null && !gameId.isEmpty()) {
+            if (!gameId.equals(cachedSettingsGameId) || cachedFilter == null) {
+                android.content.SharedPreferences prefs = getContext().getSharedPreferences(DisplayActivity.PREFS_NAME, android.content.Context.MODE_PRIVATE);
+                String override = prefs.getString(gameId + "_" + DisplayActivity.KEY_FILTER, DisplayActivity.INHERIT);
+                if (!override.equals(DisplayActivity.INHERIT)) {
+                    cachedFilter = override;
+                } else {
+                    cachedFilter = prefs.getString(DisplayActivity.KEY_FILTER, GameFilters.ID_NONE);
+                }
+                cachedSettingsGameId = gameId;
+            }
+            filter = cachedFilter;
+        } else {
+            if (cachedSettingsGameId != null || cachedFilter == null) {
+                android.content.SharedPreferences prefs = getContext().getSharedPreferences(DisplayActivity.PREFS_NAME, android.content.Context.MODE_PRIVATE);
+                cachedFilter = prefs.getString(DisplayActivity.KEY_FILTER, GameFilters.ID_NONE);
+                cachedSettingsGameId = gameId;
+            }
+            filter = cachedFilter;
+        }
+        return filter;
+    }
+
+    /**
+     * Applies the configured display filter to the frame at native resolution,
+     * if any. The result is cached per source version so the filter only runs
+     * when the game presents a new frame.
+     */
+    private Bitmap applyDisplayFilter(Bitmap bmp, int srcWidth, int srcHeight, int sourceVersion) {
+        String filterId = currentFilterId();
+        if (filterId == null || GameFilters.ID_NONE.equals(filterId)) {
+            return bmp;
+        }
+        if (filterInstance == null || !filterId.equals(filterAppliedId)) {
+            filterInstance = GameFilters.create(filterId);
+            filterAppliedId = filterId;
+            filterVersion = -1;
+        }
+        if (filterInstance == null) {
+            return bmp;
+        }
+        Bitmap out = filterBitmap;
+        if (out == null || out.isRecycled() || out.getWidth() != srcWidth || out.getHeight() != srcHeight) {
+            out = Bitmap.createBitmap(srcWidth, srcHeight, Bitmap.Config.ARGB_8888);
+            filterBitmap = out;
+            filterPixels = null;
+            filterVersion = -1;
+        }
+        if (filterVersion != sourceVersion) {
+            int length = srcWidth * srcHeight;
+            int[] px = filterPixels;
+            if (px == null || px.length < length) {
+                px = new int[length];
+                filterPixels = px;
+            }
+            Bitmap input = bmp.getConfig() == Bitmap.Config.ARGB_8888 ? bmp
+                    : bmp.copy(Bitmap.Config.ARGB_8888, false);
+            input.getPixels(px, 0, srcWidth, 0, 0, srcWidth, srcHeight);
+            filterInstance.apply(px, srcWidth, srcHeight);
+            out.setPixels(px, 0, srcWidth, 0, 0, srcWidth, srcHeight);
+            filterVersion = sourceVersion;
+        }
+        return out;
+    }
+
     private void drawGameUpscaled(Canvas canvas, Bitmap bmp, int sourceVersion) {
         int dstLeft = Math.round(gameRect.left);
         int dstTop = Math.round(gameRect.top);
@@ -742,6 +824,7 @@ try {
         int srcWidth = bmp.getWidth();
         int srcHeight = bmp.getHeight();
         if (srcWidth <= 0 || srcHeight <= 0) return;
+        Bitmap src = applyDisplayFilter(bmp, srcWidth, srcHeight, sourceVersion);
         Bitmap scaled = upscaleBitmap;
         if (scaled == null || scaled.isRecycled() || scaled.getWidth() != dstWidth
                 || scaled.getHeight() != dstHeight || upSrcWidth != srcWidth || upSrcHeight != srcHeight) {
@@ -762,11 +845,11 @@ try {
             // reads as clumped/broken text. Native filtered scaling keeps text even and
             // readable at any size on any device.
             if (dstWidth == srcWidth && dstHeight == srcHeight) {
-                upscaleCanvas.drawBitmap(bmp, 0f, 0f, upscalePaint);
+                upscaleCanvas.drawBitmap(src, 0f, 0f, upscalePaint);
             } else {
-                android.graphics.Rect src = new android.graphics.Rect(0, 0, srcWidth, srcHeight);
+                android.graphics.Rect srcRect = new android.graphics.Rect(0, 0, srcWidth, srcHeight);
                 android.graphics.Rect dst = new android.graphics.Rect(0, 0, dstWidth, dstHeight);
-                upscaleCanvas.drawBitmap(bmp, src, dst, upscalePaint);
+                upscaleCanvas.drawBitmap(src, srcRect, dst, upscalePaint);
             }
             upscaledVersion = sourceVersion;
         }

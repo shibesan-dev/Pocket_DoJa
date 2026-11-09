@@ -85,6 +85,15 @@ Thank you for your interest in Pocket DoJa!
     <string name="full_screen">Full Screen</string>
     <string name="enable">Enable</string>
     <string name="disable">Disable</string>
+    <string name="filter">Filter</string>
+    <string name="filter_none">None</string>
+    <string name="filter_scanlines">Scanlines</string>
+    <string name="filter_lcd_grid">LCD Grid</string>
+    <string name="filter_crt">CRT</string>
+    <string name="filter_dot_matrix">Dot Matrix</string>
+    <string name="filter_gameboy">Game Boy</string>
+    <string name="filter_sepia">Sepia</string>
+    <string name="filter_grayscale">Grayscale</string>
     <string name="reset_to_global">Reset to Global Defaults</string>
 
     <string name="theme_title">Theme &amp; BGM</string>

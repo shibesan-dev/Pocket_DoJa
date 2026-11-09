@@ -37,4 +37,6 @@
     <string name="no_bgm">Không có nhạc nền</string>
     <string name="bgm">Nhạc nền</string>
     <string name="about">Giới thiệu</string>
+    <string name="filter">Bộ lọc</string>
+    <string name="filter_none">Không</string>
 </resources>

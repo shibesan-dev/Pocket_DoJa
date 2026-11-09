@@ -22,6 +22,7 @@ public class DisplayActivity extends Activity {
     static final String PREFS_NAME = "display";
     static final String KEY_ORIENTATION = "orientation";
     static final String KEY_DISPLAY_MODE = "displayMode";
+    static final String KEY_FILTER = "filter";
     static final String KEY_HIDE_KEYPAD = "hideKeypad";
     static final String KEY_DEBUG = "debugLogging";
     static final String INHERIT = "inherit";
@@ -38,12 +39,14 @@ public class DisplayActivity extends Activity {
     private String gameId;
     private String pendingOrientation;
     private String pendingMode;
+    private String pendingFilter;
     private String pendingDebug;
     private boolean pendingUseSystem;
     private String pendingLanguage;
 
     private final List<OptionRow> orientationRows = new ArrayList<>();
     private final List<OptionRow> modeRows = new ArrayList<>();
+    private final List<OptionRow> filterRows = new ArrayList<>();
     private final List<OptionRow> debugRows = new ArrayList<>();
 
     @Override
@@ -56,6 +59,7 @@ public class DisplayActivity extends Activity {
         if (perGame) {
             pendingOrientation = prefs.getString(gameId + "_" + KEY_ORIENTATION, INHERIT);
             pendingMode = prefs.getString(gameId + "_" + KEY_DISPLAY_MODE, INHERIT);
+            pendingFilter = prefs.getString(gameId + "_" + KEY_FILTER, INHERIT);
         } else {
             if (prefs.contains(KEY_ORIENTATION)) {
                 pendingOrientation = prefs.getString(KEY_ORIENTATION, ORIENTATION_PORTRAIT);
@@ -65,6 +69,7 @@ public class DisplayActivity extends Activity {
                         ? ORIENTATION_LANDSCAPE : ORIENTATION_PORTRAIT;
             }
             pendingMode = prefs.getString(KEY_DISPLAY_MODE, MODE_ORIGINAL);
+            pendingFilter = prefs.getString(KEY_FILTER, GameFilters.ID_NONE);
         }
         pendingDebug = prefs.getString(KEY_DEBUG, "disable");
         pendingUseSystem = prefs.getBoolean(LocaleHelper.KEY_USE_SYSTEM_LANGUAGE, true);
@@ -125,6 +130,40 @@ public class DisplayActivity extends Activity {
                     value -> pendingMode = value);
         }
 
+        // Display filter: global setting and per-game override.
+        TextView sectionFilter = new TextView(this);
+        sectionFilter.setText(R.string.filter);
+        sectionFilter.setTextSize(18f);
+        sectionFilter.setTypeface(Typeface.DEFAULT_BOLD);
+        sectionFilter.setPadding(0, pad, 0, pad / 2);
+        root.addView(sectionFilter, matchWrap());
+
+        String[] filterLabels = {
+                getString(R.string.filter_none),
+                getString(R.string.filter_scanlines),
+                getString(R.string.filter_lcd_grid),
+                getString(R.string.filter_crt),
+                getString(R.string.filter_dot_matrix),
+                getString(R.string.filter_gameboy),
+                getString(R.string.filter_sepia),
+                getString(R.string.filter_grayscale),
+        };
+        if (perGame) {
+            String[] labels = new String[filterLabels.length + 1];
+            String[] values = new String[GameFilters.IDS.length + 1];
+            labels[0] = getString(R.string.inherit_global);
+            values[0] = INHERIT;
+            System.arraycopy(filterLabels, 0, labels, 1, filterLabels.length);
+            System.arraycopy(GameFilters.IDS, 0, values, 1, GameFilters.IDS.length);
+            addOptionGroup(root, filterRows, labels, values,
+                    pendingFilter,
+                    value -> pendingFilter = value);
+        } else {
+            addOptionGroup(root, filterRows, filterLabels, GameFilters.IDS,
+                    pendingFilter,
+                    value -> pendingFilter = value);
+        }
+
         if (!perGame) {
             // Debugging (global)
             TextView sectionDebug = new TextView(this);
@@ -147,6 +186,7 @@ public class DisplayActivity extends Activity {
             reset.setOnClickListener(v -> {
                 pendingOrientation = INHERIT;
                 pendingMode = INHERIT;
+                pendingFilter = INHERIT;
                 refreshHighlights();
             });
             root.addView(reset, matchWrap());
@@ -243,13 +283,16 @@ public class DisplayActivity extends Activity {
         for (OptionRow row : modeRows) {
             row.view.setBackgroundColor(row.value.equals(pendingMode) ? 0x663080FF : 0x00000000);
         }
+        for (OptionRow row : filterRows) {
+            row.view.setBackgroundColor(row.value.equals(pendingFilter) ? 0x663080FF : 0x00000000);
+        }
         for (OptionRow row : debugRows) {
             row.view.setBackgroundColor(row.value.equals(pendingDebug) ? 0x663080FF : 0x00000000);
         }
     }
 
     private void commitAndFinish() {
-        opendoja.host.OpenDoJaLog.info(DisplayActivity.class, "commitAndFinish: gameId=" + gameId + " orientation=" + pendingOrientation + " mode=" + pendingMode);
+        opendoja.host.OpenDoJaLog.info(DisplayActivity.class, "commitAndFinish: gameId=" + gameId + " orientation=" + pendingOrientation + " mode=" + pendingMode + " filter=" + pendingFilter);
         SharedPreferences.Editor editor = prefs.edit();
         String gameId = this.gameId;
         if (gameId != null && !gameId.isEmpty()) {
@@ -263,9 +306,15 @@ public class DisplayActivity extends Activity {
             } else {
                 editor.putString(gameId + "_" + KEY_DISPLAY_MODE, pendingMode);
             }
+            if (pendingFilter.equals(INHERIT)) {
+                editor.remove(gameId + "_" + KEY_FILTER);
+            } else {
+                editor.putString(gameId + "_" + KEY_FILTER, pendingFilter);
+            }
         } else {
             editor.putString(KEY_ORIENTATION, pendingOrientation);
             editor.putString(KEY_DISPLAY_MODE, pendingMode);
+            editor.putString(KEY_FILTER, pendingFilter);
         }
          if (gameId == null || gameId.isEmpty()) {
              editor.putString(KEY_DEBUG, pendingDebug);
