@@ -440,6 +440,15 @@ private static final class SharedEngine {
                     } catch (InterruptedException ignored) {
                         // See the wait() above: shared engine survives exit.
                     }
+                } else if (mixedFrames == 0) {
+                    // No audio was produced and the line has nothing queued: a
+                    // handle that repeatedly yields zero frames would otherwise
+                    // spin here and burn a CPU core. Wait briefly instead.
+                    try {
+                        engineLock.wait(5L);
+                    } catch (InterruptedException ignored) {
+                        // See the wait() above: shared engine survives exit.
+                    }
                 }
             }
         }
@@ -811,6 +820,14 @@ private static final class SharedEngine {
                 });
 
                 if (restarted[0]) {
+                    // An instantly-ending sequence (empty MLD, zero-length loop
+                    // region) would otherwise restart in a tight loop and pin a
+                    // CPU core. Bound the restart rate.
+                    try {
+                        Thread.sleep(1L);
+                    } catch (InterruptedException ignored) {
+                        Thread.currentThread().interrupt();
+                    }
                     continue;
                 }
                 if (finished[0]) {

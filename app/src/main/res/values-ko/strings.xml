@@ -39,4 +39,7 @@
     <string name="about">정보</string>
     <string name="filter">필터</string>
     <string name="filter_none">없음</string>
+    <string name="bgm_import_failed">선택한 파일을 읽을 수 없습니다</string>
+    <string name="unsupported_audio">지원되지 않는 오디오 형식입니다</string>
+    <string name="paused_press_any_key">-일시정지- 아무 키나 눌러 계속</string>
 </resources>

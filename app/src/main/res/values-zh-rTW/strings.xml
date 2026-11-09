@@ -39,4 +39,7 @@
     <string name="about">關於</string>
     <string name="filter">濾鏡</string>
     <string name="filter_none">無</string>
+    <string name="bgm_import_failed">無法讀取所選檔案</string>
+    <string name="unsupported_audio">不支援的音訊格式</string>
+    <string name="paused_press_any_key">-已暫停- 按任意鍵繼續</string>
 </resources>

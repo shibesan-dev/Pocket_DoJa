@@ -39,4 +39,7 @@
     <string name="about">Acerca de</string>
     <string name="filter">Filtro</string>
     <string name="filter_none">Ninguno</string>
+    <string name="bgm_import_failed">No se pudo leer el archivo seleccionado</string>
+    <string name="unsupported_audio">Formato de audio no compatible</string>
+    <string name="paused_press_any_key">-En pausa- Pulse cualquier tecla para continuar</string>
 </resources>

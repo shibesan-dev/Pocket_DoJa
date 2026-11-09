@@ -80,6 +80,10 @@ private static volatile Thread gameThread;
     // Audio-handle generation of the game launched by this activity; exit
     // cleanup may only release handles up to this generation.
     private volatile long audioGeneration;
+    // True while the game is hibernating in the background (HOME / task switch /
+    // screen lock). The emulator state stays in memory; rendering, timers, and
+    // audio park in place until the user returns and presses any key.
+    private volatile boolean suspended;
 
     @Override
     protected void attachBaseContext(android.content.Context newBase) {
@@ -202,6 +206,14 @@ private static volatile Thread gameThread;
 
     @Override
     public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+        if (suspended && !isFinishing()) {
+            // "-Paused- Press any key to continue": the first key press resumes
+            // the game; it is consumed so the game never sees a stale press.
+            if (event.getAction() == android.view.KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                resumeGame();
+            }
+            return true;
+        }
         if (event.getKeyCode() == android.view.KeyEvent.KEYCODE_BACK) {
             // The system back key opens the in-game menu (hide keypad / exit game);
             // it is never routed into the game (the on-screen keypad keeps SOFT2
@@ -425,6 +437,16 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
         if (gameStopped) {
             opendoja.host.OpenDoJaLog.info(EntryActivity.class, "stopGame: already stopped");
             return;
+        }
+        // Un-park hibernated threads first so the sweep below can stop them.
+        suspended = false;
+        try {
+            opendoja.host.DoJaRuntime.resumeGlobal();
+        } catch (Throwable ignored) {
+        }
+        try {
+            com.nttdocomo.ui.AudioPresenter.resumeAllActive();
+        } catch (Throwable ignored) {
         }
         gameStopped = true;
         exiting = true;
@@ -677,14 +699,72 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
 
     @Override
     protected void onStop() {
-        // Leaving the game screen (HOME / task switch) terminates the game just
-        // like BACK: otherwise orphaned game threads keep rendering headless and
-        // burn CPU while the app is hidden.
-        if (!isFinishing()) {
-            finish();
+        if (!isFinishing() && !gameStopped) {
+            // Backgrounded (HOME / task switch / screen lock): hibernate the
+            // game in memory instead of terminating it. It resumes from the
+            // exact frame when the user returns and presses a key.
+            suspendGame();
+        } else {
+            stopGame();
         }
-        stopGame();
         super.onStop();
+    }
+
+    /** Hibernates the running game when the app leaves the foreground. The
+     *  emulator state stays in memory; frame delivery, timers, and audio park
+     *  in place so nothing burns CPU while hidden and nothing is lost. */
+    private void suspendGame() {
+        if (suspended || gameStopped) {
+            return;
+        }
+        suspended = true;
+        opendoja.host.OpenDoJaLog.info(EntryActivity.class, "suspendGame: hibernating session=" + sessionId);
+        if (gameMenu != null && gameMenu.isShowing()) {
+            try {
+                gameMenu.dismiss();
+            } catch (Throwable ignored) {
+            }
+        }
+        try {
+            com.nttdocomo.ui.AudioPresenter.suspendAllActive();
+        } catch (Throwable ignored) {
+        }
+        try {
+            opendoja.host.DoJaRuntime.suspendGlobal();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** Wakes a hibernating game after the user returns and presses any key. */
+    private void resumeGame() {
+        if (!suspended) {
+            return;
+        }
+        suspended = false;
+        opendoja.host.OpenDoJaLog.info(EntryActivity.class, "resumeGame: resuming session=" + sessionId);
+        // Restart frozen audio and re-enable frame delivery first, then wake
+        // the parked threads: a frame racing resumeGlobal() would otherwise be
+        // dropped by the released flag and leave the screen stale.
+        try {
+            com.nttdocomo.ui.AudioPresenter.resumeAllActive();
+        } catch (Throwable ignored) {
+        }
+        if (surfaceView != null) {
+            // onPause() released the surface's frame delivery; re-enable it so
+            // the freshly woken game threads can present again.
+            surfaceView.resumeRendering();
+            surfaceView.hidePausedOverlay();
+        }
+        try {
+            opendoja.host.DoJaRuntime.resumeGlobal();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void showPausedOverlay() {
+        if (surfaceView != null) {
+            surfaceView.showPausedOverlay(getString(R.string.paused_press_any_key));
+        }
     }
 
     private void launchSmoke() {
@@ -701,9 +781,25 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
     }
 
     @Override
+    public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
+        if (suspended && !isFinishing()) {
+            // Tapping the screen also resumes a hibernating game (touch is a
+            // key press on the on-screen keypad); consume the tap.
+            if (ev.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) {
+                resumeGame();
+            }
+            return true;
+        }
+        return super.dispatchTouchEvent(ev);
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
         HomeActivity.applyDisplayOrientation(this, gameId);
+        if (suspended) {
+            showPausedOverlay();
+        }
     }
 
     @Override
@@ -1000,7 +1096,20 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
     }
 
     protected void onDestroy() {
-        // Covers destruction paths other than BACK
+        // Covers destruction paths other than BACK.
+        // If the game was hibernating, wake its threads before teardown so the
+        // sweep below can stop them cleanly (a parked thread never dies).
+        if (suspended) {
+            suspended = false;
+            try {
+                opendoja.host.DoJaRuntime.resumeGlobal();
+            } catch (Throwable ignored) {
+            }
+            try {
+                com.nttdocomo.ui.AudioPresenter.resumeAllActive();
+            } catch (Throwable ignored) {
+            }
+        }
         try {
             if (input != null) {
                 input.releaseAll();

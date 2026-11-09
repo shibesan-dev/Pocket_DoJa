@@ -106,6 +106,12 @@ public class JamSurfaceView extends View {
     private final RectF padRect = new RectF();
     private int gamePixelW;
     private int gamePixelH;
+    // Rounded-corner clip for the game image in Original (skin) mode: radius
+    // follows the skin's screen opening (rx=11 in viewBox units) per axis so
+    // it stays proportional when the skin is stretched non-uniformly.
+    private float gameCornerRadiusX;
+    private float gameCornerRadiusY;
+    private final android.graphics.Path gameClipPath = new android.graphics.Path();
 
     private boolean rotated;
     private int rotationAngle;
@@ -131,7 +137,16 @@ public class JamSurfaceView extends View {
     private boolean loadingVisible;
     private String exitingText;
     private boolean exitingVisible;
+    private String pausedText;
+    private boolean pausedVisible;
     private final Paint overlayTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    // Fake status LED on the skin bezel: blinks green above 30% battery, red at
+    // 30% or below, mirroring the lens circle baked into every skin SVG.
+    private int batteryPercent = -1;
+    private final Paint ledGlowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint ledCorePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private android.content.BroadcastReceiver batteryReceiver;
 
     private JamInputController input;
 
@@ -169,6 +184,12 @@ public class JamSurfaceView extends View {
     public void prepareForNewGame() {
         released = false;
         expectedSessionId = opendoja.host.DoJaRuntime.current() != null ? opendoja.host.DoJaRuntime.current().sessionId() : -1;
+    }
+
+    /** Re-enables frame delivery after a background suspend (EntryActivity
+     *  clears the flag in releaseAllControls() when the activity pauses). */
+    public void resumeRendering() {
+        released = false;
     }
 
     private void init() {
@@ -292,6 +313,20 @@ try {
         postInvalidate();
     }
 
+    /** Display the "-Paused- Press any key to continue" overlay, centered on the game viewport. */
+    public void showPausedOverlay(String text) {
+        this.pausedText = text;
+        this.pausedVisible = true;
+        postInvalidate();
+    }
+
+    /** Hide the pause overlay once the game is resumed. */
+    public void hidePausedOverlay() {
+        this.pausedVisible = false;
+        this.pausedText = null;
+        postInvalidate();
+    }
+
     public void setKeypadVisible(boolean visible) {
         if (keypadVisible == visible) return;
         keypadVisible = visible;
@@ -377,6 +412,7 @@ try {
                 android.graphics.Rect src = new android.graphics.Rect(0, 0, skinBmp.getWidth(), skinBmp.getHeight());
                 android.graphics.RectF dst = new android.graphics.RectF(0f, 0f, viewWidth, viewHeight);
                 canvas.drawBitmap(skinBmp, src, dst, null);
+                drawSkinLed(canvas, viewWidth, viewHeight);
             } else {
                 android.graphics.Paint skinPaint = new android.graphics.Paint();
                 skinPaint.setColor(skinColor(cachedSkin));
@@ -408,9 +444,85 @@ try {
             overlayTextPaint.setTextSize(Math.min(gameRect.height() * 0.12f, gameRect.width() * 0.25f));
             canvas.drawText(exitingText, cx, cy, overlayTextPaint);
         }
+        if (pausedVisible && pausedText != null) {
+            float cx = gameRect.left + gameRect.width() / 2f;
+            float cy = gameRect.top + gameRect.height() / 2f;
+            float maxSize = Math.min(gameRect.height() * 0.12f, gameRect.width() * 0.25f);
+            overlayTextPaint.setTextSize(maxSize);
+            float measured = overlayTextPaint.measureText(pausedText);
+            float maxWidth = gameRect.width() * 0.9f;
+            if (measured > maxWidth) {
+                overlayTextPaint.setTextSize(maxSize * (maxWidth / measured));
+            }
+            canvas.drawText(pausedText, cx, cy, overlayTextPaint);
+        }
+        // Keep the status LED blinking even when the game presents a static frame.
+        if (!released && !fullScreen && batteryPercent >= 0) {
+            postInvalidateDelayed(200L);
+        }
         if (rotationAngle != 0) {
             canvas.restore();
         }
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        try {
+            android.content.IntentFilter filter = new android.content.IntentFilter(
+                    android.content.Intent.ACTION_BATTERY_CHANGED);
+            batteryReceiver = new android.content.BroadcastReceiver() {
+                @Override
+                public void onReceive(android.content.Context context, android.content.Intent intent) {
+                    int level = intent.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1);
+                    int scale = intent.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100);
+                    batteryPercent = (level >= 0 && scale > 0) ? level * 100 / scale : -1;
+                }
+            };
+            android.content.Intent sticky = getContext().registerReceiver(batteryReceiver, filter);
+            if (sticky != null) {
+                batteryReceiver.onReceive(getContext(), sticky);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        if (batteryReceiver != null) {
+            try { getContext().unregisterReceiver(batteryReceiver); } catch (Throwable ignored) { }
+            batteryReceiver = null;
+        }
+        super.onDetachedFromWindow();
+    }
+
+    /** Draws the fake status LED over the skin's lens circle: blinking green
+     *  above 30% battery, red at 30% or below. */
+    private void drawSkinLed(Canvas canvas, float viewWidth, float viewHeight) {
+        if (batteryPercent < 0) {
+            return;
+        }
+        float vbW, vbH, lensX, lensY;
+        if (viewWidth < viewHeight) {
+            vbW = 400f; vbH = 800f; lensX = 292f; lensY = 55f;   // portrait lens
+        } else {
+            vbW = 800f; vbH = 400f; lensX = 704f; lensY = 49f;   // landscape lens
+        }
+        float sx = viewWidth / vbW;
+        float sy = viewHeight / vbH;
+        float r = 7f * Math.min(sx, sy);
+        float cx = lensX * sx;
+        float cy = lensY * sy;
+        int color = batteryPercent > 30 ? 0xFF2EFF6B : 0xFFFF3B30;
+        // Smooth breathing blink on a ~2.2 s cycle.
+        float phase = (android.os.SystemClock.elapsedRealtime() % 2200L) / 2200f;
+        float blink = 0.15f + 0.85f * (0.5f - 0.5f * (float) Math.cos(2.0 * Math.PI * phase));
+        ledGlowPaint.setColor(color);
+        ledGlowPaint.setAlpha((int) (255 * blink * 0.30f));
+        canvas.drawCircle(cx, cy, r * 2.1f, ledGlowPaint);
+        ledCorePaint.setColor(color);
+        ledCorePaint.setAlpha((int) (255 * blink));
+        canvas.drawCircle(cx, cy, r * 0.85f, ledCorePaint);
     }
 
     private void computeZones() {
@@ -427,6 +539,8 @@ try {
         float viewWidth = rotated ? getHeight() : getWidth();
         float viewHeight = rotated ? getWidth() : getHeight();
         if (viewWidth <= 0f || viewHeight <= 0f) return;
+        gameCornerRadiusX = 0f;
+        gameCornerRadiusY = 0f;
         int gameW, gameH;
         synchronized (lock) {
             gameW = screenWidth > 0 ? screenWidth : 240;
@@ -438,23 +552,23 @@ try {
             float vbW = 400f, vbH = 800f;
             float sx = viewWidth / vbW;
             float sy = viewHeight / vbH;
-            // Fit the game at its own aspect ratio inside the skin's screen aperture
-            // instead of stretching it to the fixed 316x422 viewBox rect. Stretching
-            // distorts glyphs for games whose aspect differs from 3:4 and also
-            // amplifies fractional-scale unevenness on high-DPI phones.
+            // Fill the skin's screen aperture exactly so the game image reaches
+            // the bezel on every device. The aperture is scaled non-uniformly
+            // when the screen aspect differs from the skin viewBox, so
+            // aspect-fitting would leave visible pillarbox gaps on the sides.
             float apertureLeft = 42f * sx;
             float apertureTop = 112f * sy;
             float apertureW = 316f * sx;
             float apertureH = 422f * sy;
-            float scale = Math.min(apertureW / gameW, apertureH / gameH);
-            float dstW = gameW * scale;
-            float dstH = gameH * scale;
-            float fitLeft = apertureLeft + (apertureW - dstW) / 2f;
-            float fitTop = apertureTop + (apertureH - dstH) / 2f;
-            gameRect.set(fitLeft, fitTop, fitLeft + dstW, fitTop + dstH);
+            gameRect.set(apertureLeft, apertureTop, apertureLeft + apertureW, apertureTop + apertureH);
             gamePixelW = gameW;
             gamePixelH = gameH;
-            if (fullScreen) gameRect.set(0f, 0f, viewWidth, viewHeight);
+            if (fullScreen) {
+                gameRect.set(0f, 0f, viewWidth, viewHeight);
+            } else {
+                gameCornerRadiusX = 11f * sx;
+                gameCornerRadiusY = 11f * sy;
+            }
             if (!keypadVisible) {
                 padRect.set(0f, 0f, 0f, 0f);
                 return;
@@ -554,6 +668,8 @@ try {
         float viewWidth = rotated ? getHeight() : getWidth();
         float viewHeight = rotated ? getWidth() : getHeight();
         if (viewWidth <= 0f || viewHeight <= 0f) return;
+        gameCornerRadiusX = 0f;
+        gameCornerRadiusY = 0f;
         int gameW, gameH;
         synchronized (lock) {
             gameW = screenWidth > 0 ? screenWidth : 240;
@@ -565,20 +681,20 @@ try {
             float vbW = 800f, vbH = 400f;
             float sx = viewWidth / vbW;
             float sy = viewHeight / vbH;
-            // Aspect-fit inside the skin aperture (same reasoning as portrait).
+            // Fill the aperture exactly (same reasoning as portrait).
             float apertureLeft = 48f * sx;
             float apertureTop = 42f * sy;
             float apertureW = 422f * sx;
             float apertureH = 316f * sy;
-            float scale = Math.min(apertureW / gameW, apertureH / gameH);
-            float dstW = gameW * scale;
-            float dstH = gameH * scale;
-            float fitLeft = apertureLeft + (apertureW - dstW) / 2f;
-            float fitTop = apertureTop + (apertureH - dstH) / 2f;
-            gameRect.set(fitLeft, fitTop, fitLeft + dstW, fitTop + dstH);
+            gameRect.set(apertureLeft, apertureTop, apertureLeft + apertureW, apertureTop + apertureH);
             gamePixelW = gameW;
             gamePixelH = gameH;
-            if (fullScreen) gameRect.set(0f, 0f, viewWidth, viewHeight);
+            if (fullScreen) {
+                gameRect.set(0f, 0f, viewWidth, viewHeight);
+            } else {
+                gameCornerRadiusX = 11f * sx;
+                gameCornerRadiusY = 11f * sy;
+            }
             if (!keypadVisible) {
                 padRect.set(0f, 0f, 0f, 0f);
             } else {
@@ -853,7 +969,20 @@ try {
             }
             upscaledVersion = sourceVersion;
         }
+        boolean clipRounded = gameCornerRadiusX > 0f && gameCornerRadiusY > 0f;
+        if (clipRounded) {
+            // Match the skin's screen opening so the game image shows rounded
+            // corners where the skin's bezel curves (Original mode only).
+            canvas.save();
+            gameClipPath.rewind();
+            gameClipPath.addRoundRect(gameRect, gameCornerRadiusX, gameCornerRadiusY,
+                    android.graphics.Path.Direction.CW);
+            canvas.clipPath(gameClipPath);
+        }
         canvas.drawBitmap(scaled, dstLeft, dstTop, null);
+        if (clipRounded) {
+            canvas.restore();
+        }
     }
 
     private void drawKeypad(Canvas canvas) {

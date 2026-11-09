@@ -27,6 +27,8 @@ import java.util.concurrent.TimeUnit;
  */
 public class AudioPresenter implements MediaPresenter, AutoCloseable {
     private static final java.util.Set<AudioPresenter> ACTIVE = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    /** Presenters paused by the host suspend (app backgrounded), awaiting resume. */
+    private static final java.util.Set<AudioPresenter> HOST_SUSPENDED = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
     private static volatile boolean audioEnabled = true;
 
     private static volatile int currentAudioGeneration = 0;
@@ -98,6 +100,43 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
         for (AudioPresenter p : snapshot) {
             try {
                 p.close();
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    /** Freezes every currently-playing presenter without notifying game
+     *  listeners; called when the app is backgrounded (host suspend). */
+    public static void suspendAllActive() {
+        List<AudioPresenter> snapshot;
+        synchronized (ACTIVE) {
+            snapshot = new ArrayList<>(ACTIVE);
+        }
+        for (AudioPresenter p : snapshot) {
+            try {
+                if (p.playing) {
+                    p.pausePlayback(false);
+                    HOST_SUSPENDED.add(p);
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    /** Resumes presenters frozen by {@link #suspendAllActive()}; presenters
+     *  that were closed or taken over by new playback are left alone. */
+    public static void resumeAllActive() {
+        List<AudioPresenter> snapshot;
+        synchronized (HOST_SUSPENDED) {
+            snapshot = new ArrayList<>(HOST_SUSPENDED);
+            HOST_SUSPENDED.clear();
+        }
+        for (AudioPresenter p : snapshot) {
+            try {
+                if (!ACTIVE.contains(p) || p.playing) {
+                    continue;
+                }
+                p.restartPlayback(false);
             } catch (Throwable ignored) {
             }
         }
@@ -391,6 +430,14 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
             }
             return;
         }
+        // Hibernating: park audio start until the user resumes the game, so a
+        // game booting in the background cannot play sound while hidden.
+        DoJaRuntime.awaitSuspendRelease();
+        if (activeRuntime != null && activeRuntime.isShutdown()) {
+            playing = false;
+            activeSoundKind = MediaManager.PreparedSound.Kind.UNKNOWN;
+            return;
+        }
         registerWithRuntime();
         stopPlayback();
         if (!(resource instanceof MediaManager.BasicMediaSound sound)) {
@@ -530,23 +577,27 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
         if (audioGeneration != currentAudioGeneration) {
             return;
         }
+        pausePlayback(true);
+    }
+
+    private void pausePlayback(boolean notify) {
         nextCallbackGeneration();
         if (activeSoundKind == MediaManager.PreparedSound.Kind.SAMPLED && sampledPlayer != null) {
             sampledPlayer.pause();
             playing = false;
             cancelSyncEvents();
-            notifyListener(AUDIO_PAUSED, 0);
+            if (notify) notifyListener(AUDIO_PAUSED, 0);
         } else if (activeSoundKind == MediaManager.PreparedSound.Kind.MLD && mldPlayer != null) {
             mldPlayer.pause();
             playing = false;
             cancelSyncEvents();
-            notifyListener(AUDIO_PAUSED, 0);
+            if (notify) notifyListener(AUDIO_PAUSED, 0);
         } else if (activeSoundKind == MediaManager.PreparedSound.Kind.MIDI && sequencer != null) {
             pausedPosition = (int) sequencer.getTickPosition();
             sequencer.stop();
             playing = false;
             cancelSyncEvents();
-            notifyListener(AUDIO_PAUSED, 0);
+            if (notify) notifyListener(AUDIO_PAUSED, 0);
         }
     }
 
@@ -563,21 +614,25 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
         if (audioGeneration != currentAudioGeneration) {
             return;
         }
+        restartPlayback(true);
+    }
+
+    private void restartPlayback(boolean notify) {
         nextCallbackGeneration();
         if (activeSoundKind == MediaManager.PreparedSound.Kind.SAMPLED && sampledPlayer != null) {
             sampledPlayer.restart();
             playing = true;
-            notifyListener(AUDIO_RESTARTED, 0);
+            if (notify) notifyListener(AUDIO_RESTARTED, 0);
         } else if (activeSoundKind == MediaManager.PreparedSound.Kind.MLD && mldPlayer != null) {
             mldPlayer.restart();
             playing = true;
-            notifyListener(AUDIO_RESTARTED, 0);
+            if (notify) notifyListener(AUDIO_RESTARTED, 0);
         } else if (activeSoundKind == MediaManager.PreparedSound.Kind.MIDI && sequencer != null) {
             sequencer.setTickPosition(pausedPosition);
             sequencer.start();
             playing = true;
             scheduleSyncEventsForSequence(sequencer.getSequence(), getCurrentTime());
-            notifyListener(AUDIO_RESTARTED, 0);
+            if (notify) notifyListener(AUDIO_RESTARTED, 0);
         }
     }
 
@@ -713,6 +768,7 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
     @Override
     public void close() {
         ACTIVE.remove(this);
+        HOST_SUSPENDED.remove(this);
         nextCallbackGeneration();
         OpenDoJaLog.debug(AudioPresenter.class, "close: id=" + debugId
                 + " playing=" + playing + " kind=" + activeSoundKind

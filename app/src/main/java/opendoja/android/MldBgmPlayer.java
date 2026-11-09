@@ -53,7 +53,9 @@ final class MldBgmPlayer {
 
         int minBuffer = AudioTrack.getMinBufferSize(sampleRate,
                 AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT);
-        int bufferBytes = Math.max(minBuffer, BUFFER_FRAMES * CHANNELS * 2) * 2;
+        // ~500 ms of headroom: GC pauses and the game-exit teardown storm can
+        // otherwise starve the render loop and produce audible stutter.
+        int bufferBytes = Math.max(minBuffer, sampleRate / 2 * CHANNELS * 2);
         track = new AudioTrack.Builder()
                 .setAudioAttributes(new AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -153,6 +155,10 @@ final class MldBgmPlayer {
     }
 
     private void renderLoop(int startPositionMillis) {
+        // Audio-priority scheduling keeps the synth ahead of the AudioTrack drain
+        // even while the UI thread is busy (game list refresh, theme rendering,
+        // post-exit garbage collection). (Adjusting this section may cause stutter!)
+        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);
         float[] mix = new float[BUFFER_FRAMES * CHANNELS];
         short[] pcm = new short[BUFFER_FRAMES * CHANNELS];
         boolean[] restarted = new boolean[1];
@@ -193,13 +199,19 @@ final class MldBgmPlayer {
     // Discard the chunk spanning the seam and re-render from
     // the fresh sequence so the loop point stays clean.
 
+                    idlePause();
                     continue;
                 }
                 if (rendered < 0) {
                     player.reset();
+                    idlePause();
                     continue;
                 }
                 if (rendered == 0) {
+    // The sequencer produced no audio for this chunk. Pause briefly
+    // instead of re-rendering in a tight loop, which would pin a
+       // CPU core and heat up the device (e.g. on trailing silence).
+                    idlePause();
                     continue;
                 }
                 currentTimeMillis = (int) Math.round(player.getTime() * 1000.0d);
@@ -219,6 +231,15 @@ final class MldBgmPlayer {
                 track.stop();
             } catch (Exception ignored) {
             }
+        }
+    }
+
+    /** Bounds zero-progress loops so the BGM thread cannot spin a CPU core. */
+    private static void idlePause() {
+        try {
+            Thread.sleep(5L);
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
         }
     }
 

@@ -755,6 +755,9 @@ public final class DoJaRuntime {
     }
 
     private void requestRender(RepaintRequest repaint, boolean repaintRequest) {
+        // Hibernating: park repaint callers so game logic loops freeze in place
+        // instead of cycling on the render backpressure poll while the app is hidden.
+        awaitSuspendRelease();
         Canvas canvas = repaint.canvas();
         if (!acceptsRenderRequest(canvas)) {
             return;
@@ -837,6 +840,50 @@ public final class DoJaRuntime {
         return current == null || current == canvas;
     }
 
+    // ---- Global game suspension (app backgrounded) ----
+    // When the app leaves the foreground (HOME / task switch / screen lock) the
+    // running game hibernates instead of being terminated: frame delivery, repaint
+    // and event dispatch, timer ticks, and audio all park in place, so game logic
+    // consumes no CPU while hidden and resumes from the exact state the user left.
+    private static final Object SUSPEND_MONITOR = new Object();
+    private static volatile boolean suspended;
+
+    public static boolean isSuspended() {
+        return suspended;
+    }
+
+    public static void suspendGlobal() {
+        synchronized (SUSPEND_MONITOR) {
+            suspended = true;
+        }
+    }
+
+    public static void resumeGlobal() {
+        synchronized (SUSPEND_MONITOR) {
+            suspended = false;
+            SUSPEND_MONITOR.notifyAll();
+        }
+    }
+
+    /** Parks the calling thread while the runtime is suspended; returns
+     *  immediately when the game is running normally. Used by frame delivery
+     *  and audio start so hibernating games stop burning CPU in place. */
+    public static void awaitSuspendRelease() {
+        if (!suspended) {
+            return;
+        }
+        synchronized (SUSPEND_MONITOR) {
+            while (suspended) {
+                try {
+                    SUSPEND_MONITOR.wait(250L);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        }
+    }
+
     public static @FunctionalInterface interface PlatformPresenter {
         void accept(BufferedImage frame, int sessionId);
     }
@@ -852,6 +899,8 @@ public final class DoJaRuntime {
     }
 
     private static void presentPlatformFrame(BufferedImage frame, int sessionId) {
+        // Hibernating: park frame delivery until the user resumes the game.
+        awaitSuspendRelease();
         PlatformPresenter presenter = platformPresenter;
         try {
             Class<?> logClass = Class.forName("android.util.Log");
@@ -1010,6 +1059,9 @@ public final class DoJaRuntime {
         if (shutdown.get()) {
             return;
         }
+        // Hibernating: timer events dispatched straight into application code
+        // freeze together with the rest of the game.
+        awaitSuspendRelease();
         if (TRACE_EVENTS) {
             OpenDoJaLog.debug(DoJaRuntime.class, () -> "timer event canvas=" + canvas.getClass().getName() + " param=" + param);
         }
@@ -1262,6 +1314,9 @@ public final class DoJaRuntime {
         try {
             eventExecutor.execute(() -> {
                 try {
+                    // Hibernating: park the event thread so queued input/UI events
+                    // do not run application code while the app is hidden.
+                    awaitSuspendRelease();
                     eventTask.run();
                 } catch (Throwable throwable) {
                     OpenDoJaLog.error(DoJaRuntime.class, "Unhandled UI event failure", throwable);

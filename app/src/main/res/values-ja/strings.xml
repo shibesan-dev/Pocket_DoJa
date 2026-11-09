@@ -39,4 +39,7 @@
     <string name="about">情報</string>
     <string name="filter">フィルター</string>
     <string name="filter_none">なし</string>
+    <string name="bgm_import_failed">選択したファイルを読み込めませんでした</string>
+    <string name="unsupported_audio">対応していない音声形式です</string>
+    <string name="paused_press_any_key">-一時停止- 何かキーを押すと再開します</string>
 </resources>

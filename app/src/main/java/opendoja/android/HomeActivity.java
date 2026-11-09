@@ -123,6 +123,24 @@ public class HomeActivity extends Activity {
     private static final String KEY_LAST_GAME = "lastGamePath";
     private static final long NAV_DUPLICATE_DOWN_MS = 60L;
 
+    // The pixel font is loaded once per process. createFromAsset parses the
+    // TTF on every call, so caching avoids re-parsing per game-list row.
+    private static android.graphics.Typeface pixelifyBold;
+    private static android.graphics.Typeface pixelifyRegular;
+
+    private static synchronized android.graphics.Typeface pixelifyTypeface(android.content.Context context, boolean bold) {
+        if (bold) {
+            if (pixelifyBold == null) {
+                pixelifyBold = android.graphics.Typeface.createFromAsset(context.getAssets(), "fonts/PixelifySans-Bold.ttf");
+            }
+            return pixelifyBold;
+        }
+        if (pixelifyRegular == null) {
+            pixelifyRegular = android.graphics.Typeface.createFromAsset(context.getAssets(), "fonts/PixelifySans-Regular.ttf");
+        }
+        return pixelifyRegular;
+    }
+
     private ScrollView gameScrollView;
     private final List<GameEntry> currentGames = new ArrayList<>();
     private final Map<String, View> gameItemViews = new LinkedHashMap<>();
@@ -346,7 +364,7 @@ public class HomeActivity extends Activity {
         titleView.setText("Pocket DoJa");
         titleView.setTextColor(themeTextColor());
         titleView.setTextSize(24f);
-        titleView.setTypeface(android.graphics.Typeface.createFromAsset(getAssets(), "fonts/PixelifySans-Bold.ttf"));
+        titleView.setTypeface(pixelifyTypeface(this, true));
         titleView.setSingleLine(true);
         titleView.setEllipsize(TextUtils.TruncateAt.END);
         titleView.setGravity(Gravity.CENTER_VERTICAL);
@@ -373,7 +391,7 @@ public class HomeActivity extends Activity {
         timeView = new TextView(this);
         timeView.setTextColor(themeTextColor());
         timeView.setTextSize(16f);
-        timeView.setTypeface(android.graphics.Typeface.createFromAsset(getAssets(), "fonts/PixelifySans-Regular.ttf"));
+        timeView.setTypeface(pixelifyTypeface(this, false));
         timeView.setGravity(Gravity.CENTER_VERTICAL);
         timeView.setPadding(dp(4), 0, dp(8), 0);
         timeView.setSingleLine(true);
@@ -1208,7 +1226,7 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(16), dp(16), dp(16), dp(16));
 
-        android.graphics.Typeface regular = android.graphics.Typeface.createFromAsset(getAssets(), "fonts/PixelifySans-Regular.ttf");
+        android.graphics.Typeface regular = pixelifyTypeface(this, false);
 
         TextView title = new TextView(this);
         String versionName = "1.2.0"; // this one doesn't matter, it uses PackageManager versionName.
@@ -1919,7 +1937,7 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         TextView name = new TextView(this);
         name.setText(game.displayName);
         name.setTextColor(themeTextColor());
-        name.setTypeface(android.graphics.Typeface.createFromAsset(getAssets(), "fonts/PixelifySans-Regular.ttf"));
+        name.setTypeface(pixelifyTypeface(this, false));
         name.setTextSize(14f);
         name.setPadding(dp(8), 0, dp(8), 0);
         LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
@@ -2258,14 +2276,17 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         TextView name = new TextView(this);
         name.setText(game.displayName);
         name.setTextColor(themeTextColor());
-        name.setTypeface(android.graphics.Typeface.createFromAsset(getAssets(), "fonts/PixelifySans-Regular.ttf"));
+        name.setTypeface(pixelifyTypeface(this, false));
         name.setTextSize(13f);
         name.setGravity(Gravity.CENTER);
         name.setMaxLines(1);
         name.setSingleLine(true);
         name.setHorizontallyScrolling(true);
         name.setEllipsize(TextUtils.TruncateAt.MARQUEE);
-        name.setMarqueeRepeatLimit(-1);
+        // Scroll long names once instead of forever: an infinite marquee on
+        // every grid cell keeps the whole grid redrawing constantly, which
+        // burns CPU and heats up the device.
+        name.setMarqueeRepeatLimit(1);
         name.setSelected(true);
         LinearLayout.LayoutParams nameParams = matchWrap();
         nameParams.topMargin = dp(6);

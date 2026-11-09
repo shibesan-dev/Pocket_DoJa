@@ -102,6 +102,9 @@ Thank you for your interest in Pocket DoJa!
     <string name="default_builtin">Default (built-in)</string>
     <string name="select_audio">Select Audio File (.mp3/.ogg/.mld)</string>
     <string name="invalid_mld">Invalid or unsupported MLD file</string>
+    <string name="bgm_import_failed">Could not read the selected file</string>
+    <string name="unsupported_audio">Unsupported audio format</string>
+    <string name="paused_press_any_key">-Paused- Press any key to continue</string>
     <string name="no_bgm">No BGM</string>
     <string name="bgm">BGM</string>
     <string name="default_bgm">Default BGM</string>

@@ -39,4 +39,7 @@
     <string name="about">Tentang</string>
     <string name="filter">Penapis</string>
     <string name="filter_none">Tiada</string>
+    <string name="bgm_import_failed">Tidak dapat membaca fail yang dipilih</string>
+    <string name="unsupported_audio">Format audio tidak disokong</string>
+    <string name="paused_press_any_key">-Dijeda- Tekan sebarang kekunci untuk meneruskan</string>
 </resources>

@@ -224,27 +224,53 @@ public class ThemeActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == 1 && resultCode == RESULT_OK && data != null && data.getData() != null) {
             Uri uri = data.getData();
-            String name = uri.getLastPathSegment();
+            // Some pickers (Android 10's DocumentsUI in particular) return URIs
+            // such as "document/audio:1234" whose path segment carries no file
+            // name or extension. Resolve the real name through the resolver and,
+            // failing that, identify the format from the content itself.
+            String name = queryDisplayName(uri);
+            if (name == null || name.isEmpty()) name = uri.getLastPathSegment();
             if (name == null) name = "track";
-            String lower = name.toLowerCase(Locale.ROOT);
-            boolean isMld = lower.endsWith(".mld");
-            if (!lower.endsWith(".mp3") && !lower.endsWith(".ogg") && !isMld) {
-                return;
-            }
-            // Copy to app-private storage
+
+            // Copy to app-private storage right away: the picker's URI grant does
+            // not outlive this screen, and type detection needs the bytes anyway.
             File dir = new File(getFilesDir(), "bgm");
             dir.mkdirs();
-            String ext = lower.endsWith(".ogg") ? ".ogg" : (isMld ? ".mld" : ".mp3");
-            File out = new File(dir, "bgm_track" + ext);
+            File tmp = new File(dir, "bgm_track.tmp");
             try (InputStream in = getContentResolver().openInputStream(uri);
-                 FileOutputStream fos = new FileOutputStream(out)) {
+                 FileOutputStream fos = new FileOutputStream(tmp)) {
                 byte[] buf = new byte[8192];
                 int n;
                 while ((n = in.read(buf)) > 0) fos.write(buf, 0, n);
             } catch (Exception e) {
+                tmp.delete();
+                Toast.makeText(this, R.string.bgm_import_failed, Toast.LENGTH_LONG).show();
                 return;
             }
-            if (isMld && !looksLikeMld(out)) {
+
+            String lower = name.toLowerCase(Locale.ROOT);
+            byte[] magic = readMagic(tmp);
+            String ext;
+            if (lower.endsWith(".mld") || isMeloMagic(magic)) {
+                ext = ".mld";
+            } else if (lower.endsWith(".ogg") || isOggMagic(magic)) {
+                ext = ".ogg";
+            } else if (lower.endsWith(".mp3") || isMp3Magic(magic)) {
+                ext = ".mp3";
+            } else {
+                tmp.delete();
+                Toast.makeText(this, R.string.unsupported_audio, Toast.LENGTH_LONG).show();
+                return;
+            }
+
+            File out = new File(dir, "bgm_track" + ext);
+            if (out.exists()) out.delete();
+            if (!tmp.renameTo(out)) {
+                tmp.delete();
+                Toast.makeText(this, R.string.bgm_import_failed, Toast.LENGTH_LONG).show();
+                return;
+            }
+            if (ext.equals(".mld") && !looksLikeMld(out)) {
                 out.delete();
                 Toast.makeText(this, R.string.invalid_mld, Toast.LENGTH_LONG).show();
                 return;
@@ -257,14 +283,49 @@ public class ThemeActivity extends Activity {
         }
     }
 
-    private static boolean looksLikeMld(File file) {
-        try (FileInputStream in = new FileInputStream(file)) {
-            byte[] magic = new byte[4];
-            if (in.read(magic) != 4) return false;
-            return magic[0] == 'm' && magic[1] == 'e' && magic[2] == 'l' && magic[3] == 'o';
-        } catch (Exception e) {
-            return false;
+    /** Resolves a picker URI to its display name; many providers omit it from the path. */
+    private String queryDisplayName(Uri uri) {
+        try (android.database.Cursor cursor = getContentResolver().query(uri,
+                new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                if (idx >= 0) {
+                    String value = cursor.getString(idx);
+                    if (value != null && !value.isEmpty()) return value;
+                }
+            }
+        } catch (Exception ignored) {
         }
+        return null;
+    }
+
+    private static boolean looksLikeMld(File file) {
+        return isMeloMagic(readMagic(file));
+    }
+
+    private static byte[] readMagic(File file) {
+        byte[] magic = new byte[4];
+        try (FileInputStream in = new FileInputStream(file)) {
+            int got = in.read(magic);
+            if (got < magic.length) return new byte[0];
+            return magic;
+        } catch (Exception e) {
+            return new byte[0];
+        }
+    }
+
+    private static boolean isMeloMagic(byte[] m) {
+        return m.length >= 4 && m[0] == 'm' && m[1] == 'e' && m[2] == 'l' && m[3] == 'o';
+    }
+
+    private static boolean isOggMagic(byte[] m) {
+        return m.length >= 4 && m[0] == 'O' && m[1] == 'g' && m[2] == 'g' && m[3] == 'S';
+    }
+
+    private static boolean isMp3Magic(byte[] m) {
+        return m.length >= 3
+                && ((m[0] == 'I' && m[1] == 'D' && m[2] == '3')
+                || (((m[0] & 0xFF) == 0xFF) && ((m[1] & 0xE0) == 0xE0)));
     }
 
     private void updateBgmSelection() {

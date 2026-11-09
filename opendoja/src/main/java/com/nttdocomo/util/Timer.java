@@ -102,7 +102,26 @@ public final class Timer implements TimeKeeper {
         if (runtime == null || listener == null) {
             return;
         }
+        final Runnable[] taskHolder = new Runnable[1];
         Runnable task = () -> {
+            if (DoJaRuntime.isSuspended()) {
+                // The game is hibernating in the background: freeze timer
+                // delivery. Repeat timers simply skip this tick; one-shot
+                // timers retry shortly until resumed so the event is not lost.
+                if (!repeat) {
+                    synchronized (this) {
+                        if (future != null && future.isDone()) {
+                            try {
+                                future = runtime.scheduler().schedule(taskHolder[0], 100, TimeUnit.MILLISECONDS);
+                            } catch (java.util.concurrent.RejectedExecutionException
+                                     | IllegalStateException e) {
+                                future = null;
+                            }
+                        }
+                    }
+                }
+                return;
+            }
             try {
                 listener.timerExpired(this);
             } finally {
@@ -113,6 +132,7 @@ public final class Timer implements TimeKeeper {
                 }
             }
         };
+        taskHolder[0] = task;
         if (repeat) {
             int interval = normalizeInterval(time);
             future = runtime.scheduler().scheduleWithFixedDelay(task, interval, interval, TimeUnit.MILLISECONDS);

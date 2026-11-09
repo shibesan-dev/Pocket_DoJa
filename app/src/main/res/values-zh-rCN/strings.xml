@@ -100,4 +100,7 @@
     <string name="exit_game">退出游戏</string>
     <string name="filter">滤镜</string>
     <string name="filter_none">无</string>
+    <string name="bgm_import_failed">无法读取所选文件</string>
+    <string name="unsupported_audio">不支持的音频格式</string>
+    <string name="paused_press_any_key">-已暂停- 按任意键继续</string>
 </resources>

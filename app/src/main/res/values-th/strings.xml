@@ -101,4 +101,7 @@
     <string name="default_bgm">เพลงพื้นหลังเริ่มต้น</string>
     <string name="filter">ฟิลเตอร์</string>
     <string name="filter_none">ไม่มี</string>
+    <string name="bgm_import_failed">ไม่สามารถอ่านไฟล์ที่เลือกได้</string>
+    <string name="unsupported_audio">รูปแบบเสียงไม่รองรับ</string>
+    <string name="paused_press_any_key">-หยุดชั่วคราว- กดปุ่มใดก็ได้เพื่อเล่นต่อ</string>
 </resources>

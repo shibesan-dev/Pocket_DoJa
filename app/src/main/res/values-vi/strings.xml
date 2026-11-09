@@ -39,4 +39,7 @@
     <string name="about">Giới thiệu</string>
     <string name="filter">Bộ lọc</string>
     <string name="filter_none">Không</string>
+    <string name="bgm_import_failed">Không thể đọc tệp đã chọn</string>
+    <string name="unsupported_audio">Định dạng âm thanh không được hỗ trợ</string>
+    <string name="paused_press_any_key">-Tạm dừng- Nhấn phím bất kỳ để tiếp tục</string>
 </resources>
