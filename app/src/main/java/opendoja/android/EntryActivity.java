@@ -61,7 +61,6 @@ public class EntryActivity extends Activity {
     private static volatile boolean launched;
 private static volatile Thread gameThread;
     private static volatile int activeLaunchSession = 0;
-    private static volatile int cancelledLaunchSession = 0;
     private static final ThreadLocal<Integer> threadSession = new ThreadLocal<>();
     private static volatile DoJaRuntime expectedRuntime;
     private static volatile int sessionId = 0;
@@ -74,7 +73,7 @@ private static volatile Thread gameThread;
     public static volatile boolean hasUserInteracted = false;
     public static volatile boolean gameReady = false;
     private static volatile Thread exitThread;
-    private boolean gameStopped;
+    private volatile boolean gameStopped;
     private android.app.AlertDialog gameMenu;
     private static final java.util.concurrent.CountDownLatch exitLatch = new java.util.concurrent.CountDownLatch(1);
     private static volatile boolean exitInProgress = false;
@@ -370,7 +369,7 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
         exitThread = t;
         t.setDaemon(true);
         t.start();
-        // Wait for exit to complete to prevent race with next launch
+// Wait for exit, prevent race condition!
         try {
             t.join(3000L);
         } catch (InterruptedException ignored) {
@@ -430,6 +429,10 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
         gameStopped = true;
         exiting = true;
         launched = false;
+        // The game is gone; let the title screen bring its own BGM back even on
+        // exit paths that skip exitGame() (e.g. HOME while the game is booting).
+        HomeActivity.gameRunning = false;
+        HomeActivity.bgmSuppressed = false;
         final Thread currentGameThread = gameThread;  // Save before nulling so doomGameThreads() won't interrupt it
         gameThread = null;
         final DoJaRuntime runtimeToShutdown = gameRuntime;  // Save before nulling for shutdown path
@@ -450,7 +453,7 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
             }
             input.clearRuntime();
         }
-        // Immediate sweep: stale BGM stops right away, even before the async
+// Immediate sweep: stale BGM stops right away, even before the async
         // Aggressively kill input dispatches
         try {
             if (input != null) {
@@ -711,7 +714,50 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
         }
     }
 
+    /** Tears down a game that finished launching after the user already left the
+     *  game screen (exit while "Booting..." was still showing). Its runtime did not
+     *  exist when stopGame() swept for audio, so the sweep runs here instead. */
+    private void teardownLateLaunch() {
+        try {
+            DoJaRuntime lateRuntime = DoJaRuntime.current();
+            if (lateRuntime == null) {
+                lateRuntime = DoJaRuntime.lastRuntime();
+            }
+            if (lateRuntime != null) {
+                lateRuntime.shutdown();
+            }
+        } catch (Throwable ignored) {
+        }
+        releaseGameAudio(Long.MAX_VALUE);
+        try {
+            com.nttdocomo.ui.AudioPresenter.setAudioEnabled(false);
+            com.nttdocomo.ui.AudioPresenter.releaseStaleSessions();
+            com.nttdocomo.ui.AudioPresenter.releaseAllSessions();
+            com.nttdocomo.ui.AudioPresenter.releaseAll();
+        } catch (Throwable ignored) {
+        }
+        try {
+            opendoja.audio.mld.MLDPCMPlayer.releaseAll();
+            opendoja.audio.mld.MLDPCMPlayer.releaseGenerationsUpTo(Long.MAX_VALUE);
+        } catch (Throwable ignored) {
+        }
+        // Stop threads the late game spawned. If a newer launch is already
+        // underway, leave the sweep to that instance's stopGame() so this one
+        // cannot kill the new launch thread.
+        if (!launched || gameThread == null || gameThread == Thread.currentThread()) {
+            doomGameThreads();
+        }
+    }
+
     private void launchGame() {
+        // The user may back out while the "Booting..." overlay is still showing.
+        // stopGame() runs on every exit path and marks this instance stopped, so
+        // aborting here keeps a late launch from booting the game (and its BGM)
+        // after the user is already back on the title screen.
+        if (gameStopped) {
+            opendoja.host.OpenDoJaLog.info(EntryActivity.class, "launchGame: aborted, game already stopped");
+            return;
+        }
         // Wait for any previous game exit to fully complete before starting new game.
         // This prevents audio leaks and frozen frames from race conditions during
         // quick exit/launch sequences.
@@ -722,6 +768,10 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
                 prevExit.join(3000L);
             } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
+            }
+            if (gameStopped) {
+                opendoja.host.OpenDoJaLog.info(EntryActivity.class, "launchGame: aborted while waiting for previous exit");
+                return;
             }
         }
 
@@ -788,7 +838,7 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
             }
             File jar = opendoja.host.JamGameJarLocator.locate(java.nio.file.Paths.get(jam.getAbsolutePath())).toFile();
             File dex = JamDexHost.ensureDex(jar);
-            if (cancelledLaunchSession == activeLaunchSession) {
+            if (gameStopped) {
                 opendoja.host.OpenDoJaLog.info(EntryActivity.class, "launch cancelled after conversion");
                 return;
             }
@@ -867,8 +917,9 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
             if (surfaceView != null) {
                 surfaceView.prepareForNewGame();
             }
-            if (cancelledLaunchSession == activeLaunchSession) {
+            if (gameStopped) {
                 opendoja.host.OpenDoJaLog.info(EntryActivity.class, "launch cancelled after DesktopLauncher.launch");
+                teardownLateLaunch();
                 return;
             }
             opendoja.host.OpenDoJaLog.info(EntryActivity.class, "jam launch returned normally: " + application);
