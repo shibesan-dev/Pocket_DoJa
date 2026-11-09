@@ -2185,10 +2185,14 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         if (target == null || target.getWidth() == 0) {
             return;
         }
+        // offsetDescendantRectToMyCoords returns the item's bounds in the
+        // ScrollView's CONTENT coordinates (the ScrollView's own scroll is not
+        // subtracted), so the visible bounds must include getScrollY().
         Rect rect = new Rect();
+        target.getDrawingRect(rect);
         gameScrollView.offsetDescendantRectToMyCoords(target, rect);
-        int topBound = dp(56) + dp(8);
-        int bottomBound = gameScrollView.getHeight() - dp(8);
+        int topBound = gameScrollView.getScrollY() + dp(56) + dp(8);
+        int bottomBound = gameScrollView.getScrollY() + gameScrollView.getHeight() - dp(8);
         int delta = 0;
         if (rect.top < topBound) {
             delta = rect.top - topBound;
@@ -2196,7 +2200,10 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
             delta = rect.bottom - bottomBound;
         }
         if (delta != 0) {
-            gameScrollView.smoothScrollBy(0, delta);
+            // Scroll to an absolute target position so rapid key presses stay
+            // accurate even while the smooth scroll from a previous press is
+            // still animating (recomputed deltas never compound).
+            gameScrollView.smoothScrollTo(0, gameScrollView.getScrollY() + delta);
         }
     }
 
