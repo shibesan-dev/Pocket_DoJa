@@ -3,18 +3,28 @@ package opendoja.android;
 import android.content.SharedPreferences;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.net.wifi.WifiManager;
 import android.opengl.GLSurfaceView;
+import android.os.BatteryManager;
+import android.os.Build;
+import android.util.Log;
 import android.view.Gravity;
 import android.content.ContentResolver;
-import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.ColorFilter;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.Typeface;
+import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
@@ -90,6 +100,16 @@ public class HomeActivity extends Activity {
     private int columns = 4;
     private int iconSizePx;
     private View fixedTopBar;
+    private ImageView wifiIcon;
+    private ImageView batteryIcon;
+    private ImageView mascotIcon;
+    private TextView searchButton;
+    private TextView timeView;
+    private BroadcastReceiver wifiReceiver;
+    private BroadcastReceiver batteryReceiver;
+    private java.util.Timer timeTimer;
+    private android.os.Handler mascotHandler;
+    private Runnable mascotRunnable;
 
     public static HomeActivity instance;
     public static volatile boolean bgmSuppressed = false;
@@ -269,6 +289,16 @@ public class HomeActivity extends Activity {
     @Override
     protected void onDestroy() {
         worker.shutdownNow();
+        if (wifiReceiver != null) {
+            try { unregisterReceiver(wifiReceiver); } catch (Exception ignored) {}
+        }
+        if (batteryReceiver != null) {
+            try { unregisterReceiver(batteryReceiver); } catch (Exception ignored) {}
+        }
+        if (timeTimer != null) {
+            timeTimer.cancel();
+            timeTimer = null;
+        }
         super.onDestroy();
     }
 
@@ -291,7 +321,46 @@ public class HomeActivity extends Activity {
         bar.addView(titleView, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.MATCH_PARENT, 1f));
 
-        TextView searchButton = new TextView(this);
+        int indicatorSize = dp(33);
+        int mascotSize = dp(48);
+
+        // Mascot icon (right of title, before time) - animated WebP based on battery
+        mascotIcon = new ImageView(this);
+        mascotIcon.setLayoutParams(new LinearLayout.LayoutParams(mascotSize, mascotSize));
+        mascotIcon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        mascotIcon.setPadding(dp(8), 0, dp(8), 0);
+        bar.addView(mascotIcon);
+
+        // Digital time before WiFi
+        timeView = new TextView(this);
+        timeView.setTextColor(themeTextColor());
+        timeView.setTextSize(16f);
+        timeView.setTypeface(android.graphics.Typeface.createFromAsset(getAssets(), "fonts/PixelifySans-Regular.ttf"));
+        timeView.setGravity(Gravity.CENTER_VERTICAL);
+        timeView.setPadding(dp(4), 0, dp(8), 0);
+        timeView.setSingleLine(true);
+        bar.addView(timeView);
+
+        // WiFi indicator (early Android 3D style) - with custom icon pack support
+        wifiIcon = new ImageView(this);
+        wifiIcon.setLayoutParams(new LinearLayout.LayoutParams(indicatorSize, indicatorSize));
+        wifiIcon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        wifiIcon.setPadding(dp(8), 0, dp(4), 0);
+        bar.addView(wifiIcon);
+
+        // Battery indicator (early Android 3D style) - with custom icon pack support
+        batteryIcon = new ImageView(this);
+        batteryIcon.setLayoutParams(new LinearLayout.LayoutParams(indicatorSize, indicatorSize));
+        batteryIcon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        batteryIcon.setPadding(dp(8), 0, dp(8), 0);
+        bar.addView(batteryIcon);
+
+        // Initialize and register receivers
+        initStatusIndicators();
+        // Start time updater
+        startTimeUpdater();
+
+        searchButton = new TextView(this);
         searchButton.setText("\uD83D\uDD0D");
         searchButton.setTextSize(20f);
         searchButton.setTextColor(themeTextColor());
@@ -300,6 +369,9 @@ public class HomeActivity extends Activity {
         searchButton.setClickable(true);
         searchButton.setFocusable(true);
         searchButton.setOnClickListener(v -> toggleSearch());
+        
+        // Try to load custom search icon
+        updateSearchIcon();
 
         searchBox = new EditText(this);
         searchBox.setHint("Search games");
@@ -415,6 +487,405 @@ public class HomeActivity extends Activity {
         }
     }
 
+    private void initStatusIndicators() {
+        // WiFi receiver
+        wifiReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                Log.d("PocketDoJa_WiFi", "WiFi broadcast received: " + intent.getAction());
+                updateWifiIcon();
+            }
+        };
+        IntentFilter wifiFilter = new IntentFilter();
+        wifiFilter.addAction(WifiManager.RSSI_CHANGED_ACTION);
+        wifiFilter.addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION);
+        wifiFilter.addAction(WifiManager.WIFI_STATE_CHANGED_ACTION);
+        registerReceiver(wifiReceiver, wifiFilter, Context.RECEIVER_NOT_EXPORTED);
+        Log.d("PocketDoJa_WiFi", "WiFi receiver registered");
+
+        // Battery receiver
+        batteryReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                Log.d("PocketDoJa_Battery", "Battery broadcast received: " + intent.getAction());
+                updateBatteryIcon();
+            }
+        };
+        IntentFilter batteryFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+        registerReceiver(batteryReceiver, batteryFilter, Context.RECEIVER_NOT_EXPORTED);
+        Log.d("PocketDoJa_Battery", "Battery receiver registered");
+
+        // Initial update
+        updateWifiIcon();
+        updateBatteryIcon();
+    }
+
+    private void updateMascotIcon(int percent, boolean charging, boolean present) {
+        if (mascotIcon == null) return;
+        
+        String webpName;
+        String gifName;
+        String pngName;
+        if (!present || charging || percent >= 70) {
+            webpName = "icons/happy.webp";
+            gifName = "icons/happy.gif";
+            pngName = "icons/happy.png";
+        } else if (percent >= 40) {
+            webpName = "icons/neutral.webp";
+            gifName = "icons/neutral.gif";
+            pngName = "icons/neutral.png";
+        } else {
+            webpName = "icons/sad.webp";
+            gifName = "icons/sad.gif";
+            pngName = "icons/sad.png";
+        }
+        
+        // Try animated WebP on API 28+
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            try (InputStream is = getAssets().open(webpName)) {
+                android.graphics.drawable.Drawable drawable = 
+                    android.graphics.drawable.AnimatedImageDrawable.createFromStream(is, webpName);
+                if (drawable instanceof android.graphics.drawable.AnimatedImageDrawable) {
+                    android.graphics.drawable.AnimatedImageDrawable animated = (android.graphics.drawable.AnimatedImageDrawable) drawable;
+                    mascotIcon.setImageDrawable(animated);
+                    animated.start();
+                    Log.d("PocketDoJa_Mascot", "Started animated WebP: " + webpName);
+                    return;
+                }
+            } catch (Exception e) {
+                Log.w("PocketDoJa_Mascot", "Failed to load animated WebP: " + webpName, e);
+            }
+        }
+        
+        // Try GIF on API 24-27 (using Movie class for animation)
+        if (android.os.Build.VERSION.SDK_INT < 28 && android.os.Build.VERSION.SDK_INT >= 24) {
+            try {
+                // Use a custom GIFView for animation on older APIs
+                playGifAnimation(gifName);
+                return;
+            } catch (Exception e) {
+                Log.w("PocketDoJa_Mascot", "Failed to load GIF: " + gifName, e);
+            }
+        }
+        
+        // Fallback to static PNG
+        Bitmap icon = loadCustomIcon(pngName);
+        if (icon != null) {
+            mascotIcon.setImageBitmap(icon);
+            Log.d("PocketDoJa_Mascot", "Using static PNG: " + pngName);
+        } else {
+            Log.w("PocketDoJa_Mascot", "No mascot icon found for: " + pngName);
+        }
+    }
+
+    private void playGifAnimation(String gifName) {
+        try (InputStream is = getAssets().open(gifName)) {
+            byte[] bytes = readAllBytes(is);
+            android.graphics.Movie movie = android.graphics.Movie.decodeByteArray(bytes, 0, bytes.length);
+            if (movie != null) {
+                // Create custom ImageView that animates the GIF
+                mascotIcon.setTag(movie);
+                mascotIcon.setImageDrawable(new android.graphics.drawable.Drawable() {
+                    private long startTime = android.os.SystemClock.uptimeMillis();
+                    
+                    @Override
+                    public void draw(Canvas canvas) {
+                        long now = android.os.SystemClock.uptimeMillis();
+                        int relTime = (int) ((now - startTime) % movie.duration());
+                        movie.setTime(relTime);
+                        canvas.drawBitmap(
+                            android.graphics.Bitmap.createBitmap(movie.width(), movie.height(), android.graphics.Bitmap.Config.ARGB_8888),
+                            0, 0, null
+                        );
+                        movie.draw(canvas, 0, 0);
+                        invalidateSelf();
+                    }
+                    
+                    @Override
+                    public void setAlpha(int alpha) {}
+                    
+                    @Override
+                    public void setColorFilter(ColorFilter colorFilter) {}
+                    
+                    @Override
+                    public int getOpacity() {
+                        return android.graphics.PixelFormat.TRANSLUCENT;
+                    }
+                });
+                Log.d("PocketDoJa_Mascot", "Started GIF animation: " + gifName);
+            }
+        } catch (Exception e) {
+            Log.w("PocketDoJa_Mascot", "GIF animation failed: " + gifName, e);
+        }
+    }
+
+    private void updateWifiIcon() {
+        if (wifiIcon == null) return;
+        WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        if (wifiManager == null || !wifiManager.isWifiEnabled()) {
+            Log.d("PocketDoJa_WiFi", "WiFi disabled or null manager");
+            wifiIcon.setImageBitmap(loadCustomIcon("icons/wifi_no.png"));
+            return;
+        }
+        int rssi = wifiManager.getConnectionInfo().getRssi();
+        int level = WifiManager.calculateSignalLevel(rssi, 4);
+        Log.d("PocketDoJa_WiFi", "WiFi RSSI: " + rssi + ", level: " + level);
+        String iconName = "icons/wifi_" + level + ".png";
+        Bitmap icon = loadCustomIcon(iconName);
+        if (icon == null) {
+            Log.d("PocketDoJa_WiFi", "Custom icon not found, using drawn: " + iconName);
+            icon = drawWifiIcon(level, true);
+        }
+        wifiIcon.setImageBitmap(icon);
+    }
+
+    private void updateBatteryIcon() {
+        if (batteryIcon == null) return;
+        Intent batteryIntent = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        if (batteryIntent == null) {
+            // No battery info (e.g., TV device) - show full battery
+            Log.d("PocketDoJa_Battery", "No battery intent, using batt_full");
+            batteryIcon.setImageBitmap(loadCustomIcon("icons/batt_full.png"));
+            return;
+        }
+        int level = batteryIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, 0);
+        int scale = batteryIntent.getIntExtra(BatteryManager.EXTRA_SCALE, 100);
+        int percent = (level * 100) / scale;
+        boolean charging = batteryIntent.getIntExtra(BatteryManager.EXTRA_STATUS, BatteryManager.BATTERY_STATUS_UNKNOWN) == BatteryManager.BATTERY_STATUS_CHARGING;
+        boolean present = batteryIntent.getBooleanExtra(BatteryManager.EXTRA_PRESENT, true);
+        
+        Log.d("PocketDoJa_Battery", "Battery: level=" + level + ", scale=" + scale + ", percent=" + percent + ", charging=" + charging + ", present=" + present);
+        
+        String iconName;
+        if (!present) {
+            iconName = "icons/batt_full.png";
+        } else if (charging) {
+            iconName = "icons/batt_charge.png";
+        } else if (percent >= 100) {
+            iconName = "icons/batt_full.png";
+        } else if (percent >= 70) {
+            iconName = "icons/batt_75.png";
+        } else if (percent >= 45) {
+            iconName = "icons/batt_50.png";
+        } else if (percent >= 15) {
+            iconName = "icons/batt_25.png";
+        } else {
+            iconName = "icons/batt_5.png";
+        }
+        
+        Log.d("PocketDoJa_Battery", "Battery icon: " + iconName);
+        Bitmap icon = loadCustomIcon(iconName);
+        if (icon == null) {
+            Log.d("PocketDoJa_Battery", "Custom icon not found, using drawn");
+            icon = drawBatteryIcon(percent, charging, !present);
+        }
+        batteryIcon.setImageBitmap(icon);
+        
+        // Update mascot based on battery
+        updateMascotIcon(percent, charging, present);
+    }
+
+    private void updateSearchIcon() {
+        if (searchButton != null) {
+            Bitmap icon = loadCustomIcon("icons/search.png");
+            if (icon != null) {
+                searchButton.setText("");
+                searchButton.setCompoundDrawablesWithIntrinsicBounds(null, null, new BitmapDrawable(getResources(), icon), null);
+            }
+        }
+    }
+
+    private void startTimeUpdater() {
+        if (timeTimer != null) {
+            timeTimer.cancel();
+        }
+        timeTimer = new java.util.Timer();
+        timeTimer.scheduleAtFixedRate(new java.util.TimerTask() {
+            @Override
+            public void run() {
+                runOnUiThread(() -> {
+                    if (timeView != null) {
+                        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault());
+                        timeView.setText(sdf.format(new java.util.Date()));
+                    }
+                });
+            }
+        }, 0, 1000);
+    }
+
+    private Bitmap loadCustomIcon(String assetPath) {
+        try {
+            InputStream is = getAssets().open(assetPath);
+            Bitmap bitmap = BitmapFactory.decodeStream(is);
+            is.close();
+            if (bitmap != null) {
+                int targetSize = dp(28);
+                if (bitmap.getWidth() != targetSize || bitmap.getHeight() != targetSize) {
+                    bitmap = Bitmap.createScaledBitmap(bitmap, targetSize, targetSize, true);
+                }
+                return bitmap;
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    // Early Android 3D-style WiFi icon (4 arcs with highlight/shadow for 3D effect)
+    private Bitmap drawWifiIcon(int level, boolean enabled) {
+        int size = dp(28);
+        Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(dp(2));
+        paint.setStrokeCap(Paint.Cap.ROUND);
+
+        int color = enabled ? themeTextColor() : 0xFF888888;
+        int highlightColor = enabled ? lightenColor(themeTextColor(), 0.4f) : 0xFFAAAAAA;
+        int shadowColor = enabled ? darkenColor(themeTextColor(), 0.4f) : 0xFF666666;
+
+        int centerX = size / 2;
+        int centerY = size / 2 + dp(2);
+
+        // Draw 4 arcs for signal levels (back to front for 3D look)
+        for (int i = 3; i >= 0; i--) {
+            float radius = dp(3) + i * dp(4);
+            float sweepAngle = 80;
+            float startAngle = 130;
+
+            // Shadow (bottom-right)
+            paint.setColor(shadowColor);
+            canvas.drawArc(centerX - radius + dp(0.5f), centerY - radius + dp(0.5f),
+                    centerX + radius + dp(0.5f), centerY + radius + dp(0.5f),
+                    startAngle, sweepAngle, false, paint);
+
+            // Main arc
+            if (enabled && i < level) {
+                paint.setColor(color);
+            } else {
+                paint.setColor(0xFF444444);
+            }
+            canvas.drawArc(centerX - radius, centerY - radius,
+                    centerX + radius, centerY + radius,
+                    startAngle, sweepAngle, false, paint);
+
+            // Highlight (top-left)
+            if (enabled && i < level) {
+                paint.setColor(highlightColor);
+                canvas.drawArc(centerX - radius - dp(0.5f), centerY - radius - dp(0.5f),
+                        centerX + radius - dp(0.5f), centerY + radius - dp(0.5f),
+                        startAngle, sweepAngle, false, paint);
+            }
+        }
+
+        // Center dot
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(enabled ? color : 0xFF888888);
+        canvas.drawCircle(centerX, centerY + dp(4), dp(1.5f), paint);
+
+        return bitmap;
+    }
+
+    // Early Android 3D-style battery icon (rounded rect with 3D bevel)
+    private Bitmap drawBatteryIcon(int percent, boolean charging, boolean noBattery) {
+        int size = dp(28);
+        Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        int bodyColor = themeTextColor();
+        int highlightColor = lightenColor(bodyColor, 0.3f);
+        int shadowColor = darkenColor(bodyColor, 0.4f);
+        int fillColor;
+        if (percent <= 15) fillColor = 0xFFFF4444;
+        else if (percent <= 40) fillColor = 0xFFFFAA00;
+        else fillColor = 0xFF44CC44;
+
+        int bodyW = dp(16);
+        int bodyH = dp(12);
+        int tipW = dp(2);
+        int tipH = dp(4);
+        int x = (size - bodyW - tipW) / 2;
+        int y = (size - bodyH) / 2;
+        int radius = dp(2);
+
+        // Battery body - shadow (bottom-right)
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(shadowColor);
+        canvas.drawRoundRect(x + dp(1), y + dp(1), x + bodyW + dp(1), y + bodyH + dp(1), radius, radius, paint);
+        // Battery tip shadow
+        canvas.drawRect(x + bodyW + dp(1), y + (bodyH - tipH) / 2 + dp(1), x + bodyW + tipW + dp(1), y + (bodyH + tipH) / 2 + dp(1), paint);
+
+        // Battery body - main
+        paint.setColor(bodyColor);
+        canvas.drawRoundRect(x, y, x + bodyW, y + bodyH, radius, radius, paint);
+        // Battery tip
+        canvas.drawRect(x + bodyW, y + (bodyH - tipH) / 2, x + bodyW + tipW, y + (bodyH + tipH) / 2, paint);
+
+        // Battery body - highlight (top-left)
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(dp(1));
+        paint.setColor(highlightColor);
+        canvas.drawRoundRect(x + dp(0.5f), y + dp(0.5f), x + bodyW - dp(0.5f), y + bodyH - dp(0.5f), radius - dp(0.5f), radius - dp(0.5f), paint);
+
+        // Fill level
+        if (percent > 0 || noBattery) {
+            int fillW = noBattery ? bodyW - dp(4) : Math.max(dp(2), (int) ((bodyW - dp(4)) * percent / 100f));
+            int fillX = x + dp(2);
+            int fillY = y + dp(2);
+            int fillH = bodyH - dp(4);
+            int fillRadius = dp(1);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(fillColor);
+            canvas.drawRoundRect(fillX, fillY, fillX + fillW, fillY + fillH, fillRadius, fillRadius, paint);
+            // Fill highlight
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(0.5f));
+            paint.setColor(lightenColor(fillColor, 0.3f));
+            canvas.drawRoundRect(fillX + dp(0.5f), fillY + dp(0.5f), fillX + fillW - dp(0.5f), fillY + fillH - dp(0.5f), fillRadius - dp(0.5f), fillRadius - dp(0.5f), paint);
+        }
+
+        // Charging bolt
+        if (charging && !noBattery) {
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(0xFFFFFF00);
+            float boltX = x + bodyW / 2f;
+            float boltY = y + bodyH / 2f;
+            float boltSize = dp(3);
+            Path boltPath = new Path();
+            boltPath.moveTo(boltX, boltY - boltSize);
+            boltPath.lineTo(boltX - boltSize / 2, boltY);
+            boltPath.lineTo(boltX, boltY);
+            boltPath.lineTo(boltX - boltSize / 2, boltY + boltSize);
+            boltPath.lineTo(boltX + boltSize, boltY - boltSize / 2);
+            boltPath.lineTo(boltX, boltY - boltSize / 2);
+            boltPath.close();
+            canvas.drawPath(boltPath, paint);
+        }
+
+        return bitmap;
+    }
+
+    private int lightenColor(int color, float factor) {
+        int r = Color.red(color);
+        int g = Color.green(color);
+        int b = Color.blue(color);
+        r = Math.min(255, (int) (r + (255 - r) * factor));
+        g = Math.min(255, (int) (g + (255 - g) * factor));
+        b = Math.min(255, (int) (b + (255 - b) * factor));
+        return Color.rgb(r, g, b);
+    }
+
+    private int darkenColor(int color, float factor) {
+        int r = Color.red(color);
+        int g = Color.green(color);
+        int b = Color.blue(color);
+        r = (int) (r * (1 - factor));
+        g = (int) (g * (1 - factor));
+        b = (int) (b * (1 - factor));
+        return Color.rgb(r, g, b);
+    }
+
     private void updateFixedTopBarTheme() {
         if (fixedTopBar == null) return;
         // The fixedTopBar is a FrameLayout containing the bar and divider
@@ -429,6 +900,12 @@ public class HomeActivity extends Activity {
                     updateTopBarTextColors((LinearLayout) bar);
                 }
             }
+        }
+        // Update search icon for new theme
+        updateSearchIcon();
+        // Update time text color
+        if (timeView != null) {
+            timeView.setTextColor(themeTextColor());
         }
     }
 
@@ -1600,6 +2077,10 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private float dp(float value) {
+        return value * getResources().getDisplayMetrics().density;
     }
 
     private void onLoadJamClicked() {

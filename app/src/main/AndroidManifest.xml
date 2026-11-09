@@ -4,6 +4,7 @@
     <!-- Online (UseNetwork) games: HTTP via DesktopHttpConnection. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <!-- Legacy direct shared-storage reads on Android 6-12L (SAF import needs none). -->
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
