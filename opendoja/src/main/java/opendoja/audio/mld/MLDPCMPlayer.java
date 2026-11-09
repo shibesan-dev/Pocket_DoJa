@@ -813,6 +813,18 @@ private static final class SharedEngine {
                         } else {
                             finished[0] = true;
                         }
+                    } else if (event.type == MLDPlayer.EVENT_LOOP) {
+                        // The cuepoint region repeated. Finite loops consume one
+                        // repeat per pass; once the last pass is reached, disable
+                        // the internal loop so the sequence continues past the
+                        // region to END_OF_TRACK and the completion event fires.
+                        if (session.remainingRepeats != Integer.MAX_VALUE
+                                && session.remainingRepeats > 0) {
+                            session.remainingRepeats--;
+                            if (session.remainingRepeats == 0) {
+                                session.player.setLoopEnabled(false);
+                            }
+                        }
                     } else if (event.type == MLDPlayer.EVENT_KEY && listener != null) {
                         int timeMillis = (int) Math.round(event.time * 1000.0d);
                         notifications.add(() -> listener.onSync(timeMillis, playbackToken));
@@ -946,11 +958,18 @@ private static final class SharedEngine {
             // what made cuepoint loops sound clipped.
             player.setLoopStopAll(false);
             if (loopCount < 0) {
+                // Infinite playback: keep looping. With a cuepoint region the
+                // player loops in place (EVENT_LOOP per pass); without one it
+                // restarts from the beginning on EVENT_END.
                 remainingRepeats = Integer.MAX_VALUE;
             } else {
-                remainingRepeats = Math.max(0, loopCount);
+                // DoJa LOOP semantics: the attribute counts total playbacks, so
+                // the first pass is already running and only loopCount - 1
+                // repeats remain. LOOP=1 (Dash sets it for every sound) is a
+                // single playback that must reach END_OF_TRACK and complete.
+                remainingRepeats = Math.max(0, loopCount - 1);
             }
-            player.setLoopEnabled(cuepointLooping && loopCount != 0);
+            player.setLoopEnabled(cuepointLooping && remainingRepeats != 0);
             configureSync(syncEventChannel, syncEventKey);
             player.reset();
             player.setPlaybackRate(playbackRate);

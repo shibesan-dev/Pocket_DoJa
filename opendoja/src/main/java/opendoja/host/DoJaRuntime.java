@@ -552,7 +552,17 @@ public final class DoJaRuntime {
             m.invoke(null, "OpenDoJa", "startApplication: calling app.start() class=" + app.getClass().getName() + " thread=" + Thread.currentThread().getName());
         } catch (Throwable ignored) {
         }
-        app.start();
+        try {
+            app.start();
+        } catch (GameTerminatedException terminated) {
+            // IApplication.terminate() unwinds the application thread by throwing
+            // GameTerminatedException. When a title runs a blocking main loop inside
+            // start()/run(), the unwind surfaces here: that is a clean, expected exit,
+            // not a launch failure.
+            OpenDoJaLog.info(DoJaRuntime.class,
+                    "startApplication: application terminated normally thread=" + Thread.currentThread().getName());
+            return;
+        }
         OpenDoJaLog.info(DoJaRuntime.class, "IS_MAPP=" + (app instanceof com.nttdocomo.ui.MApplication) + " isActive=" + (app instanceof com.nttdocomo.ui.MApplication m ? m.isActive() : "n/a"));
         try {
             Class<?> logClass = Class.forName("android.util.Log");
@@ -581,7 +591,12 @@ public final class DoJaRuntime {
         OpenDoJaLog.info(DoJaRuntime.class,
                 "abortLaunch entry: session=" + sessionId + " game=" + (application == null ? "none" : application.getClass().getName())
                         + " thread=" + Thread.currentThread().getName() + " shutdownAlreadyRequested=" + shutdown.get());
-        shutdown(false);
+        try {
+            shutdown(false);
+        } catch (GameTerminatedException normalExit) {
+            // shutdown() always signals the app thread to unwind; during an abort there
+            // is no app frame left to unwind, so the signal is expected and harmless.
+        }
         OpenDoJaLog.info(DoJaRuntime.class,
                 "abortLaunch exit: session=" + sessionId + " game=" + (application == null ? "none" : application.getClass().getName())
                         + " thread=" + Thread.currentThread().getName());

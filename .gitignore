@@ -70,5 +70,8 @@ logs/
 configs/networkuid.txt
 opendoja-log.txt
 
+# Local analysis scratch (game dumps, screenshots, disassembly, extracted assets)
+data/
+
 # Do not upload local game/public data
 public/

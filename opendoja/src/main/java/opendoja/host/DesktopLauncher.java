@@ -20,16 +20,26 @@ public final class DesktopLauncher {
     public static IApplication launch(LaunchConfig config) {
         DoJaRuntime runtime = null;
         boolean launched = false;
+        IApplication app = null;
         ClassLoader previousLoader = Thread.currentThread().getContextClassLoader();
         // JAM-loaded titles expect ordinary context-loader resource lookups to resolve against the app jar.
         Thread.currentThread().setContextClassLoader(config.applicationClass().getClassLoader());
         try {
             DoJaRuntime.prepareLaunch(config);
             runtime = DoJaRuntime.bootstrap(config);
-            IApplication app = config.applicationClass().getDeclaredConstructor().newInstance();
+            app = config.applicationClass().getDeclaredConstructor().newInstance();
             runtime.attachApplication(app);
             runtime.startApplication();
             launched = true;
+            return app;
+        } catch (GameTerminatedException terminated) {
+            // IApplication.terminate() unwinds the app thread by throwing this. When a
+            // title runs a blocking main loop inside start(), the unwind surfaces here;
+            // that is a clean termination, not a launch failure.
+            launched = true;
+            OpenDoJaLog.info(DesktopLauncher.class,
+                    "launch: application terminated during start (clean exit) gameId="
+                            + config.applicationClass().getName());
             return app;
         } catch (InvocationTargetException e) {
             Throwable target = e.getTargetException();

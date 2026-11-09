@@ -369,11 +369,27 @@ public final class JamDexHost {
         // would fail on game classes that cannot be loaded by the host class loader.
         org.objectweb.asm.ClassWriter writer = new org.objectweb.asm.ClassWriter(org.objectweb.asm.ClassWriter.COMPUTE_MAXS);
         final String[] classNameHolder = {null};
+        final boolean[] hasUsInfo = {false};
+        final boolean[] hasNnInfo = {false};
+        final boolean[] hasClinit = {false};
         org.objectweb.asm.ClassVisitor visitor = new org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9, writer) {
             @Override
             public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
                 classNameHolder[0] = name;
                 super.visit(version, access, name, signature, superName, interfaces);
+            }
+            @Override
+            public org.objectweb.asm.FieldVisitor visitField(int access, String name, String descriptor,
+                                                             String signature, Object value) {
+                if ((access & org.objectweb.asm.Opcodes.ACC_STATIC) != 0
+                        && "[Ljava/lang/String;".equals(descriptor)) {
+                    if ("US_INFO".equals(name)) {
+                        hasUsInfo[0] = true;
+                    } else if ("NN_INFO".equals(name)) {
+                        hasNnInfo[0] = true;
+                    }
+                }
+                return super.visitField(access, name, descriptor, signature, value);
             }
             @Override
             public org.objectweb.asm.MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
@@ -463,14 +479,89 @@ public final class JamDexHost {
                         super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
                     }
                 };
+                if ("GameCanvas".equals(classNameHolder[0]) && "<clinit>".equals(name) && "()V".equals(descriptor)) {
+                    hasClinit[0] = true;
+                    if (hasUsInfo[0] && hasNnInfo[0]) {
+                        return new GameCanvasInfoFillMV(org.objectweb.asm.Opcodes.ASM9, sjisMv, classNameHolder[0]);
+                    }
+                }
                 if ("GameScreen".equals(classNameHolder[0]) && "d".equals(name) && "(II)I".equals(descriptor)) {
                     return new GameScreenDFixMV(org.objectweb.asm.Opcodes.ASM9, sjisMv);
                 }
                 return sjisMv;
             }
+
+            @Override
+            public void visitEnd() {
+                // INERT FALLBACK FOR TESTING
+                // Classes without a static initializer still need the defaults.
+                // Defensive: Dash declares both fields and has a <clinit>, so
+                // this path is unused for it, but keeps the rewrite general.
+                if ("GameCanvas".equals(classNameHolder[0]) && !hasClinit[0]
+                        && hasUsInfo[0] && hasNnInfo[0]) {
+                    org.objectweb.asm.MethodVisitor mv = writer.visitMethod(
+                            org.objectweb.asm.Opcodes.ACC_STATIC, "<clinit>", "()V", null, null);
+                    mv.visitCode();
+                    emitInfoFill(mv, classNameHolder[0]);
+                    mv.visitInsn(org.objectweb.asm.Opcodes.RETURN);
+                    mv.visitMaxs(1, 0);
+                    mv.visitEnd();
+                }
+                super.visitEnd();
+            }
         };
         reader.accept(visitor, org.objectweb.asm.ClassReader.EXPAND_FRAMES);
         return writer.toByteArray();
+    }
+
+    /** Fills null entries of a game's static info array with empty strings.
+     *  Called from bytecode injected into Dash's {@code GameCanvas} static
+     *  initializer (see {@link #rewriteSjisInClass}); null-safe so it cannot
+     *  break classes of other games that reuse these field names. */
+    public static void fillNullStrings(String[] values) {
+        if (values == null) {
+            return;
+        }
+        for (int i = 0; i < values.length; i++) {
+            if (values[i] == null) {
+                values[i] = "";
+            }
+        }
+    }
+
+    /** Appends default info-string initialization to the tail of Dash's
+     *  {@code GameCanvas} static initializer. The arrays are allocated by the
+     *  original {@code <clinit>}, but their elements are only filled from
+     *  network data; with the network unavailable the null elements make
+     *  {@code DrawOption} throw NPE on {@code US_INFO[3].equals("1")} and
+     *  {@code DrawMain} turns that into the "communication error" screen that
+     *  closes the game. */
+    static final class GameCanvasInfoFillMV extends org.objectweb.asm.MethodVisitor {
+        private final String owner;
+        private boolean injected;
+
+        GameCanvasInfoFillMV(int api, org.objectweb.asm.MethodVisitor mv, String owner) {
+            super(api, mv);
+            this.owner = owner;
+        }
+
+        @Override
+        public void visitInsn(int opcode) {
+            if (!injected && opcode == org.objectweb.asm.Opcodes.RETURN) {
+                injected = true;
+                emitInfoFill(this, owner);
+            }
+            super.visitInsn(opcode);
+        }
+    }
+
+    private static void emitInfoFill(org.objectweb.asm.MethodVisitor mv, String owner) {
+        mv.visitFieldInsn(org.objectweb.asm.Opcodes.GETSTATIC, owner, "US_INFO", "[Ljava/lang/String;");
+        mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESTATIC, "opendoja/android/JamDexHost",
+                "fillNullStrings", "([Ljava/lang/String;)V", false);
+        mv.visitFieldInsn(org.objectweb.asm.Opcodes.GETSTATIC, owner, "NN_INFO", "[Ljava/lang/String;");
+        mv.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESTATIC, "opendoja/android/JamDexHost",
+                "fillNullStrings", "([Ljava/lang/String;)V", false);
     }
 
     /** Guards {@code GameScreen.d(int,int)} against an out-of-range first argument. */

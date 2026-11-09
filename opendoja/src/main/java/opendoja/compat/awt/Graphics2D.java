@@ -379,7 +379,18 @@ public class Graphics2D extends opendoja.compat.awt.Graphics {
         }
         canvas.drawRect(x, y, x + w, y + h, p);
         if (probeCount < 3) {
-            int px = target.getBitmap().getPixel(x, y);
+            // Diagnostic only: sample the destination pixel to show what was painted.
+            // The rectangle may be partly or wholly outside the surface (games rely on
+            // clipping, e.g. a building bar scrolling off-screen), and Bitmap.getPixel
+            // throws for out-of-range coordinates, so clamp the sample point to the
+            // bitmap instead of letting the probe abort the game's draw call.
+            android.graphics.Bitmap sampledBitmap = target == null ? null : target.getBitmap();
+            int px = 0;
+            if (sampledBitmap != null && sampledBitmap.getWidth() > 0 && sampledBitmap.getHeight() > 0) {
+                int sampleX = Math.max(0, Math.min(x, sampledBitmap.getWidth() - 1));
+                int sampleY = Math.max(0, Math.min(y, sampledBitmap.getHeight() - 1));
+                px = sampledBitmap.getPixel(sampleX, sampleY);
+            }
             android.graphics.Matrix m = new android.graphics.Matrix();
             canvas.getMatrix(m);
             float[] mv = new float[9];
@@ -389,7 +400,7 @@ public class Graphics2D extends opendoja.compat.awt.Graphics {
                     + " px=" + Integer.toHexString(px)
                     + " clip=" + clipDevice
                     + " mat=" + java.util.Arrays.toString(mv)
-                    + " target=" + System.identityHashCode(target.getBitmap()));
+                    + " target=" + (sampledBitmap == null ? 0 : System.identityHashCode(sampledBitmap)));
             probeCount++;
         }
     }

@@ -524,6 +524,9 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
                 try {
                     // exitOnShutdown is false for jam launches, so this never System.exit()s.
                     shutdownRuntime.shutdown();
+                } catch (opendoja.host.GameTerminatedException normalExit) {
+                    // shutdown() uses this Throwable to unwind the application thread. In a
+                    // host-initiated stop there is no app frame to unwind, so it is expected.
                 } catch (Throwable throwable) {
                     OpenDoJaLog.error(EntryActivity.class, "runtime shutdown failed", throwable);
                 } finally {
