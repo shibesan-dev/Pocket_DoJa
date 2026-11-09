@@ -59,7 +59,7 @@ public class EntryActivity extends Activity {
     // one process corrupt the game's shared static state). reset in stopGame()
     // so the next manual launch starts a fresh thread.
     private static volatile boolean launched;
-    private static volatile Thread gameThread;
+private static volatile Thread gameThread;
     private static volatile int activeLaunchSession = 0;
     private static volatile int cancelledLaunchSession = 0;
     private static final ThreadLocal<Integer> threadSession = new ThreadLocal<>();
@@ -73,8 +73,11 @@ public class EntryActivity extends Activity {
     private static volatile int presentedFrameCount = 0;
     public static volatile boolean hasUserInteracted = false;
     public static volatile boolean gameReady = false;
+    private static volatile Thread exitThread;
     private boolean gameStopped;
     private android.app.AlertDialog gameMenu;
+    private static final java.util.concurrent.CountDownLatch exitLatch = new java.util.concurrent.CountDownLatch(1);
+    private static volatile boolean exitInProgress = false;
     // Audio-handle generation of the game launched by this activity; exit
     // cleanup may only release handles up to this generation.
     private volatile long audioGeneration;
@@ -351,14 +354,28 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
             }
         }
         showExitingOverlay();
-        new Thread(() -> {
-            stopGame();
+        // Run stopGame synchronously to ensure full cleanup before next launch
+        Thread t = new Thread(() -> {
+            try {
+                stopGame();
+            } finally {
+                exitThread = null;
+            }
             runOnUiThread(() -> {
                 if (!isFinishing()) {
                     finish();
                 }
             });
-        }, "jam-exit").start();
+        }, "jam-exit");
+        exitThread = t;
+        t.setDaemon(true);
+        t.start();
+        // Wait for exit to complete to prevent race with next launch
+        try {
+            t.join(3000L);
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     public void hideLoadingOverlay() {
@@ -695,6 +712,19 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
     }
 
     private void launchGame() {
+        // Wait for any previous game exit to fully complete before starting new game.
+        // This prevents audio leaks and frozen frames from race conditions during
+        // quick exit/launch sequences.
+        Thread prevExit = exitThread;
+        if (prevExit != null && prevExit.isAlive()) {
+            opendoja.host.OpenDoJaLog.info(EntryActivity.class, "launchGame: waiting for previous exit to complete");
+            try {
+                prevExit.join(3000L);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
         HomeActivity.bgmSuppressed = true;
         HomeActivity.stopBgmStatic();
         HomeActivity.gameRunning = true;

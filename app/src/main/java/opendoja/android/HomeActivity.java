@@ -14,6 +14,7 @@ import android.os.Build;
 import android.util.Log;
 import android.view.Gravity;
 import android.content.ContentResolver;
+import android.content.res.AssetFileDescriptor;
 import android.content.res.ColorStateList;
 import android.database.Cursor;
 import android.graphics.Bitmap;
@@ -23,11 +24,14 @@ import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
+import android.media.AudioAttributes;
+import android.media.SoundPool;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.DocumentsContract;
@@ -37,6 +41,7 @@ import android.widget.EditText;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -111,6 +116,20 @@ public class HomeActivity extends Activity {
     private android.os.Handler mascotHandler;
     private Runnable mascotRunnable;
 
+    private static final String HOME_PREFS = "home";
+    private static final String KEY_LAST_GAME = "lastGamePath";
+    private static final long NAV_DUPLICATE_DOWN_MS = 60L;
+
+    private ScrollView gameScrollView;
+    private final List<GameEntry> currentGames = new ArrayList<>();
+    private final Map<String, View> gameItemViews = new LinkedHashMap<>();
+    private String selectedGamePath;
+    private long lastNavDownTime = 0L;
+    private int lastNavDownKey = 0;
+    private SoundPool navSoundPool;
+    private int navSoundId = 0;
+    private boolean navSoundReady = false;
+
     public static HomeActivity instance;
     public static volatile boolean bgmSuppressed = false;
 
@@ -178,10 +197,18 @@ public class HomeActivity extends Activity {
         gridContainer = new LinearLayout(this);
         gridContainer.setOrientation(LinearLayout.VERTICAL);
         gridContainer.setPadding(0, dp(8), 0, 0);
+        gridContainer.setFocusable(true);
+        gridContainer.setFocusableInTouchMode(true);
+        gridContainer.setDescendantFocusability(android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS);
         content.addView(gridContainer, matchWrap());
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
+        // Keep the ScrollView out of the focus chain so DPad events are handled
+        // by the activity instead of being consumed as scrolling.
+        scroll.setFocusable(false);
+        scroll.setFocusableInTouchMode(false);
+        gameScrollView = scroll;
         scroll.addView(content, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
         root.addView(scroll, new FrameLayout.LayoutParams(
@@ -196,6 +223,7 @@ public class HomeActivity extends Activity {
 
         // icon picker registered via startActivityForResult (see onActivityResult)
         setContentView(root);
+        initNavSound();
     }
 
     @Override
@@ -299,6 +327,7 @@ public class HomeActivity extends Activity {
             timeTimer.cancel();
             timeTimer = null;
         }
+        releaseNavSound();
         super.onDestroy();
     }
 
@@ -318,18 +347,23 @@ public class HomeActivity extends Activity {
         titleView.setEllipsize(TextUtils.TruncateAt.END);
         titleView.setGravity(Gravity.CENTER_VERTICAL);
         titleView.setPadding(dp(16), 0, dp(8), 0);
-        bar.addView(titleView, new LinearLayout.LayoutParams(0,
-                LinearLayout.LayoutParams.MATCH_PARENT, 1f));
+        bar.addView(titleView, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT));
 
         int indicatorSize = dp(33);
         int mascotSize = dp(48);
 
-        // Mascot icon (right of title, before time) - animated WebP based on battery
+        // Mascot icon immediately after the title, before the flexible spacer.
         mascotIcon = new ImageView(this);
         mascotIcon.setLayoutParams(new LinearLayout.LayoutParams(mascotSize, mascotSize));
         mascotIcon.setScaleType(ImageView.ScaleType.FIT_CENTER);
         mascotIcon.setPadding(dp(8), 0, dp(8), 0);
         bar.addView(mascotIcon);
+
+        // Push the clock and status indicators to the right edge.
+        View titleSpacer = new View(this);
+        bar.addView(titleSpacer, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.MATCH_PARENT, 1f));
 
         // Digital time before WiFi
         timeView = new TextView(this);
@@ -936,6 +970,13 @@ public class HomeActivity extends Activity {
                     (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
             if (imm != null) {
                 imm.hideSoftInputFromWindow(searchBox.getWindowToken(), 0);
+            }
+            if (gridContainer != null) {
+                gridContainer.post(() -> {
+                    if (searchBox.getVisibility() != View.VISIBLE) {
+                        gridContainer.requestFocus();
+                    }
+                });
             }
         } else {
             searchBox.setVisibility(View.VISIBLE);
@@ -1642,14 +1683,19 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         return baos.toByteArray();
     }
     private void populateGrid(List<GameEntry> games) {
+        String previousSelection = selectedGamePath;
         gridContainer.removeAllViews();
+        currentGames.clear();
+        gameItemViews.clear();
         if (games.isEmpty()) {
+            selectedGamePath = null;
             emptyView.setVisibility(View.VISIBLE);
             gridContainer.setVisibility(View.GONE);
             return;
         }
         emptyView.setVisibility(View.GONE);
         gridContainer.setVisibility(View.VISIBLE);
+        currentGames.addAll(games);
 
         if (isGridView()) {
             int marginPx = dp(5);
@@ -1666,20 +1712,42 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
                 }
                 LinearLayout.LayoutParams cellParams = new LinearLayout.LayoutParams(cellSize, iconSizePx + dp(56));
                 cellParams.setMargins(marginPx, marginPx, marginPx, marginPx);
-                LinearLayout cell = createGameCell(games.get(i));
+                GameEntry game = games.get(i);
+                LinearLayout cell = createGameCell(game);
                 cell.setLayoutParams(cellParams);
                 row.addView(cell);
+                gameItemViews.put(game.jam.getAbsolutePath(), cell);
             }
         } else {
             for (int i = 0; i < games.size(); i++) {
-                LinearLayout row = createGameListRow(games.get(i), i + 1);
+                GameEntry game = games.get(i);
+                LinearLayout row = createGameListRow(game, i + 1);
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
                 lp.setMargins(0, 0, 0, dp(8));
                 row.setLayoutParams(lp);
                 gridContainer.addView(row);
+                gameItemViews.put(game.jam.getAbsolutePath(), row);
             }
         }
+
+        // Restore by path (never by list index/object identity): the previous
+        // selection, then the last launched game, then the first game.
+        String restore = previousSelection;
+        if (restore == null || !gameItemViews.containsKey(restore)) {
+            restore = getSharedPreferences(HOME_PREFS, MODE_PRIVATE).getString(KEY_LAST_GAME, null);
+        }
+        if (restore == null || !gameItemViews.containsKey(restore)) {
+            restore = games.get(0).jam.getAbsolutePath();
+        }
+        selectedGamePath = restore;
+        updateGameHighlight();
+        gridContainer.post(() -> {
+            if (searchBox == null || searchBox.getVisibility() != View.VISIBLE) {
+                gridContainer.requestFocus();
+            }
+            ensureSelectedGameVisible();
+        });
     }
 
     private LinearLayout createGameListRow(GameEntry game, int index) {
@@ -1722,7 +1790,10 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         size.setTextSize(12f);
         row.addView(size);
 
-        row.setOnClickListener(v -> launchJam(game.jam));
+        row.setTag(game.jam.getAbsolutePath());
+        row.setClickable(true);
+        row.setFocusable(false);
+        row.setOnClickListener(v -> onGameTapped(game));
         row.setOnLongClickListener(v -> {
             showGameOptions(game);
             return true;
@@ -2028,15 +2099,13 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         cell.setGravity(Gravity.CENTER_HORIZONTAL);
         cell.setPadding(dp(6), dp(10), dp(6), dp(10));
         cell.setClickable(true);
-        cell.setFocusable(true);
+        cell.setFocusable(false);
 
         GradientDrawable tile = new GradientDrawable();
         tile.setColor(themeSurfaceColor());
         tile.setCornerRadius(dp(10));
         tile.setStroke(dp(1), 0xFF2A2E36);
         cell.setBackground(tile);
-        cell.setForeground(new RippleDrawable(
-                ColorStateList.valueOf(0x33FFFFFF), null, tile));
 
         ImageView icon = new ImageView(this);
         icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -2059,7 +2128,8 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         nameParams.topMargin = dp(6);
         cell.addView(name, nameParams);
 
-        cell.setOnClickListener(v -> launchJam(game.jam));
+        cell.setTag(game.jam.getAbsolutePath());
+        cell.setOnClickListener(v -> onGameTapped(game));
         cell.setOnLongClickListener(v -> {
             showGameOptions(game);
             return true;
@@ -2068,6 +2138,249 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         cellLp.setMargins(dp(5), dp(5), dp(5), dp(5));
         cell.setLayoutParams(cellLp);
         return cell;
+    }
+
+    // ------------------------------------------------------------------
+    // Home-screen game navigation (touch + DPad/controller)
+    // ------------------------------------------------------------------
+    private void onGameTapped(GameEntry game) {
+        String path = game.jam.getAbsolutePath();
+        if (path.equals(selectedGamePath)) {
+            launchJam(game.jam);
+            return;
+        }
+        selectedGamePath = path;
+        updateGameHighlight();
+        ensureSelectedGameVisible();
+        if (gridContainer != null) {
+            gridContainer.requestFocus();
+        }
+    }
+
+    private void updateGameHighlight() {
+        for (Map.Entry<String, View> entry : gameItemViews.entrySet()) {
+            applyGameItemBackground(entry.getValue(), entry.getKey().equals(selectedGamePath));
+        }
+    }
+
+    private void applyGameItemBackground(View item, boolean selected) {
+        if (item == null) {
+            return;
+        }
+        // List rows are direct children of the grid container; grid cells are
+        // children of a per-row LinearLayout.
+        boolean listStyle = item.getParent() == gridContainer;
+        GradientDrawable tile = new GradientDrawable();
+        tile.setColor(themeSurfaceColor());
+        tile.setCornerRadius(dp(listStyle ? 8 : 10));
+        tile.setStroke(dp(selected ? 4 : 1), selected ? 0xFFFFD600 : 0xFF2A2E36);
+        item.setBackground(tile);
+    }
+
+    private void ensureSelectedGameVisible() {
+        if (gameScrollView == null || selectedGamePath == null) {
+            return;
+        }
+        View target = gameItemViews.get(selectedGamePath);
+        if (target == null || target.getWidth() == 0) {
+            return;
+        }
+        Rect rect = new Rect();
+        gameScrollView.offsetDescendantRectToMyCoords(target, rect);
+        int topBound = dp(56) + dp(8);
+        int bottomBound = gameScrollView.getHeight() - dp(8);
+        int delta = 0;
+        if (rect.top < topBound) {
+            delta = rect.top - topBound;
+        } else if (rect.bottom > bottomBound) {
+            delta = rect.bottom - bottomBound;
+        }
+        if (delta != 0) {
+            gameScrollView.smoothScrollBy(0, delta);
+        }
+    }
+
+    private void moveSelection(int dx, int dy) {
+        if (currentGames.isEmpty()) {
+            return;
+        }
+        int index = indexOfGame(selectedGamePath);
+        if (index < 0) {
+            index = 0;
+        }
+        int count = currentGames.size();
+        int next = index;
+        if (isGridView()) {
+            int column = index % columns;
+            if (dx < 0) {
+                if (column > 0) {
+                    next = index - 1;
+                }
+            } else if (dx > 0) {
+                if (column < columns - 1 && index + 1 < count) {
+                    next = index + 1;
+                }
+            }
+            if (dy < 0) {
+                if (index - columns >= 0) {
+                    next = index - columns;
+                }
+            } else if (dy > 0 && index + columns < count) {
+                next = index + columns;
+            }
+        } else if (dy != 0) {
+            next = Math.max(0, Math.min(count - 1, index + dy));
+        }
+        if (next == index) {
+            ensureSelectedGameVisible();
+            return;
+        }
+        selectedGamePath = currentGames.get(next).jam.getAbsolutePath();
+        updateGameHighlight();
+        ensureSelectedGameVisible();
+        playNavSound();
+    }
+
+    private int indexOfGame(String path) {
+        if (path == null) {
+            return -1;
+        }
+        for (int i = 0; i < currentGames.size(); i++) {
+            if (path.equals(currentGames.get(i).jam.getAbsolutePath())) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private void launchSelectedGame() {
+        if (selectedGamePath == null) {
+            return;
+        }
+        for (GameEntry game : currentGames) {
+            if (selectedGamePath.equals(game.jam.getAbsolutePath())) {
+                launchJam(game.jam);
+                return;
+            }
+        }
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event == null) {
+            return super.dispatchKeyEvent(event);
+        }
+        int keyCode = event.getKeyCode();
+        if (!isGameNavigationKey(keyCode)) {
+            return super.dispatchKeyEvent(event);
+        }
+        // Let the search field keep typing/cursor movement while it is open.
+        if (searchBox != null && searchBox.getVisibility() == View.VISIBLE && searchBox.hasFocus()) {
+            return super.dispatchKeyEvent(event);
+        }
+        if (menuPopup != null && menuPopup.isShowing()) {
+            return super.dispatchKeyEvent(event);
+        }
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            boolean repeating = event.getRepeatCount() > 0;
+            long eventTime = event.getEventTime();
+            if (!repeating) {
+                if (keyCode == lastNavDownKey && eventTime - lastNavDownTime < NAV_DUPLICATE_DOWN_MS) {
+                    return true;
+                }
+                lastNavDownKey = keyCode;
+                lastNavDownTime = eventTime;
+            }
+            if (isGameMovementKey(keyCode)) {
+                switch (keyCode) {
+                    case KeyEvent.KEYCODE_DPAD_UP:
+                        moveSelection(0, -1);
+                        break;
+                    case KeyEvent.KEYCODE_DPAD_DOWN:
+                        moveSelection(0, 1);
+                        break;
+                    case KeyEvent.KEYCODE_DPAD_LEFT:
+                        moveSelection(-1, 0);
+                        break;
+                    case KeyEvent.KEYCODE_DPAD_RIGHT:
+                        moveSelection(1, 0);
+                        break;
+                    default:
+                        break;
+                }
+            } else if (!repeating) {
+                launchSelectedGame();
+            }
+        }
+        // Consume both DOWN and UP so neither the ScrollView nor a focused
+        // view can act on the same key press.
+        return true;
+    }
+
+    private static boolean isGameMovementKey(int keyCode) {
+        return keyCode == KeyEvent.KEYCODE_DPAD_UP
+                || keyCode == KeyEvent.KEYCODE_DPAD_DOWN
+                || keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT;
+    }
+
+    private static boolean isGameNavigationKey(int keyCode) {
+        return isGameMovementKey(keyCode)
+                || keyCode == KeyEvent.KEYCODE_DPAD_CENTER
+                || keyCode == KeyEvent.KEYCODE_ENTER
+                || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
+                || keyCode == KeyEvent.KEYCODE_BUTTON_A;
+    }
+
+    private void initNavSound() {
+        if (navSoundPool != null) {
+            return;
+        }
+        try {
+            AudioAttributes attributes = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_GAME)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build();
+            navSoundPool = new SoundPool.Builder()
+                    .setMaxStreams(2)
+                    .setAudioAttributes(attributes)
+                    .build();
+            navSoundPool.setOnLoadCompleteListener((pool, sampleId, status) -> {
+                navSoundId = sampleId;
+                navSoundReady = status == 0;
+            });
+            AssetFileDescriptor descriptor = getAssets().openFd("nav.mp3");
+            try {
+                navSoundPool.load(descriptor, 1);
+            } finally {
+                descriptor.close();
+            }
+        } catch (Exception exception) {
+            opendoja.host.OpenDoJaLog.warn(HomeActivity.class, "navigation sound unavailable", exception);
+            releaseNavSound();
+        }
+    }
+
+    private void playNavSound() {
+        if (!navSoundReady || navSoundPool == null || navSoundId == 0) {
+            return;
+        }
+        try {
+            navSoundPool.play(navSoundId, 0.5f, 0.5f, 1, 0, 1f);
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    private void releaseNavSound() {
+        navSoundReady = false;
+        navSoundId = 0;
+        if (navSoundPool != null) {
+            try {
+                navSoundPool.release();
+            } catch (RuntimeException ignored) {
+            }
+            navSoundPool = null;
+        }
     }
 
     private static LinearLayout.LayoutParams matchWrap() {
@@ -2129,8 +2442,15 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
     }
 
     private void launchJam(File jam) {
+        if (jam == null) {
+            return;
+        }
+        String path = jam.getAbsolutePath();
+        selectedGamePath = path;
+        getSharedPreferences(HOME_PREFS, MODE_PRIVATE).edit()
+                .putString(KEY_LAST_GAME, path).apply();
         Intent intent = new Intent(this, EntryActivity.class);
-        intent.putExtra("jamPath", jam.getAbsolutePath());
+        intent.putExtra("jamPath", path);
         startActivity(intent);
     }
 
