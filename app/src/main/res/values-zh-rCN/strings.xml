@@ -3,11 +3,15 @@
     <string name="title_pocket_doja">Pocket DoJa</string>
     <string name="no_installed_games">没有已安装的游戏\n请使用右上角菜单导入 .JAM</string>
     <string name="search">搜索</string>
-    <string name="about_title">关于 Pocket DoJa v1.1.0</string>
     <string name="about_body">Pocket DoJa 是一个基于 OpenDoJa 的 Android 模拟器项目，致力于探索与保存经典 NTT DoCoMo i-mode Java 游戏的体验。</string>
     <string name="paypal_label">PayPal: </string>
     <string name="wallet_label">钱包地址: </string>
-    <string name="footer_donations">\n捐赠完全自愿，用于支持持续开发与保存工作。\n\n感谢您对 Pocket DoJa 的关注！\n\n</string>
+    <string name="footer_donations">
+捐赠完全自愿，用于支持持续开发与保存工作。
+
+感谢您对 Pocket DoJa 的关注！
+
+</string>
     <string name="copied">已复制</string>
     <string name="about">关于</string>
     <string name="invalid_image">无效图片</string>
@@ -86,7 +90,8 @@
     <string name="theme">主题</string>
     <string name="no_track_selected">未选择音轨</string>
     <string name="default_builtin">默认 (内置)</string>
-    <string name="select_audio">选择音频文件 (.mp3/.ogg)</string>
+    <string name="select_audio">选择音频文件 (.mp3/.ogg/.mld)</string>
+    <string name="invalid_mld">MLD 文件无效或不受支持</string>
     <string name="no_bgm">无背景音乐</string>
     <string name="bgm">背景音乐</string>
     <string name="default_bgm">默认背景音乐</string>

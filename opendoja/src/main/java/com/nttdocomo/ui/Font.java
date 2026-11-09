@@ -175,6 +175,23 @@ public class Font {
     }
 
     /**
+     * Host-side session reset: clears font statics that persist across game
+     * sessions within the same emulator process. A previous game's
+     * {@link #setDefaultFont(Font)} call or lazily cached default/family state
+     * must never leak into the next game, otherwise the next title renders with
+     * the wrong typeface or size on second launch.
+     */
+    public static void resetSessionState() {
+        synchronized (Font.class) {
+            defaultFont = null;
+            defaultFontLogicalSize = 0;
+            defaultFontCustomized = false;
+            availableFamilies = null;
+        }
+        _BitmapFont.clearRenderCache();
+    }
+
+    /**
      * Gets the font object specified by the argument.
      * The font can be specified either by a type or by the bitwise OR of face,
      * style, and size constants.

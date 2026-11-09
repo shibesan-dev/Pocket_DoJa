@@ -3,11 +3,15 @@
     <string name="title_pocket_doja">Pocket DoJa</string>
     <string name="no_installed_games">ไม่มีเกมที่ติดตั้ง\nใช้เมนูด้านขวาบนเพื่อนำเข้า .JAM</string>
     <string name="search">ค้นหา</string>
-    <string name="about_title">เกี่ยวกับ Pocket DoJa v1.1.0</string>
     <string name="about_body">Pocket DoJa เป็นโปรเจกต์อีมูเลเตอร์บน Android ที่อิงจาก OpenDoJa เพื่อสำรวจและรักษาประสบการณ์ของเกม Java i-mode คลาสสิกของ NTT DoCoMo</string>
     <string name="paypal_label">PayPal: </string>
     <string name="wallet_label">ที่อยู่กระเป๋า: </string>
-    <string name="footer_donations">\nการบริจาคเป็นความสมัครใจและช่วยสนับสนุนการพัฒนาและการรักษาต่อไป\n\nขอบคุณที่สนใจ Pocket DoJa!\n\n</string>
+    <string name="footer_donations">
+การบริจาคเป็นความสมัครใจและช่วยสนับสนุนการพัฒนาและการรักษาต่อไป
+
+ขอบคุณที่สนใจ Pocket DoJa!
+
+</string>
     <string name="copied">คัดลอกแล้ว</string>
     <string name="about">เกี่ยวกับ</string>
     <string name="invalid_image">รูปภาพไม่ถูกต้อง</string>
@@ -90,7 +94,8 @@
     <string name="theme">ธีม</string>
     <string name="no_track_selected">ไม่ได้เลือกเพลง</string>
     <string name="default_builtin">ค่าเริ่มต้น (ในตัว)</string>
-    <string name="select_audio">เลือกไฟล์เสียง (.mp3/.ogg)</string>
+    <string name="select_audio">เลือกไฟล์เสียง (.mp3/.ogg/.mld)</string>
+    <string name="invalid_mld">ไฟล์ MLD ไม่ถูกต้องหรือไม่รองรับ</string>
     <string name="no_bgm">ไม่มีเพลงพื้นหลัง</string>
     <string name="bgm">เพลงพื้นหลัง</string>
     <string name="default_bgm">เพลงพื้นหลังเริ่มต้น</string>

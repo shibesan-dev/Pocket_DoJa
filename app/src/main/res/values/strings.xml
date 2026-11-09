@@ -1,13 +1,18 @@
 <resources>
+<!--  Unused strings/dead -->>  
     <string name="app_name">Pocket DoJa</string>
     <string name="title_pocket_doja">Pocket DoJa</string>
     <string name="no_installed_games">No installed games\nUse the top-right menu to Import .JAM</string>
     <string name="search">Search</string>
-    <string name="about_title">About Pocket DoJa v1.1.0</string>
     <string name="about_body">Pocket DoJa is an Android-based emulator project based on OpenDoJa, dedicated to exploring and preserving the experience of classic NTT DoCoMo i-mode Java games.</string>
     <string name="paypal_label">PayPal: </string>
     <string name="wallet_label">Wallet address: </string>
-    <string name="footer_donations">\nDonations are entirely optional and help support ongoing development and preservation efforts.\n\nThank you for your interest in Pocket DoJa!\n\n</string>
+    <string name="footer_donations">
+Donations are entirely optional and help support ongoing development and preservation efforts.
+
+Thank you for your interest in Pocket DoJa!
+
+</string>
     <string name="copied">Copied</string>
     <string name="about">About</string>
     <string name="invalid_image">Invalid image</string>
@@ -86,7 +91,8 @@
     <string name="theme">Theme</string>
     <string name="no_track_selected">No track selected</string>
     <string name="default_builtin">Default (built-in)</string>
-    <string name="select_audio">Select Audio File (.mp3/.ogg)</string>
+    <string name="select_audio">Select Audio File (.mp3/.ogg/.mld)</string>
+    <string name="invalid_mld">Invalid or unsupported MLD file</string>
     <string name="no_bgm">No BGM</string>
     <string name="bgm">BGM</string>
     <string name="default_bgm">Default BGM</string>

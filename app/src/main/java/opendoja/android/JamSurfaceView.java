@@ -87,10 +87,8 @@ public class JamSurfaceView extends View {
     private final Paint keyTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private Bitmap upscaleBitmap;
-    private int[] upPixels;
-    private int[] upSrcPixels;
-    private int[] upColSrc;
-    private int[] upRowSrc;
+    private Canvas upscaleCanvas;
+    private Paint upscalePaint;
     private int upSrcWidth;
     private int upSrcHeight;
     private int upscaledVersion = -1;
@@ -313,10 +311,7 @@ try {
         screenVersion = 0;
         pixels = null;
         upscaleBitmap = null;
-        upPixels = null;
-        upSrcPixels = null;
-        upColSrc = null;
-        upRowSrc = null;
+        upscaleCanvas = null;
         upSrcWidth = 0;
         upSrcHeight = 0;
         upscaledVersion = -1;
@@ -429,7 +424,20 @@ try {
             float vbW = 400f, vbH = 800f;
             float sx = viewWidth / vbW;
             float sy = viewHeight / vbH;
-            gameRect.set(42f * sx, 112f * sy, (42f + 316f) * sx, (112f + 422f) * sy);
+            // Fit the game at its own aspect ratio inside the skin's screen aperture
+            // instead of stretching it to the fixed 316x422 viewBox rect. Stretching
+            // distorts glyphs for games whose aspect differs from 3:4 and also
+            // amplifies fractional-scale unevenness on high-DPI phones.
+            float apertureLeft = 42f * sx;
+            float apertureTop = 112f * sy;
+            float apertureW = 316f * sx;
+            float apertureH = 422f * sy;
+            float scale = Math.min(apertureW / gameW, apertureH / gameH);
+            float dstW = gameW * scale;
+            float dstH = gameH * scale;
+            float fitLeft = apertureLeft + (apertureW - dstW) / 2f;
+            float fitTop = apertureTop + (apertureH - dstH) / 2f;
+            gameRect.set(fitLeft, fitTop, fitLeft + dstW, fitTop + dstH);
             gamePixelW = gameW;
             gamePixelH = gameH;
             if (fullScreen) gameRect.set(0f, 0f, viewWidth, viewHeight);
@@ -543,7 +551,17 @@ try {
             float vbW = 800f, vbH = 400f;
             float sx = viewWidth / vbW;
             float sy = viewHeight / vbH;
-            gameRect.set(48f * sx, 42f * sy, (48f + 422f) * sx, (42f + 316f) * sy);
+            // Aspect-fit inside the skin aperture (same reasoning as portrait).
+            float apertureLeft = 48f * sx;
+            float apertureTop = 42f * sy;
+            float apertureW = 422f * sx;
+            float apertureH = 316f * sy;
+            float scale = Math.min(apertureW / gameW, apertureH / gameH);
+            float dstW = gameW * scale;
+            float dstH = gameH * scale;
+            float fitLeft = apertureLeft + (apertureW - dstW) / 2f;
+            float fitTop = apertureTop + (apertureH - dstH) / 2f;
+            gameRect.set(fitLeft, fitTop, fitLeft + dstW, fitTop + dstH);
             gamePixelW = gameW;
             gamePixelH = gameH;
             if (fullScreen) gameRect.set(0f, 0f, viewWidth, viewHeight);
@@ -729,32 +747,27 @@ try {
                 || scaled.getHeight() != dstHeight || upSrcWidth != srcWidth || upSrcHeight != srcHeight) {
             scaled = Bitmap.createBitmap(dstWidth, dstHeight, Bitmap.Config.ARGB_8888);
             upscaleBitmap = scaled;
-            upPixels = new int[dstWidth * dstHeight];
-            upSrcPixels = new int[srcWidth * srcHeight];
-            upColSrc = new int[dstWidth];
-            for (int x = 0; x < dstWidth; x++) upColSrc[x] = (int) ((long) x * srcWidth / dstWidth);
-            upRowSrc = new int[dstHeight];
-            for (int y = 0; y < dstHeight; y++) upRowSrc[y] = (int) ((long) y * srcHeight / dstHeight);
+            upscaleCanvas = new Canvas(scaled);
+            if (upscalePaint == null) {
+                upscalePaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+                upscalePaint.setDither(true);
+            }
             upSrcWidth = srcWidth;
             upSrcHeight = srcHeight;
             upscaledVersion = -1;
         }
         if (upscaledVersion != sourceVersion) {
-            bmp.getPixels(upSrcPixels, 0, srcWidth, 0, 0, srcWidth, srcHeight);
+            // Bilinear-filtered upscale: at fractional scale factors (typical on high-DPI
+            // portrait phones) nearest-neighbor sampling makes glyph strokes uneven, which
+            // reads as clumped/broken text. Native filtered scaling keeps text even and
+            // readable at any size on any device.
             if (dstWidth == srcWidth && dstHeight == srcHeight) {
-                System.arraycopy(upSrcPixels, 0, upPixels, 0, srcWidth * srcHeight);
+                upscaleCanvas.drawBitmap(bmp, 0f, 0f, upscalePaint);
             } else {
-                int dstRow = 0;
-                for (int y = 0; y < dstHeight; y++) {
-                    int srcRow = upRowSrc[y] * srcWidth;
-                    int out = dstRow;
-                    for (int x = 0; x < dstWidth; x++) {
-                        upPixels[out++] = upSrcPixels[srcRow + upColSrc[x]];
-                    }
-                    dstRow += dstWidth;
-                }
+                android.graphics.Rect src = new android.graphics.Rect(0, 0, srcWidth, srcHeight);
+                android.graphics.Rect dst = new android.graphics.Rect(0, 0, dstWidth, dstHeight);
+                upscaleCanvas.drawBitmap(bmp, src, dst, upscalePaint);
             }
-            scaled.setPixels(upPixels, 0, dstWidth, 0, 0, dstWidth, dstHeight);
             upscaledVersion = sourceVersion;
         }
         canvas.drawBitmap(scaled, dstLeft, dstTop, null);

@@ -109,7 +109,10 @@ public class HomeActivity extends Activity {
     private ImageView batteryIcon;
     private ImageView mascotIcon;
     private TextView searchButton;
+    private TextView viewToggleButton;
+    private TextView menuButton;
     private TextView timeView;
+    private float topBarScale = 1f;
     private BroadcastReceiver wifiReceiver;
     private BroadcastReceiver batteryReceiver;
     private java.util.Timer timeTimer;
@@ -231,6 +234,7 @@ public class HomeActivity extends Activity {
         super.onResume();
         applyDisplayOrientation(this);
         computeGridMetrics();
+        applyTopBarScale();
         refreshGames();
         if (glView != null) {
             android.view.ViewGroup parent = (android.view.ViewGroup) glView.getParent();
@@ -446,7 +450,7 @@ public class HomeActivity extends Activity {
         bar.addView(searchBox, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.MATCH_PARENT, 1f));
 
-        TextView viewToggleButton = new TextView(this);
+        viewToggleButton = new TextView(this);
         viewToggleButton.setText(isGridView() ? "\u25A6" : "\u2630");
         viewToggleButton.setTextSize(22f);
         viewToggleButton.setTextColor(themeTextColor());
@@ -462,7 +466,7 @@ public class HomeActivity extends Activity {
         bar.addView(viewToggleButton, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT));
 
-        TextView menuButton = new TextView(this);
+        menuButton = new TextView(this);
         menuButton.setText("...");
         menuButton.setTextSize(26f);
         menuButton.setTextColor(themeTextColor());
@@ -488,7 +492,67 @@ public class HomeActivity extends Activity {
         container.addView(bar, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, dp(56)));
         container.addView(divider, dividerParams);
+        applyTopBarScale();
         return container;
+    }
+
+    /**
+     * Recomputes the proportional scale from the live window width and applies
+     * it to every top bar element so the bar always fits the current
+     * orientation. The width is read from the window display rather than
+     * Resources.getDisplayMetrics(), which can stay frozen to the metrics
+     * captured when the LocaleHelper configuration context was created and
+     * therefore report stale values after an orientation change.
+     */
+    private void applyTopBarScale() {
+        DisplayMetrics dm = new DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getMetrics(dm);
+        float widthDp = dm.widthPixels / dm.density;
+        topBarScale = Math.min(1f, Math.max(0.55f, widthDp / 600f));
+        if (titleView != null) {
+            titleView.setTextSize(24f * topBarScale);
+            titleView.setPadding(scaledDp(16, topBarScale), 0, scaledDp(8, topBarScale), 0);
+        }
+        int indicatorSize = scaledDp(33, topBarScale);
+        int mascotSize = scaledDp(48, topBarScale);
+        if (mascotIcon != null) {
+            mascotIcon.setLayoutParams(new LinearLayout.LayoutParams(mascotSize, mascotSize));
+            mascotIcon.setPadding(scaledDp(8, topBarScale), 0, scaledDp(8, topBarScale), 0);
+        }
+        if (timeView != null) {
+            timeView.setTextSize(16f * topBarScale);
+            timeView.setPadding(scaledDp(4, topBarScale), 0, scaledDp(8, topBarScale), 0);
+        }
+        if (wifiIcon != null) {
+            wifiIcon.setLayoutParams(new LinearLayout.LayoutParams(indicatorSize, indicatorSize));
+            wifiIcon.setPadding(scaledDp(8, topBarScale), 0, scaledDp(4, topBarScale), 0);
+        }
+        if (batteryIcon != null) {
+            batteryIcon.setLayoutParams(new LinearLayout.LayoutParams(indicatorSize, indicatorSize));
+            batteryIcon.setPadding(scaledDp(8, topBarScale), 0, scaledDp(8, topBarScale), 0);
+        }
+        if (searchButton != null) {
+            searchButton.setTextSize(20f * topBarScale);
+            searchButton.setPadding(scaledDp(8, topBarScale), 0, scaledDp(8, topBarScale), 0);
+        }
+        if (viewToggleButton != null) {
+            viewToggleButton.setTextSize(22f * topBarScale);
+            viewToggleButton.setPadding(scaledDp(16, topBarScale), 0, scaledDp(8, topBarScale), 0);
+        }
+        if (menuButton != null) {
+            menuButton.setTextSize(26f * topBarScale);
+            menuButton.setPadding(scaledDp(16, topBarScale), 0, scaledDp(16, topBarScale), 0);
+        }
+        if (fixedTopBar instanceof FrameLayout) {
+            FrameLayout container = (FrameLayout) fixedTopBar;
+            if (container.getChildCount() > 0 && container.getChildAt(0) instanceof LinearLayout) {
+                LinearLayout bar = (LinearLayout) container.getChildAt(0);
+                bar.setPadding(0, 0, scaledDp(4, topBarScale), 0);
+            }
+        }
+        if (fixedTopBar != null) {
+            fixedTopBar.requestLayout();
+        }
     }
 
     private void applyTopBarGradient(View bar) {
@@ -1131,6 +1195,7 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         super.onConfigurationChanged(newConfig);
         applyDisplayOrientation(this);
         computeGridMetrics();
+        applyTopBarScale();
         iconCache.clear();
         if (gridContainer != null) {
             refreshGames();
@@ -1271,6 +1336,7 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         prefs.edit().putString("viewMode", grid ? "grid" : "list").apply();
     }
     private static android.media.MediaPlayer bgmPlayer;
+    private static MldBgmPlayer mldBgm;
     private static int bgmPosition = 0;
     private static boolean bgmPaused = false;
     private static String bgmCurrentPath = "";
@@ -1293,6 +1359,14 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         }
         bgmEnabled = true;
         String path = prefs.getString(ThemeActivity.KEY_BGM_PATH, "");
+        if (MldBgmPlayer.isMldPath(path)) {
+            playMldBgm(path);
+            return;
+        }
+        if (mldBgm != null) {
+            mldBgm.release();
+            mldBgm = null;
+        }
         if (bgmPlayer != null && !path.equals(bgmCurrentPath)) {
             releaseBgm();
         }
@@ -1316,6 +1390,41 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         createBgmPlayer(path);
         bgmCurrentPath = path;
         opendoja.host.OpenDoJaLog.info(HomeActivity.class, "playBgm: created new player");
+    }
+
+    private void playMldBgm(String path) {
+        if (bgmPlayer != null) {
+            releaseBgm();
+        }
+        if (mldBgm != null && !path.equals(bgmCurrentPath)) {
+            mldBgm.release();
+            mldBgm = null;
+        }
+        if (mldBgm != null) {
+            bgmPaused = false;
+            mldBgm.resume();
+            opendoja.host.OpenDoJaLog.info(HomeActivity.class, "playBgm: resumed MLD at " + bgmPosition);
+            return;
+        }
+        try {
+            java.io.File f = new java.io.File(path);
+            if (!f.exists() || !f.canRead()) {
+                createBgmPlayer("");
+                bgmCurrentPath = "";
+                return;
+            }
+            mldBgm = new MldBgmPlayer(f);
+            mldBgm.start(bgmPosition);
+            bgmPaused = false;
+            bgmCurrentPath = path;
+            opendoja.host.OpenDoJaLog.info(HomeActivity.class, "playBgm: created MLD player");
+        } catch (Exception e) {
+            opendoja.host.OpenDoJaLog.error(HomeActivity.class, "playBgm: MLD init failed", e);
+            try { if (mldBgm != null) mldBgm.release(); } catch (Exception ignored) {}
+            mldBgm = null;
+            createBgmPlayer("");
+            bgmCurrentPath = "";
+        }
     }
 
     private void createBgmPlayer(String path) {
@@ -1355,6 +1464,10 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
     }
 
     public static void stopBgmStatic() {
+        if (mldBgm != null) {
+            mldBgm.release();
+            mldBgm = null;
+        }
         if (bgmPlayer != null) {
             try {
                 bgmPlayer.stop();
@@ -1372,6 +1485,15 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
     }
 
     private void stopBgm() {
+        if (mldBgm != null) {
+            if (mldBgm.isPlaying()) {
+                bgmPosition = mldBgm.getCurrentTimeMillis();
+                mldBgm.pause();
+                bgmPaused = true;
+                opendoja.host.OpenDoJaLog.info(HomeActivity.class, "stopBgm: paused MLD at " + bgmPosition);
+            }
+            return;
+        }
         if (bgmPlayer != null) {
             try {
                 if (bgmPlayer.isPlaying()) {
@@ -1386,6 +1508,14 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
     }
 
     public static void pauseBgmStatic() {
+        if (mldBgm != null) {
+            if (mldBgm.isPlaying()) {
+                bgmPosition = mldBgm.getCurrentTimeMillis();
+                mldBgm.pause();
+                bgmPaused = true;
+            }
+            return;
+        }
         if (bgmPlayer != null) {
             try {
                 if (bgmPlayer.isPlaying()) {
@@ -1402,6 +1532,11 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         if (gameRunning) return;
         if (!bgmEnabled) {
             stopBgmStatic();
+            return;
+        }
+        if (mldBgm != null) {
+            mldBgm.resume();
+            bgmPaused = false;
             return;
         }
         if (bgmPlayer != null) {
@@ -1442,7 +1577,12 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         }
     }
     private void computeGridMetrics() {
-        DisplayMetrics dm = getResources().getDisplayMetrics();
+        // Read metrics from the live window display instead of Resources:
+        // the LocaleHelper configuration context can freeze Resources to the
+        // metrics captured at attach time, which reports stale width values
+        // after an orientation change and breaks grid reflow.
+        DisplayMetrics dm = new DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getMetrics(dm);
         float xdpi = dm.xdpi > 1f ? dm.xdpi : dm.densityDpi;
         columns = 5;
         float usable = dm.widthPixels - 24f * dm.density;
@@ -1699,7 +1839,10 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
 
         if (isGridView()) {
             int marginPx = dp(5);
-            int contentWidth = getResources().getDisplayMetrics().widthPixels - dp(48);
+            // Live display width; see computeGridMetrics for why Resources is avoided.
+            DisplayMetrics dm = new DisplayMetrics();
+            getWindowManager().getDefaultDisplay().getMetrics(dm);
+            int contentWidth = dm.widthPixels - dp(48);
             int cellSize = (contentWidth - (columns + 1) * marginPx) / columns;
             if (cellSize < dp(48)) cellSize = dp(48);
             LinearLayout row = null;
@@ -2397,6 +2540,11 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    /** dp value multiplied by the top bar's proportional scale factor. */
+    private int scaledDp(float value, float scale) {
+        return Math.round(value * scale * getResources().getDisplayMetrics().density);
     }
 
     private float dp(float value) {

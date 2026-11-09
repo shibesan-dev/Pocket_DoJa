@@ -319,6 +319,12 @@ public final class DoJaRuntime {
             Class.forName("com.nttdocomo.ui.IApplication").getMethod("clearCurrentApp").invoke(null);
         } catch (Throwable ignored) {
         }
+        try {
+            // Font statics (customized default font, cached default/family state,
+            // bitmap string raster cache) otherwise leak across game sessions.
+            com.nttdocomo.ui.Font.resetSessionState();
+        } catch (Throwable ignored) {
+        }
 
         everShutdown = false;
 

@@ -73,6 +73,13 @@ class _BitmapFont extends Font {
         return SUPPORTED_SIZES.clone();
     }
 
+    /** Clears the cross-session rasterized string cache; called on game session reset. */
+    static void clearRenderCache() {
+        synchronized (RENDER_CACHE) {
+            RENDER_CACHE.clear();
+        }
+    }
+
     @Override
     public int getAscent() {
         return strike.height();

@@ -16,9 +16,11 @@ import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class ThemeActivity extends Activity {
     @Override
@@ -154,7 +156,9 @@ public class ThemeActivity extends Activity {
         selectBgmButton.setOnClickListener(v -> {
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("audio/*");
+            intent.setType("*/*");
+            intent.putExtra(Intent.EXTRA_MIME_TYPES,
+                    new String[]{"audio/*", "application/octet-stream"});
             startActivityForResult(intent, 1);
         });
         root.addView(selectBgmButton, matchWrap());
@@ -222,13 +226,16 @@ public class ThemeActivity extends Activity {
             Uri uri = data.getData();
             String name = uri.getLastPathSegment();
             if (name == null) name = "track";
-            if (!name.toLowerCase().endsWith(".mp3") && !name.toLowerCase().endsWith(".ogg")) {
+            String lower = name.toLowerCase(Locale.ROOT);
+            boolean isMld = lower.endsWith(".mld");
+            if (!lower.endsWith(".mp3") && !lower.endsWith(".ogg") && !isMld) {
                 return;
             }
             // Copy to app-private storage
             File dir = new File(getFilesDir(), "bgm");
             dir.mkdirs();
-            File out = new File(dir, "bgm_track" + (name.endsWith(".ogg") ? ".ogg" : ".mp3"));
+            String ext = lower.endsWith(".ogg") ? ".ogg" : (isMld ? ".mld" : ".mp3");
+            File out = new File(dir, "bgm_track" + ext);
             try (InputStream in = getContentResolver().openInputStream(uri);
                  FileOutputStream fos = new FileOutputStream(out)) {
                 byte[] buf = new byte[8192];
@@ -237,11 +244,26 @@ public class ThemeActivity extends Activity {
             } catch (Exception e) {
                 return;
             }
-             pendingBgmPath = out.getAbsolutePath();
+            if (isMld && !looksLikeMld(out)) {
+                out.delete();
+                Toast.makeText(this, R.string.invalid_mld, Toast.LENGTH_LONG).show();
+                return;
+            }
+            pendingBgmPath = out.getAbsolutePath();
             pendingBgmEnabled = true;
             pendingBgmName = name;
             HomeActivity.stopBgmStatic();
             updateBgmSelection();
+        }
+    }
+
+    private static boolean looksLikeMld(File file) {
+        try (FileInputStream in = new FileInputStream(file)) {
+            byte[] magic = new byte[4];
+            if (in.read(magic) != 4) return false;
+            return magic[0] == 'm' && magic[1] == 'e' && magic[2] == 'l' && magic[3] == 'o';
+        } catch (Exception e) {
+            return false;
         }
     }
 
