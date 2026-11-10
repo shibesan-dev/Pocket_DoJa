@@ -30,9 +30,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- Games run in their own process. On exit this process is killed, so every
+             game-created thread (which cannot be stopped on Android) dies with it, and no
+             game state/audio/classes leak into the next game. Home runs in the main process. -->
         <activity
             android:name="opendoja.android.EntryActivity"
             android:exported="true"
+            android:process=":game"
             android:screenOrientation="unspecified"
             android:configChanges="orientation|screenSize|keyboardHidden" />
         <activity

@@ -27,6 +27,17 @@ public final class DoJaSystemRegistry {
     private DoJaSystemRegistry() {
     }
 
+    /** Drops all registered System-API entries; entry ids are per session. */
+    public static void clear() {
+        synchronized (LOCK) {
+            entryKinds.clear();
+            imageThemes.clear();
+            soundThemes.clear();
+            movieThemes.clear();
+            menuIcons.clear();
+        }
+    }
+
     public static void registerEntry(int id, EntryKind kind) {
         synchronized (LOCK) {
             entryKinds.put(id, kind);

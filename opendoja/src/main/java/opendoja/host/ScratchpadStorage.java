@@ -39,6 +39,9 @@ final class ScratchpadStorage {
             if (parent != null) {
                 Files.createDirectories(parent);
             }
+            // Roll back a write that a previous session left half-finished (app killed
+            // or game thread force-stopped mid-save) before the title reads its data.
+            ScratchpadJournal.recoverSessionStart(packedFile);
             return;
         }
         if (legacyRoot != null) {
@@ -72,7 +75,8 @@ final class ScratchpadStorage {
             return ScratchpadStreams.openOutput(writePath, position, length);
         }
         ScratchpadAccess access = resolvePackedAccess(index, position, length);
-        return ScratchpadStreams.openOutput(packedFile, access.offset(), access.length());
+        OutputStream stream = ScratchpadStreams.openOutput(packedFile, access.offset(), access.length());
+        return ScratchpadJournal.begin(packedFile, access.offset(), access.length(), stream);
     }
 
     private static long fileSize(Path path) {

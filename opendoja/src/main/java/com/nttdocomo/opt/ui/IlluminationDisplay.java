@@ -25,6 +25,13 @@ public class IlluminationDisplay {
     protected IlluminationDisplay() {
     }
 
+    /** Clears per-session illumination state (data slots are keyed per session). */
+    public static void resetSessionState() {
+        DATA.clear();
+        previewData = null;
+        themeId = -1;
+    }
+
     /**
      * Saves illumination data to the specified native slot.
      *

@@ -89,6 +89,34 @@ public final class DoJaRuntime {
     public static void markShutdown() {
         everShutdown = true;
     }
+
+    private static final java.util.Set<Thread> TERMINATION_SIGNALLED =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
+     * Cooperative shutdown for leaked game threads (Android's Thread.stop() is unsupported and
+     * titles swallow interrupt()/catch(Exception)). On the first call after its runtime shut
+     * down, the calling thread throws {@link GameTerminatedException} (an Error, so
+     * catch(Exception) cannot swallow it). If the SAME thread calls again it means the title
+     * caught even that (e.g. catch(Throwable) around its loop): park it forever so it can never
+     * burn CPU again.
+     */
+    public static void terminateOrParkIfShuttingDown(boolean shuttingDown) {
+        if (!shuttingDown) {
+            return;
+        }
+        Thread currentThread = Thread.currentThread();
+        if (TERMINATION_SIGNALLED.add(currentThread)) {
+            throw new GameTerminatedException();
+        }
+        while (true) {
+            try {
+                Thread.sleep(60_000L);
+            } catch (InterruptedException ignored) {
+                // stay parked
+            }
+        }
+    }
     /**
      * When enabled (Android host), outside-lock per-primitive presents are coalesced:
      * a burst of draw calls publishes one snapshot after drawing goes quiet, so the
@@ -258,6 +286,15 @@ public final class DoJaRuntime {
      * that "Exit Game" followed by "New Game" behaves identically to force-stopping and
      * reopening the emulator.
      */
+    private static void invokeStaticMethod(String className, String methodName) {
+        try {
+            java.lang.reflect.Method method = Class.forName(className).getDeclaredMethod(methodName);
+            method.setAccessible(true);
+            method.invoke(null);
+        } catch (Throwable ignored) {
+        }
+    }
+
     private static void resetForNewGameSession() {
         OpenDoJaLog.info(DoJaRuntime.class,
                 "resetForNewGameSession: starting full cross-session state reset");
@@ -325,6 +362,31 @@ public final class DoJaRuntime {
             com.nttdocomo.ui.Font.resetSessionState();
         } catch (Throwable ignored) {
         }
+        // Static System-API / optional-device stores are keyed per session and some hold
+        // game-created objects; clear them so titles (and their classloaders) are freed.
+        try {
+            opendoja.host.system.DoJaSystemRegistry.clear();
+        } catch (Throwable ignored) {
+        }
+        invokeStaticMethod("com.nttdocomo.system._SystemSupport", "resetSessionState");
+        try {
+            com.nttdocomo.opt.ui.IlluminationDisplay.resetSessionState();
+        } catch (Throwable ignored) {
+        }
+        invokeStaticMethod("com.nttdocomo.device.felica.FelicaSupport", "resetSessionState");
+        try {
+            com.nttdocomo.device.Camera.resetSessionState();
+        } catch (Throwable ignored) {
+        }
+
+        // Session-scoped "log once per resource" bookkeeping is keyed by session id, so it
+        // would otherwise grow without bound across the process lifetime.
+        LOGGED_RESOURCE_LOOKUPS.clear();
+
+        // A previous session that was backgrounded/hibernated can leave the global suspend
+        // latch set. The next launch would then block in Display.setCurrent -> requestRender
+        // -> awaitSuspendRelease and hang forever at "Booting...". Always start un-suspended.
+        resumeGlobal();
 
         everShutdown = false;
 
@@ -647,6 +709,13 @@ public final class DoJaRuntime {
                 }
                 gameThread = null;
             }
+            // The session is over: drop journal bookkeeping but keep any journal file, so
+            // the next launch of this game (even in the same process) rolls back a save
+            // that was interrupted by this exit.
+            try {
+                ScratchpadJournal.abandon(config.scratchpadPackedFile());
+            } catch (Throwable ignored) {
+            }
             cancelDeferredPresent();
             scheduler.shutdownNow();
             eventExecutor.shutdownNow();
@@ -658,6 +727,8 @@ public final class DoJaRuntime {
                 });
             }
             restoreLaunchSystemProperties();
+            // Drop the game application so the title (and its classloader) is collectible.
+            application = null;
             if (current == this) { current = null; }
             if (lastRuntime == this) { lastRuntime = null; }
         } catch (Throwable throwable) {

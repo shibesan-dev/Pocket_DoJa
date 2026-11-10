@@ -17,6 +17,11 @@ public class Graphics2D extends opendoja.compat.awt.Graphics {
     private boolean antiAlias;
     private boolean textAntiAlias = true;
     private boolean filterBitmap;
+    // Reused per-instance scratch rects so sprite blits do not allocate Rect/RectF each call
+    // (canvas.drawBitmap copies the values synchronously, and each Graphics2D is used by a
+    // single drawing thread).
+    private final android.graphics.Rect scratchSrcRect = new android.graphics.Rect();
+    private final android.graphics.RectF scratchDstRectF = new android.graphics.RectF();
 
     public Graphics2D() {
         this.target = null;
@@ -529,7 +534,8 @@ public class Graphics2D extends opendoja.compat.awt.Graphics {
         if (bmp.getWidth() == w && bmp.getHeight() == h) {
             canvas.drawBitmap(bmp, x, y, p);
         } else {
-            canvas.drawBitmap(bmp, null, new android.graphics.RectF(x, y, x + w, y + h), p);
+            scratchDstRectF.set(x, y, x + w, y + h);
+            canvas.drawBitmap(bmp, null, scratchDstRectF, p);
         }
         return true;
     }
@@ -546,8 +552,9 @@ public class Graphics2D extends opendoja.compat.awt.Graphics {
             return false;
         }
         android.graphics.Paint p = prepare(android.graphics.Paint.Style.FILL, true);
-        canvas.drawBitmap(bmp, new android.graphics.Rect(sx1, sy1, sx2, sy2),
-                new android.graphics.RectF(dx1, dy1, dx2, dy2), p);
+        scratchSrcRect.set(sx1, sy1, sx2, sy2);
+        scratchDstRectF.set(dx1, dy1, dx2, dy2);
+        canvas.drawBitmap(bmp, scratchSrcRect, scratchDstRectF, p);
         return true;
     }
 

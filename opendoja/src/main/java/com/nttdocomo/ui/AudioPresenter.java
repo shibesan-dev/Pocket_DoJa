@@ -46,7 +46,6 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
     }
     private static final boolean TRACE_AUDIO_FAILURES = opendoja.host.OpenDoJaLaunchArgs.getBoolean(opendoja.host.OpenDoJaLaunchArgs.TRACE_AUDIO_FAILURES);
     private static final java.util.concurrent.atomic.AtomicInteger DEBUG_ID_GENERATOR = new java.util.concurrent.atomic.AtomicInteger();
-    private static final java.util.Map<AudioPresenter, Integer> DEBUG_PRESENTER_IDS = new java.util.concurrent.ConcurrentHashMap<>();
     private static final int MAX_INDIVIDUAL_PLAY_REQUESTS = 10;
     private static int individualPlayRequestCount = 0;
     private static final Map<String, PlayRequestAggregate> playRequestAggregates = new ConcurrentHashMap<>();
@@ -55,6 +54,12 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
     private final DoJaRuntime runtime;
 
     public static void setSession(int session) {
+        if (session != currentSession) {
+            // Per-session debug aggregation must not accumulate for the whole process:
+            // these maps are keyed by presenter id, which is unique per session.
+            playRequestAggregates.clear();
+            individualPlayRequestCount = 0;
+        }
         currentSession = session;
     }
 
@@ -277,14 +282,17 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
         this.session = currentSession;
         this.audioGeneration = currentAudioGeneration;
         this.runtime = DoJaRuntime.current();
-        DEBUG_PRESENTER_IDS.put(this, debugId);
-        try {
-            Throwable caller = new Throwable("presenter constructor");
-            OpenDoJaLog.debug(AudioPresenter.class,
-                    "presenter created id=" + debugId + " port=" + explicitPort
-                            + " session=" + session + " thread=" + Thread.currentThread().getName()
-                            + " stack=" + caller);
-        } catch (Throwable ignored) {
+        // Only capture a stack trace when debug logging is actually enabled; a presenter is
+        // created per sound, and new Throwable() captures a stack every time.
+        if (OpenDoJaLog.isDebugEnabled()) {
+            try {
+                Throwable caller = new Throwable("presenter constructor");
+                OpenDoJaLog.debug(AudioPresenter.class,
+                        "presenter created id=" + debugId + " port=" + explicitPort
+                                + " session=" + session + " thread=" + Thread.currentThread().getName()
+                                + " stack=" + caller);
+            } catch (Throwable ignored) {
+            }
         }
         // Create the MLD backend BEFORE registering: registration immediately
         // closes the presenter when the runtime is already shutting down, and
@@ -805,6 +813,9 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
             mldPlayer.close();
             mldPlayer = null;
         }
+        // Drop the game-provided listener so closing a presenter does not keep the
+        // title's classes/classloader alive after it has exited.
+        mediaListener = null;
     }
 
     /**

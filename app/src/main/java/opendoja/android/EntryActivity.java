@@ -31,7 +31,11 @@ public class EntryActivity extends Activity {
     private JamSurfaceView surfaceView;
     private JamInputController input;
     private volatile boolean loadingHidden = false;
+    private volatile boolean firstFramePresented = false;
     private android.os.Handler loadingHandler;
+    // Per-game process isolation: set when this :game process is being torn down so the
+    // delayed killer knows to still exit (and a reused process can cancel it).
+    private static volatile boolean processTerminating = false;
     private int loadingDot = 0;
     private int exitingDot = 0;
     private final Runnable exitingTick = new Runnable() {
@@ -105,6 +109,8 @@ private static volatile Thread gameThread;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // If Android reused this :game process for a new game, cancel any pending exit.
+        processTerminating = false;
         String gameId = getIntent() != null ? getIntent().getStringExtra("jamPath") : null;
         if (gameId != null) {
             java.io.File f = new java.io.File(gameId);
@@ -188,6 +194,8 @@ private static volatile Thread gameThread;
         setContentView(root);
         loadingHandler = new android.os.Handler(android.os.Looper.getMainLooper());
         loadingHandler.post(loadingTick);
+        firstFramePresented = false;
+        startBootStallWatchdog();
         // Direct-draw games paint dozens of primitives per frame without lock()/unlock();
         // coalescing their outside-lock presents keeps half-drawn frames off the screen.
         DoJaRuntime.setPresentDebounceEnabled(false);
@@ -390,12 +398,73 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
     }
 
     public void hideLoadingOverlay() {
+        firstFramePresented = true;
         if (loadingHidden) return;
         loadingHidden = true;
         runOnUiThread(() -> {
             if (surfaceView != null) surfaceView.hideLoadingOverlay();
             if (loadingHandler != null) loadingHandler.removeCallbacksAndMessages(null);
         });
+    }
+
+    /**
+     * If the title never presents its first frame (the intermittent "Booting..." stall), dump
+     * every thread's stack to a file so the hang can be diagnosed without adb.
+     */
+    private void startBootStallWatchdog() {
+        new Thread(() -> {
+            try {
+                // Long enough that a legitimately slow first-time dex conversion (large titles
+                // can exceed 10s) is not misreported as a stall.
+                Thread.sleep(25000L);
+            } catch (InterruptedException ignored) {
+                return;
+            }
+            if (firstFramePresented || isFinishing() || gameStopped) {
+                return;
+            }
+            try {
+                StringBuilder sb = new StringBuilder();
+                sb.append("PocketDoJa boot stall\n");
+                sb.append("time: ").append(new java.util.Date()).append('\n');
+                sb.append("game: ").append(gameId).append('\n');
+                for (java.util.Map.Entry<Thread, StackTraceElement[]> entry
+                        : Thread.getAllStackTraces().entrySet()) {
+                    Thread thread = entry.getKey();
+                    sb.append("\n\"").append(thread.getName()).append("\" id=").append(thread.getId())
+                            .append(" state=").append(thread.getState()).append('\n');
+                    for (StackTraceElement frame : entry.getValue()) {
+                        sb.append("  at ").append(frame).append('\n');
+                    }
+                }
+                java.io.File out = writeDiagnosticsFile("pocketdoja-boot-stall.txt", sb.toString());
+                opendoja.host.OpenDoJaLog.warn(EntryActivity.class, "boot stall dump -> " + out);
+            } catch (Throwable ignored) {
+            }
+        }, "opendoja-boot-watchdog").start();
+    }
+
+    private java.io.File writeDiagnosticsFile(String name, String content) {
+        java.io.File[] candidates = {
+                new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS), name),
+                new java.io.File(getExternalFilesDir(null), name),
+                new java.io.File(getFilesDir(), name)
+        };
+        for (java.io.File candidate : candidates) {
+            try {
+                java.io.File parent = candidate.getParentFile();
+                if (parent != null) {
+                    parent.mkdirs();
+                }
+                try (java.io.FileWriter writer = new java.io.FileWriter(candidate, false)) {
+                    writer.write(content);
+                }
+                return candidate;
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
     }
 
     private void showExitingOverlay() {
@@ -565,6 +634,38 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
                 Thread.currentThread().interrupt();
             }
         }
+        // Last resort: doomGameThreads() deliberately exempts "jam-launch" (the game
+        // loop) and the runtime shutdown above is a no-op once a title has already
+        // shut the runtime down itself (e.g. it called IApplication.terminate() but
+        // swallowed the unwind). A surviving game loop would then contend with the
+        // next title over shared emulator state, so make sure this session's loop is
+        // actually gone before stopGame returns.
+        if (currentGameThread != null && currentGameThread != Thread.currentThread() && currentGameThread.isAlive()) {
+            OpenDoJaLog.warn(EntryActivity.class,
+                    "stopGame: game thread alive after shutdown; forcing stop thread=" + currentGameThread.getName());
+            currentGameThread.interrupt();
+            try {
+                currentGameThread.join(300L);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+            if (currentGameThread.isAlive()) {
+                try {
+                    currentGameThread.stop();
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        // Drop every static reference that pinned this session so the dead threads, the
+        // game's classloader, and the shut-down runtime (with its game class) can all be
+        // garbage-collected. Otherwise a long session accumulates one of each per game.
+        doomedThreads.clear();
+        try {
+            JamDexHost.releaseLoader(gameClassLoader);
+        } catch (Throwable ignored) {
+        }
+        gameClassLoader = null;
+        expectedRuntime = null;
     }
 
     private static void releaseGameAudio(long generation) {
@@ -650,6 +751,35 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
                 || name.startsWith("openDoJa-")
                 || name.equals("MainEventDispatchThread")
                 || name.startsWith("pool-");
+    }
+
+    /**
+     * Stops any leftover game-loop thread ("jam-launch") from an earlier session.
+     * {@link #doomGameThreads()} treats "jam-launch" as a system thread, and the
+     * runtime shutdown is a no-op once a title has already shut the runtime down
+     * itself, so a game loop that survived a mid-game exit would otherwise keep
+     * running into the next session and contend over shared emulator state.
+     */
+    private static void reapLingeringLaunchThreads() {
+        for (Thread thread : Thread.getAllStackTraces().keySet()) {
+            if (thread == Thread.currentThread() || !"jam-launch".equals(thread.getName())) {
+                continue;
+            }
+            OpenDoJaLog.warn(EntryActivity.class,
+                    "reapLingeringLaunchThreads: stopping leftover game thread=" + thread.getName());
+            thread.interrupt();
+            try {
+                thread.join(300L);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+            if (thread.isAlive()) {
+                try {
+                    thread.stop();
+                } catch (Throwable ignored) {
+                }
+            }
+        }
     }
 
     private opendoja.host.HostControlAction mappedAction(int keyCode) {
@@ -874,6 +1004,12 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
             }
         }
 
+        // Belt-and-braces clean slate: a previous session that exited mid-game could
+        // still have a zombie game-loop thread named "jam-launch" (doomGameThreads()
+        // exempts it, and a self-initiated shutdown never stops its own thread). Such
+        // a thread keeps touching shared emulator state, so reap any survivor now.
+        reapLingeringLaunchThreads();
+
         HomeActivity.bgmSuppressed = true;
         HomeActivity.stopBgmStatic();
         HomeActivity.gameRunning = true;
@@ -924,18 +1060,46 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
         try {
             File jam = resolveJamFile();
             // Ensure .sp file is available next to the jam
-            File spFile = new File(jam.getParentFile(), stripExtension(jam.getName()) + ".sp");
+            String base = stripExtension(jam.getName());
+            File spFile = new File(jam.getParentFile(), base + ".sp");
+            File spCandidate = new File(new File(jam.getParentFile(), "sp"), base + ".sp");
+            File spOrig = new File(jam.getParentFile(), base + ".sp.orig");
             if (!spFile.exists()) {
-                File spDir = new File(jam.getParentFile(), "sp");
-                File spCandidate = new File(spDir, stripExtension(jam.getName()) + ".sp");
                 if (spCandidate.exists()) {
-                    try {
-                        java.nio.file.Files.copy(java.nio.file.Paths.get(spCandidate.getAbsolutePath()), java.nio.file.Paths.get(spFile.getAbsolutePath()), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                    } catch (IOException ignored) {
-                    }
+                    copyFileQuietly(spCandidate, spFile);
+                    deleteFileQuietly(new File(spFile.getAbsolutePath() + ".undo"));
                 }
             }
+            // Keep a pristine baseline. Prefer the bundled sp/ copy; otherwise capture the
+            // current file once so a later corruption can still be rolled back.
+            if (!spOrig.exists()) {
+                File seed = spCandidate.exists() ? spCandidate : (spFile.exists() ? spFile : null);
+                if (seed != null) {
+                    copyFileQuietly(seed, spOrig);
+                }
+            }
+            // A DoJa scratchpad never changes size (writes are bounded in place), so a size
+            // change means the file was corrupted (torn write / bad layout / truncation).
+            // Titles gate their offline boot on flags inside it (e.g. Touhou's "deluxe" and
+            // update bytes), so a corrupt file makes them demand a network check and show a
+            // generic "communication error" until the .sp is replaced. Do not wipe the save
+            // silently: ask first.
+            if (spFile.exists() && spOrig.exists() && spFile.length() != spOrig.length()) {
+                // A size change is NOT a reliable corruption signal: titles that do not declare
+                // a scratchpad size may grow the file legitimately, and blocking the launch on a
+                // dialog here looked like a black/stuck load. Only log; the user can use
+                // "Reset Game Data" from the game list if a title actually misbehaves.
+                opendoja.host.OpenDoJaLog.warn(EntryActivity.class,
+                        "scratchpad " + spFile.getName() + " size " + spFile.length()
+                                + " differs from pristine " + spOrig.length() + " (not resetting automatically)");
+            }
             File jar = opendoja.host.JamGameJarLocator.locate(java.nio.file.Paths.get(jam.getAbsolutePath())).toFile();
+            try {
+                // Invalidate cached dexes when the emulator APK is updated.
+                JamDexHost.setAppUpdateTime(getPackageManager()
+                        .getPackageInfo(getPackageName(), 0).lastUpdateTime);
+            } catch (Throwable ignored) {
+            }
             File dex = JamDexHost.ensureDex(jar);
             if (gameStopped) {
                 opendoja.host.OpenDoJaLog.info(EntryActivity.class, "launch cancelled after conversion");
@@ -986,7 +1150,9 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
                     logFile = new java.io.File(getFilesDir(), "pocketdoja-log.txt");
                 }
                 OpenDoJaLog.setFileLoggingEnabled(true, logFile);
-                OpenDoJaLog.configure(OpenDoJaLog.Level.OFF);
+                // Actually emit messages when the user enables Debugging (previously the level
+                // stayed OFF, so the log file was always empty).
+                OpenDoJaLog.configure(OpenDoJaLog.Level.DEBUG);
             } else {
                 OpenDoJaLog.setFileLoggingEnabled(false, null);
                 OpenDoJaLog.configure(OpenDoJaLog.Level.OFF);
@@ -1086,6 +1252,26 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
         return idx > 0 ? name.substring(0, idx) : name;
     }
 
+    private static void copyFileQuietly(File source, File target) {
+        try {
+            java.nio.file.Files.copy(source.toPath(), target.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException ignored) {
+        }
+    }
+
+    private static void deleteFileQuietly(File file) {
+        try {
+            java.nio.file.Files.deleteIfExists(file.toPath());
+        } catch (IOException | RuntimeException ignored) {
+        }
+    }
+
+    /**
+     * Modal overlay shown when the game's saved data is detected as damaged. It offers to
+     * reset the data to the pristine snapshot; it blocks the launch thread until the user
+     * chooses so a corrupt save is never wiped silently.
+     */
     private File resolveJamFile() {
         String extra = getIntent() == null ? null : getIntent().getStringExtra("jamPath");
         if (extra != null) {
@@ -1135,5 +1321,27 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
         DoJaRuntime.setPlatformPresenter(null);
         DoJaRuntime.setPresentDebounceEnabled(false);
         super.onDestroy();
+        // Per-game process isolation: after a real exit, kill this :game process so every
+        // game-created thread (Android cannot Thread.stop()) and all its audio/native
+        // resources are released. Not done on HOME/background (onDestroy isn't called then),
+        // so hibernation/resume still works.
+        if (isFinishing()) {
+            scheduleGameProcessExit();
+        }
+    }
+
+    private static void scheduleGameProcessExit() {
+        processTerminating = true;
+        Thread killer = new Thread(() -> {
+            try {
+                Thread.sleep(250L);
+            } catch (InterruptedException ignored) {
+            }
+            if (processTerminating) {
+                android.os.Process.killProcess(android.os.Process.myPid());
+            }
+        }, "opendoja-game-process-exit");
+        killer.setDaemon(true);
+        killer.start();
     }
 }

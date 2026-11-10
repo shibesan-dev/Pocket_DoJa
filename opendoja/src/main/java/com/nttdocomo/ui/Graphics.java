@@ -124,6 +124,7 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
     public static final int FLIP_ROTATE_RIGHT_VERTICAL = 7;
 
     private final DesktopSurface surface;
+    private DoJaRuntime ownerRuntime;
     private Graphics2D delegate;
     private final DojaGraphics3DRenderer doja3D = new DojaGraphics3DRenderer(TRACE_3D_CALLS);
     private final OptJ3DRenderer opt3D = new OptJ3DRenderer(doja3D.context(), TRACE_3D_CALLS);
@@ -159,6 +160,22 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
         this.delegate.setFont(font.awtFont());
         this.oglRenderer = new AcrodeaOglRenderer(new GraphicsOglHost());
         clearClip();
+    }
+
+    /** Associates this Graphics with the runtime that owns its canvas. */
+    void attachOwnerRuntime(DoJaRuntime runtime) {
+        this.ownerRuntime = runtime;
+    }
+
+    /**
+     * Cooperative shutdown: once the owning game runtime has shut down, any further API use
+     * from a leaked game thread throws an Error (not catchable by the title's catch(Exception)),
+     * so the thread unwinds instead of spinning forever (Thread.stop() is unsupported on Android).
+     */
+    private void throwIfOwnerShutdown() {
+        DoJaRuntime runtime = ownerRuntime;
+        boolean shuttingDown = runtime != null ? runtime.isShutdown() : DoJaRuntime.isShuttingDown();
+        DoJaRuntime.terminateOrParkIfShuttingDown(shuttingDown);
     }
 
     static Graphics createPlatformGraphics(DesktopSurface surface) {
@@ -1007,6 +1024,7 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
      * Starts double-buffered drawing.
      */
     public void lock() {
+        throwIfOwnerShutdown();
         DoJaRuntime runtime = DoJaRuntime.current();
         if (runtime != null) {
             // Direct `Canvas.getGraphics()` loops bypass `requestRender(...)`,
@@ -1536,7 +1554,9 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
         int destX2 = originX + dx + Math.round((clippedSrcX2 - srcX1) * (dw / (float) sw));
         int destY2 = originY + dy + Math.round((clippedSrcY2 - srcY1) * (dh / (float) sh));
         Rectangle bounds = flippedBounds(rectangleFromPoints(destX1, destY1, destX2, destY2), dx, dy, dw, dh);
-        if (drawWithOptRenderMode(bounds, graphics -> {
+        // Only build the (capturing) opt-mode painter when opt-render blending is actually
+        // active; otherwise every sprite blit allocated a lambda that was never used.
+        if (needsOptRenderModeBlend() && drawWithOptRenderMode(bounds, graphics -> {
             AffineTransform savedTransform = graphics.getTransform();
             Composite savedComposite = graphics.getComposite();
             try {
@@ -1554,9 +1574,14 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
             return;
         }
         prepareSoftwareSurfaceMutation();
-        AffineTransform oldTransform = delegate.getTransform();
+        // Saving/restoring the delegate transform allocates (a double[6] + AffineTransform
+        // + Matrix). The vast majority of sprites are unflipped, so only do it when needed.
+        boolean flipped = flipMode != FLIP_NONE;
+        AffineTransform oldTransform = flipped ? delegate.getTransform() : null;
         try {
-            applyFlipTransform(dx, dy, dw, dh);
+            if (flipped) {
+                applyFlipTransform(dx, dy, dw, dh);
+            }
             int imageAlpha = effectiveImageAlpha(image);
             if (imageAlpha < 255) {
                 delegate.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, imageAlpha / 255.0f));
@@ -1564,7 +1589,9 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
             delegate.drawImage(source, destX1, destY1, destX2, destY2, clippedSrcX1, clippedSrcY1, clippedSrcX2, clippedSrcY2, null);
             delegate.setComposite(AlphaComposite.SrcOver);
         } finally {
-            delegate.setTransform(oldTransform);
+            if (flipped) {
+                delegate.setTransform(oldTransform);
+            }
         }
         Rectangle visibleBounds = bounds.intersection(new Rectangle(0, 0, surface.width(), surface.height()));
         if (shouldImmediatelyPresentOutsideLockImage(image, visibleBounds)) {
@@ -1579,7 +1606,9 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
     private boolean shouldImmediatelyPresentOutsideLockImage(Image image, Rectangle visibleBounds) {
         OpenGlesRendererMode mode = OpenDoJaLaunchArgs.openGlesRendererMode();
         if (mode != OpenGlesRendererMode.HARDWARE) {
-            traceOutsideLockPresentDecision("image", false, "mode=" + mode, null, visibleBounds);
+            if (TRACE_OPEN_GLES_SYNC) {
+                traceOutsideLockPresentDecision("image", false, "mode=" + mode, null, visibleBounds);
+            }
             return false;
         }
         if (!(image instanceof DesktopImage desktopImage)) {
@@ -1783,7 +1812,9 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
     private boolean shouldImmediatelyPresentOptLayer(Rectangle targetBounds) {
         OpenGlesRendererMode mode = OpenDoJaLaunchArgs.openGlesRendererMode();
         if (mode != OpenGlesRendererMode.HARDWARE) {
-            traceOutsideLockPresentDecision("opt", false, "mode=" + mode, null, targetBounds);
+            if (TRACE_OPEN_GLES_SYNC) {
+                traceOutsideLockPresentDecision("opt", false, "mode=" + mode, null, targetBounds);
+            }
             return false;
         }
         if (targetBounds == null || targetBounds.isEmpty()) {
@@ -1971,6 +2002,9 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
     }
 
     private void applyFlipTransform(Graphics2D graphics, int dx, int dy, int dw, int dh) {
+        if (flipMode == FLIP_NONE) {
+            return;
+        }
         graphics.transform(flipTransform(dx, dy, dw, dh));
     }
 

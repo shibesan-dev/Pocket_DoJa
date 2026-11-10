@@ -7,7 +7,9 @@ import java.util.concurrent.locks.LockSupport;
 import java.util.function.BiConsumer;
 
 public final class DesktopSurface {
-    private static final long PRESENT_SYNC_INTERVAL_NANOS = 16_000_000L;
+    // DoJa/i-appli titles are handset-bound (~10-30 fps); capping the software present path
+    // at ~30 fps prevents fast loops from burning CPU/heat without hurting the games.
+    private static final long PRESENT_SYNC_INTERVAL_NANOS = 33_000_000L;
     private static final int PRESENTATION_BUFFER_COUNT = 3;
     private BufferedImage image;
     private final BufferedImage[] presentationBuffers = new BufferedImage[PRESENTATION_BUFFER_COUNT];
@@ -213,10 +215,16 @@ public final class DesktopSurface {
 
     public void flush(BufferedImage presentedFrame, boolean paced, boolean frameBoundary) {
         if (paced) {
-            // The official emulator exposes a separate graphics sync interval of `16000us`.
-            // Keep the paced direct-present path on that cadence, while callers that already
-            // performed an explicit sync wait pass `paced=false` to avoid double throttling.
-            waitForRenderSync(PRESENT_SYNC_INTERVAL_NANOS);
+            // Cap the on-screen present rate by COALESCING, never by sleeping the game
+            // thread. Blocking here made titles that present many times while building their
+            // startup display list take minutes to leave "Booting...". If a present arrives
+            // before the interval, drop it (the surface keeps the newest content and the next
+            // present after the interval shows it); the game itself runs at full speed.
+            long now = System.nanoTime();
+            if (nextRenderSyncNanos != 0L && now < nextRenderSyncNanos) {
+                return;
+            }
+            nextRenderSyncNanos = now + PRESENT_SYNC_INTERVAL_NANOS;
         }
         present(presentedFrame, frameBoundary);
     }

@@ -38,11 +38,70 @@ public final class JamDexHost {
         return new File(jarFile.getParentFile(), base + ".dex");
     }
 
-    /** Returns the dex file for the jar, converting it first when missing or stale. */
+    /**
+     * Bump this whenever the jar-rewrite logic below changes (SJIS fixups, US_INFO/GameScreen
+     * patches, etc.). Cached dex files are reused across APK updates as long as this version and
+     * the game jar are unchanged, so an update no longer forces every game to be re-dexed (slow
+     * "Booting..." on large titles).
+     */
+    private static final int DEX_REWRITE_VERSION = 1;
+
+    private static volatile long appUpdateTimeMillis = 0L;
+
+    /** Retained for API compatibility; cache validity now depends on DEX_REWRITE_VERSION. */
+    public static void setAppUpdateTime(long millis) {
+        appUpdateTimeMillis = millis;
+    }
+
+    private static File dexMarkerFor(File jarFile) {
+        return new File(jarFile.getParentFile(), jarFile.getName() + ".dex.ok");
+    }
+
+    /** True only if a previous conversion completed successfully for this exact jar + rewrite version. */
+    private static boolean isDexCacheValid(File jarFile, File dexFile) {
+        File marker = dexMarkerFor(jarFile);
+        if (!marker.isFile()) {
+            return false;
+        }
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(marker))) {
+            String versionLine = reader.readLine();
+            String mtimeLine = reader.readLine();
+            if (versionLine == null || mtimeLine == null) {
+                return false;
+            }
+            int version = Integer.parseInt(versionLine.trim());
+            long jarMtime = Long.parseLong(mtimeLine.trim());
+            return version == DEX_REWRITE_VERSION
+                    && jarMtime == jarFile.lastModified()
+                    && dexFile.isFile() && dexFile.length() > 0
+                    && dexFile.lastModified() >= jarFile.lastModified();
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private static void writeDexMarker(File jarFile) {
+        try (java.io.FileWriter writer = new java.io.FileWriter(dexMarkerFor(jarFile), false)) {
+            writer.write(DEX_REWRITE_VERSION + "\n" + jarFile.lastModified() + "\n");
+        } catch (Throwable ignored) {
+        }
+    }
+
     public static File ensureDex(File jarFile) throws IOException {
+        File dexFile = dexFor(jarFile);
+        // Re-writing the jar and running dx is expensive (large titles take >10s) and was the
+        // cause of slow "Booting..." screens. Reuse the dex once it has been built for this jar
+        // and rewrite version; the completion marker guarantees an interrupted conversion is
+        // never treated as a valid cache.
+        if (isDexCacheValid(jarFile, dexFile)) {
+            return dexFile;
+        }
+        try {
+            java.nio.file.Files.deleteIfExists(dexMarkerFor(jarFile).toPath());
+        } catch (Throwable ignored) {
+        }
         File rewrittenJar = new File(jarFile.getParentFile(), jarFile.getName() + ".sjisfix.jar");
         rewriteSjisInJar(jarFile, rewrittenJar);
-        File dexFile = dexFor(jarFile);
         if (dexFile.exists()) {
             dexFile.delete();
         }
@@ -71,6 +130,16 @@ public final class JamDexHost {
             System.setOut(previousOut);
             System.setErr(previousErr);
         }
+        // dx keeps process-wide intern tables. Without trimming them, converting a different
+        // game on every launch adds entries that are never collected, growing memory and GC
+        // pressure for the whole app lifetime (a symptom of long-session slowdown/stutter).
+        try {
+            com.android.dx.rop.code.RegisterSpec.clearInternTable();
+            com.android.dx.rop.type.Type.clearInternTable();
+            com.android.dx.rop.type.Prototype.clearInternTable();
+            com.android.dx.rop.cst.CstType.clearInternTable();
+        } catch (Throwable ignored) {
+        }
         String outText = capturedOut.toString();
         String errText = capturedErr.toString();
         if (!outText.isBlank()) {
@@ -87,6 +156,7 @@ public final class JamDexHost {
         // ART refuses to open dex files that are still writable on newer Android builds.
         //noinspection ResultOfMethodCallIgnored
         dexFile.setReadOnly();
+        writeDexMarker(jarFile);
         opendoja.host.OpenDoJaLog.info(JamDexHost.class, "jar2dex " + jarFile.getName() + " -> " + dexFile.getName()
                 + " (" + dexFile.length() + " bytes) in " + elapsed + "ms");
         return dexFile;
@@ -328,6 +398,25 @@ public final class JamDexHost {
                 }
                 return zipFile;
             }
+        }
+
+        void close() {
+            synchronized (this) {
+                if (zipFile != null) {
+                    try {
+                        zipFile.close();
+                    } catch (IOException ignored) {
+                    }
+                    zipFile = null;
+                }
+            }
+        }
+    }
+
+    /** Releases the game jar handle held by a loader created here, if applicable. */
+    public static void releaseLoader(ClassLoader loader) {
+        if (loader instanceof GameResourceClassLoader) {
+            ((GameResourceClassLoader) loader).close();
         }
     }
 

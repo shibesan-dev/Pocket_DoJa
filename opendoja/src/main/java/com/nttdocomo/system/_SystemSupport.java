@@ -89,6 +89,45 @@ final class _SystemSupport {
     private _SystemSupport() {
     }
 
+    /**
+     * Clears the game-driven System-API stores and restores the seeded defaults.
+     *
+     * <p>These stores are static and their ids are allocated per session, so without a
+     * reset they grow for the whole process lifetime; several of them also hold
+     * game-created objects (e.g. {@code soundEntries}, {@code imageEntries},
+     * {@code avatarEntries}), which would pin the title's classloader after exit.</p>
+     */
+    public static void resetSessionState() {
+        synchronized (LOCK) {
+            applications.clear();
+            bookmarks.clear();
+            decomailTemplates.clear();
+            locationRecords.clear();
+            imageEntries.clear();
+            movieEntries.clear();
+            soundEntries.clear();
+            avatarEntries.clear();
+            torucaEntries.clear();
+            schedules.clear();
+            alarms.clear();
+            dtvSchedules.clear();
+            incomingCallRecords.clear();
+            outgoingCallRecords.clear();
+            receivedMessages.clear();
+            sentMessages.clear();
+            unsentMessages.clear();
+            phoneBooks.clear();
+            phoneBookGroups.clear();
+            dataBoxFolders.clear();
+            messageFolderListener = null;
+            lastDtvParameter = null;
+            lastIncomingMail = null;
+            createDefaultFolder(DataBoxFolder.FOLDER_MY_PICTURE, "openDoJa");
+            createDefaultFolder(DataBoxFolder.FOLDER_I_MOTION, "openDoJa");
+            createDefaultPhoneBook();
+        }
+    }
+
     private static void createDefaultPhoneBook() {
         synchronized (LOCK) {
             if (!phoneBooks.isEmpty()) {

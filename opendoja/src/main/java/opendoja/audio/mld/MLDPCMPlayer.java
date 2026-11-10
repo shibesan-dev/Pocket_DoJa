@@ -344,10 +344,14 @@ private static final class SharedEngine {
                     activeCount++;
                 }
             }
-            OpenDoJaLog.debug(MLDPCMPlayer.class,
-                    "engine iteration handles.total=" + snapshot.size() + " active=" + activeCount
-                            + " stopped=" + stoppedCount + " closed=" + closedCount
-                            + " contributing=" + contributingCount);
+            // Guard the (very frequent) per-iteration debug logging so its message string is
+            // not built on the audio engine thread when logging is off.
+            if (OpenDoJaLog.isDebugEnabled()) {
+                OpenDoJaLog.debug(MLDPCMPlayer.class,
+                        "engine iteration handles.total=" + snapshot.size() + " active=" + activeCount
+                                + " stopped=" + stoppedCount + " closed=" + closedCount
+                                + " contributing=" + contributingCount);
+            }
 
             List<Runnable> notifications = new ArrayList<>();
             long writtenBefore = writtenFrames;

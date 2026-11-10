@@ -132,6 +132,17 @@ public class Camera {
         }
     }
 
+    /** Drops cached cameras so a title's frame/captured images are not retained. */
+    public static void resetSessionState() {
+        synchronized (CAMERAS) {
+            for (Camera camera : CAMERAS.values()) {
+                camera.frameImage = null;
+                camera.capturedImages.clear();
+            }
+            CAMERAS.clear();
+        }
+    }
+
     /**
      * Calls the camera function in still-image capture mode.
      * On this desktop host, the capture succeeds synchronously and stores a

@@ -26,6 +26,14 @@ final class FelicaSupport {
     private FelicaSupport() {
     }
 
+    /** Clears per-session FeliCa state, including the game push listener. */
+    static void resetSessionState() {
+        pushListener = null;
+        open = false;
+        onlineProcessing = false;
+        OFFLINE.clear();
+    }
+
     static void requireOpen() {
         if (!open) {
             throw new DeviceException(DeviceException.ILLEGAL_STATE, "FeliCa is not open");

@@ -89,10 +89,18 @@ public class JamSurfaceView extends View {
     private Bitmap upscaleBitmap;
     private Canvas upscaleCanvas;
     private Paint upscalePaint;
+    private final android.graphics.Rect upscaleSrcRect = new android.graphics.Rect();
+    private final android.graphics.RectF upscaleDstRectF = new android.graphics.RectF();
     private int upSrcWidth;
     private int upSrcHeight;
     private int upscaledVersion = -1;
     private boolean upscaleLogged = false;
+
+    // Cached per-frame lookups: isSvgSkin() does asset file I/O and isLandscapeOrientation()
+    // reads SharedPreferences, both of which must not happen every onDraw/zone computation.
+    private String cachedSvgSkinKey;
+    private boolean cachedSvgSkinResult;
+    private Boolean cachedLandscape;
 
     // Display filter state: the filtered frame is cached per source version so
     // the filter only runs when the game actually presents a new frame.
@@ -290,6 +298,11 @@ try {
     public void showLoadingOverlay(String text) {
         this.loadingText = text;
         this.loadingVisible = true;
+        // Overlays are mutually exclusive so quick launch/exit does not stack them.
+        this.exitingVisible = false;
+        this.exitingText = null;
+        this.pausedVisible = false;
+        this.pausedText = null;
         postInvalidate();
     }
 
@@ -304,6 +317,11 @@ try {
     public void showExitingOverlay(String text) {
         this.exitingText = text;
         this.exitingVisible = true;
+        // "Exiting..." supersedes "Booting..." and any pause overlay.
+        this.loadingVisible = false;
+        this.loadingText = null;
+        this.pausedVisible = false;
+        this.pausedText = null;
         postInvalidate();
     }
 
@@ -317,6 +335,11 @@ try {
     public void showPausedOverlay(String text) {
         this.pausedText = text;
         this.pausedVisible = true;
+        // Pause overlay supersedes the boot overlay.
+        this.loadingVisible = false;
+        this.loadingText = null;
+        this.exitingVisible = false;
+        this.exitingText = null;
         postInvalidate();
     }
 
@@ -365,6 +388,8 @@ try {
         filterVersion = -1;
         filterAppliedId = null;
         filterInstance = null;
+        cachedSvgSkinKey = null;
+        cachedLandscape = null;
         postInvalidate();
     }
 
@@ -941,33 +966,9 @@ try {
         int srcHeight = bmp.getHeight();
         if (srcWidth <= 0 || srcHeight <= 0) return;
         Bitmap src = applyDisplayFilter(bmp, srcWidth, srcHeight, sourceVersion);
-        Bitmap scaled = upscaleBitmap;
-        if (scaled == null || scaled.isRecycled() || scaled.getWidth() != dstWidth
-                || scaled.getHeight() != dstHeight || upSrcWidth != srcWidth || upSrcHeight != srcHeight) {
-            scaled = Bitmap.createBitmap(dstWidth, dstHeight, Bitmap.Config.ARGB_8888);
-            upscaleBitmap = scaled;
-            upscaleCanvas = new Canvas(scaled);
-            if (upscalePaint == null) {
-                upscalePaint = new Paint(Paint.FILTER_BITMAP_FLAG);
-                upscalePaint.setDither(true);
-            }
-            upSrcWidth = srcWidth;
-            upSrcHeight = srcHeight;
-            upscaledVersion = -1;
-        }
-        if (upscaledVersion != sourceVersion) {
-            // Bilinear-filtered upscale: at fractional scale factors (typical on high-DPI
-            // portrait phones) nearest-neighbor sampling makes glyph strokes uneven, which
-            // reads as clumped/broken text. Native filtered scaling keeps text even and
-            // readable at any size on any device.
-            if (dstWidth == srcWidth && dstHeight == srcHeight) {
-                upscaleCanvas.drawBitmap(src, 0f, 0f, upscalePaint);
-            } else {
-                android.graphics.Rect srcRect = new android.graphics.Rect(0, 0, srcWidth, srcHeight);
-                android.graphics.Rect dst = new android.graphics.Rect(0, 0, dstWidth, dstHeight);
-                upscaleCanvas.drawBitmap(src, srcRect, dst, upscalePaint);
-            }
-            upscaledVersion = sourceVersion;
+        if (upscalePaint == null) {
+            upscalePaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+            upscalePaint.setDither(true);
         }
         boolean clipRounded = gameCornerRadiusX > 0f && gameCornerRadiusY > 0f;
         if (clipRounded) {
@@ -979,7 +980,17 @@ try {
                     android.graphics.Path.Direction.CW);
             canvas.clipPath(gameClipPath);
         }
-        canvas.drawBitmap(scaled, dstLeft, dstTop, null);
+        // Scale straight onto the (hardware-accelerated) view canvas so the GPU does the
+        // bilinear filtered upscale. The previous code first scaled the whole frame into an
+        // intermediate ARGB_8888 bitmap with a software Canvas every frame, which cost a full
+        // frame-size CPU scale on high-DPI devices and showed up as in-game stutter/heat.
+        if (dstWidth == srcWidth && dstHeight == srcHeight) {
+            canvas.drawBitmap(src, dstLeft, dstTop, upscalePaint);
+        } else {
+            upscaleSrcRect.set(0, 0, srcWidth, srcHeight);
+            upscaleDstRectF.set(dstLeft, dstTop, dstLeft + dstWidth, dstTop + dstHeight);
+            canvas.drawBitmap(src, upscaleSrcRect, upscaleDstRectF, upscalePaint);
+        }
         if (clipRounded) {
             canvas.restore();
         }
@@ -1328,16 +1339,28 @@ try {
 
     private boolean isSvgSkin(String skin, boolean landscape) {
         if (skin == null) return false;
+        String key = skin + (landscape ? "|L" : "|P");
+        if (key.equals(cachedSvgSkinKey)) {
+            return cachedSvgSkinResult;
+        }
         String orient = landscape ? "landscape" : "portrait";
+        boolean result;
         try {
             getContext().getAssets().open("skins/" + skin + "-" + orient + ".svg").close();
-            return true;
+            result = true;
         } catch (Exception e) {
-            return false;
+            result = false;
         }
+        cachedSvgSkinKey = key;
+        cachedSvgSkinResult = result;
+        return result;
     }
 
     private boolean isLandscapeOrientation() {
+        Boolean cached = cachedLandscape;
+        if (cached != null) {
+            return cached;
+        }
         String gameId = EntryActivity.gameId;
         android.content.SharedPreferences prefs = getContext().getSharedPreferences(DisplayActivity.PREFS_NAME, android.content.Context.MODE_PRIVATE);
         String orientation;
@@ -1347,7 +1370,9 @@ try {
         } else {
             orientation = prefs.getString(DisplayActivity.KEY_ORIENTATION, DisplayActivity.ORIENTATION_PORTRAIT);
         }
-        return orientation.startsWith("landscape");
+        boolean landscape = orientation.startsWith("landscape");
+        cachedLandscape = landscape;
+        return landscape;
     }
 
     private int skinColor(String skin) {

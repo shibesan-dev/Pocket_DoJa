@@ -190,10 +190,11 @@ public class HomeActivity extends Activity {
         glView.setZOrderOnTop(false);
         ThemeRenderer renderer = new ThemeRenderer(this);
         glView.setRenderer(renderer);
-        glView.setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
+        glView.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
         SharedPreferences themePrefs = getSharedPreferences(ThemeActivity.PREFS_NAME, MODE_PRIVATE);
         String theme = themePrefs.getString(ThemeActivity.KEY_THEME, "flow");
         renderer.setTheme(theme);
+        appliedGlTheme = theme;
         FrameLayout.LayoutParams glParams = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
         root.addView(glView, glParams);
@@ -250,11 +251,20 @@ public class HomeActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        ThemeRenderer.logEvent("Home.onResume glView=" + (glView != null)
+                + " themeRenderer=" + (themeRenderer != null));
         applyDisplayOrientation(this);
         computeGridMetrics();
         applyTopBarScale();
         refreshGames();
         if (glView != null) {
+            SharedPreferences themePrefs = getSharedPreferences(ThemeActivity.PREFS_NAME, MODE_PRIVATE);
+            String theme = themePrefs.getString(ThemeActivity.KEY_THEME, "flow");
+            // Rebuild the GL surface on resume. Reusing it meant onSurfaceCreated() was
+            // sometimes never called after returning from a game (the surface was not
+            // recreated), leaving the theme black. A fresh view always gets a new surface and
+            // context. The old view is detached (its GL thread exits) and the new one uses
+            // RENDERMODE_WHEN_DIRTY at ~20 fps, so this does not cause continuous rendering.
             android.view.ViewGroup parent = (android.view.ViewGroup) glView.getParent();
             if (parent != null) {
                 parent.removeView(glView);
@@ -269,9 +279,7 @@ public class HomeActivity extends Activity {
             glView.setFocusable(false);
             ThemeRenderer newRenderer = new ThemeRenderer(this);
             glView.setRenderer(newRenderer);
-            glView.setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
-            SharedPreferences themePrefs = getSharedPreferences(ThemeActivity.PREFS_NAME, MODE_PRIVATE);
-            String theme = themePrefs.getString(ThemeActivity.KEY_THEME, "flow");
+            glView.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
             newRenderer.setTheme(theme);
             FrameLayout.LayoutParams glParams = new FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
@@ -280,9 +288,11 @@ public class HomeActivity extends Activity {
             }
             this.glView = glView;
             this.themeRenderer = newRenderer;
+            appliedGlTheme = theme;
             glView.onResume();
             glView.requestRender();
-            opendoja.host.OpenDoJaLog.info(HomeActivity.class, "HomeActivity.onResume: GLSurfaceView recreated");
+            startGlFrameLoop();
+            android.util.Log.i("OpenDoJa", "HomeActivity.onResume: GLSurfaceView rebuilt theme=" + theme);
         }
         // Ensure fixed top bar stays on top and clickable
         if (fixedTopBar != null) {
@@ -329,11 +339,65 @@ public class HomeActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
+        ThemeRenderer.logEvent("Home.onPause");
+        stopGlFrameLoop();
         if (glView != null) {
             glView.onPause();
             opendoja.host.OpenDoJaLog.info(HomeActivity.class, "HomeActivity.onPause: glView.onPause() called");
         }
         stopBgm();
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        // If the window regains focus without a full resume (e.g. notification shade, lock
+        // screen overlay) make sure the animated theme resumes drawing instead of staying black.
+        if (hasFocus && glView != null) {
+            glView.requestRender();
+            startGlFrameLoop();
+        }
+    }
+
+    /** Drives the animated home background at ~30 fps while the screen is visible. */
+    private void startGlFrameLoop() {
+        if (glView == null) {
+            return;
+        }
+        if (glFrameHandler == null) {
+            glFrameHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+        }
+        if (glFrameTick == null) {
+            glFrameTick = new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        GLSurfaceView view = glView;
+                        if (view != null) {
+                            view.requestRender();
+                        }
+                    } catch (Throwable ignored) {
+                        // A transient GL error must never kill the repeating frame loop,
+                        // otherwise the animated background freezes/stays black.
+                    } finally {
+                        android.os.Handler handler = glFrameHandler;
+                        if (handler != null) {
+                            handler.postDelayed(this, GL_FRAME_INTERVAL_MS);
+                        }
+                    }
+                }
+            };
+        }
+        glFrameLoopActive = true;
+        glFrameHandler.removeCallbacks(glFrameTick);
+        glFrameHandler.postDelayed(glFrameTick, GL_FRAME_INTERVAL_MS);
+    }
+
+    private void stopGlFrameLoop() {
+        glFrameLoopActive = false;
+        if (glFrameHandler != null && glFrameTick != null) {
+            glFrameHandler.removeCallbacks(glFrameTick);
+        }
     }
 
     @Override
@@ -1173,9 +1237,229 @@ public class HomeActivity extends Activity {
                 finishAffinity();
                 System.exit(0);
                 break;
+            case 6:
+                captureDiagnostics();
+                break;
             default:
                 break;
         }
+    }
+
+    // ---- In-app diagnostics (no adb/terminal needed) ----
+
+    private static final class TaskCpu {
+        final String name;
+        final long ticks;
+
+        TaskCpu(String name, long ticks) {
+            this.name = name;
+            this.ticks = ticks;
+        }
+    }
+
+    private void captureDiagnostics() {
+        android.widget.Toast.makeText(this, "Sampling CPU for 2s...", android.widget.Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            String report;
+            java.io.File out = null;
+            try {
+                report = buildDiagnosticsReport();
+                out = writeDiagnostics(report);
+            } catch (Throwable throwable) {
+                report = "diagnostics failed: " + throwable;
+            }
+            final String finalReport = report;
+            final java.io.File finalOut = out;
+            runOnUiThread(() -> {
+                if (finalOut != null) {
+                    android.widget.Toast.makeText(this,
+                            "Saved: " + finalOut.getAbsolutePath(), android.widget.Toast.LENGTH_LONG).show();
+                }
+                try {
+                    Intent send = new Intent(Intent.ACTION_SEND);
+                    send.setType("text/plain");
+                    send.putExtra(Intent.EXTRA_SUBJECT, "PocketDoJa diagnostics");
+                    send.putExtra(Intent.EXTRA_TEXT, finalReport);
+                    startActivity(Intent.createChooser(send, "Share diagnostics"));
+                } catch (Throwable ignored) {
+                }
+            });
+        }, "opendoja-diagnostics").start();
+    }
+
+    private String buildDiagnosticsReport() throws Exception {
+        StringBuilder sb = new StringBuilder(16384);
+        sb.append("PocketDoJa diagnostics\n");
+        sb.append("time: ").append(new java.util.Date()).append('\n');
+        Runtime rt = Runtime.getRuntime();
+        long mb = 1024L * 1024L;
+        sb.append("memory: used=").append((rt.totalMemory() - rt.freeMemory()) / mb)
+                .append("MB total=").append(rt.totalMemory() / mb)
+                .append("MB max=").append(rt.maxMemory() / mb).append("MB\n");
+        sb.append("java threads: ").append(Thread.getAllStackTraces().size()).append('\n');
+
+        java.util.Map<String, TaskCpu> before = readProcTasks();
+        Thread.sleep(2000L);
+        java.util.Map<String, TaskCpu> after = readProcTasks();
+        long totalDelta = 0L;
+        java.util.List<long[]> deltas = new java.util.ArrayList<>();
+        java.util.List<String> names = new java.util.ArrayList<>();
+        java.util.List<String> tids = new java.util.ArrayList<>();
+        for (java.util.Map.Entry<String, TaskCpu> entry : after.entrySet()) {
+            TaskCpu now = entry.getValue();
+            TaskCpu then = before.get(entry.getKey());
+            long delta = now.ticks - (then == null ? 0L : then.ticks);
+            if (delta < 0L) {
+                delta = 0L;
+            }
+            totalDelta += delta;
+            deltas.add(new long[]{delta});
+            names.add(now.name);
+            tids.add(entry.getKey());
+        }
+        Integer[] order = new Integer[deltas.size()];
+        for (int i = 0; i < order.length; i++) {
+            order[i] = i;
+        }
+        java.util.Arrays.sort(order, (a, b) -> Long.compare(deltas.get(b)[0], deltas.get(a)[0]));
+        sb.append(String.format(java.util.Locale.US, "total process CPU over 2s: %.1f%%%n", totalDelta / 2.0));
+        sb.append("per-thread CPU (top 25):\n");
+        for (int i = 0; i < Math.min(25, order.length); i++) {
+            int idx = order[i];
+            sb.append(String.format(java.util.Locale.US, "  %6.1f%%  %s (tid=%s)%n",
+                    deltas.get(idx)[0] / 2.0, names.get(idx), tids.get(idx)));
+        }
+
+        // Stack traces of the busiest threads, so leftover game loops can be identified.
+        // Match by name (the /proc tid is the native id and does not reliably equal
+        // Thread.getId() on Android).
+        java.util.Map<Thread, StackTraceElement[]> stacks = Thread.getAllStackTraces();
+        java.util.Map<String, Thread> byName = new java.util.HashMap<>();
+        for (Thread thread : stacks.keySet()) {
+            byName.putIfAbsent(thread.getName(), thread);
+        }
+        sb.append("\nhot thread stacks:\n");
+        for (int i = 0; i < Math.min(8, order.length); i++) {
+            int idx = order[i];
+            if (deltas.get(idx)[0] < 20L) {
+                continue;
+            }
+            String comm = names.get(idx);
+            Thread thread = byName.get(comm);
+            if (thread == null) {
+                for (Thread candidate : stacks.keySet()) {
+                    String name = candidate.getName();
+                    if (name.startsWith(comm) || comm.startsWith(name)) {
+                        thread = candidate;
+                        break;
+                    }
+                }
+            }
+            sb.append("--- ").append(comm).append(" tid=").append(tids.get(idx)).append('\n');
+            StackTraceElement[] trace = thread != null ? stacks.get(thread) : null;
+            if (trace == null || trace.length == 0) {
+                sb.append("  (no java stack available)\n");
+                continue;
+            }
+            for (int f = 0; f < Math.min(18, trace.length); f++) {
+                sb.append("  at ").append(trace[f]).append('\n');
+            }
+        }
+
+        ThemeRenderer renderer = themeRenderer;
+        sb.append("\ntheme frames drawn: ").append(renderer != null ? renderer.drawCount() : -1L)
+                .append("  surfaceCreated: ").append(renderer != null ? renderer.surfaceCreateCount() : -1L)
+                .append("  tickActive: ").append(glFrameLoopActive)
+                .append('\n');
+        sb.append("theme events:\n").append(ThemeRenderer.recentEvents());
+
+        try {
+            java.io.File log = new java.io.File(getExternalFilesDir(null), "pocketdoja-log.txt");
+            if (!log.exists()) {
+                log = new java.io.File(getFilesDir(), "pocketdoja-log.txt");
+            }
+            if (log.exists()) {
+                sb.append("\nlog tail (").append(log.getName()).append("):\n").append(tail(log, 150));
+            } else {
+                sb.append("\n(no runtime log file; enable Debugging to capture it)\n");
+            }
+        } catch (Throwable ignored) {
+        }
+        return sb.toString();
+    }
+
+    private static java.util.Map<String, TaskCpu> readProcTasks() {
+        java.util.Map<String, TaskCpu> map = new java.util.HashMap<>();
+        java.io.File[] tasks = new java.io.File("/proc/self/task").listFiles();
+        if (tasks == null) {
+            return map;
+        }
+        for (java.io.File task : tasks) {
+            String tid = task.getName();
+            try {
+                String comm = readFirstLine(new java.io.File(task, "comm"));
+                String stat = readFirstLine(new java.io.File(task, "stat"));
+                int close = stat.lastIndexOf(')');
+                if (close < 0) {
+                    continue;
+                }
+                String[] tokens = stat.substring(close + 2).split(" ");
+                long ticks = Long.parseLong(tokens[11]) + Long.parseLong(tokens[12]);
+                map.put(tid, new TaskCpu(comm, ticks));
+            } catch (Throwable ignored) {
+            }
+        }
+        return map;
+    }
+
+    private static String readFirstLine(java.io.File file) throws java.io.IOException {
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(file))) {
+            String line = reader.readLine();
+            return line == null ? "" : line;
+        }
+    }
+
+    private java.io.File writeDiagnostics(String report) {
+        java.io.File[] candidates = {
+                new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS), "pocketdoja-diagnostics.txt"),
+                new java.io.File(getExternalFilesDir(null), "pocketdoja-diagnostics.txt"),
+                new java.io.File(getFilesDir(), "pocketdoja-diagnostics.txt")
+        };
+        for (java.io.File candidate : candidates) {
+            try {
+                java.io.File parent = candidate.getParentFile();
+                if (parent != null) {
+                    parent.mkdirs();
+                }
+                try (java.io.FileWriter writer = new java.io.FileWriter(candidate, false)) {
+                    writer.write(report);
+                }
+                return candidate;
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
+    }
+
+    private static String tail(java.io.File file, int maxLines) {
+        java.util.ArrayDeque<String> lines = new java.util.ArrayDeque<>();
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(file))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                lines.addLast(line);
+                if (lines.size() > maxLines) {
+                    lines.removeFirst();
+                }
+            }
+        } catch (Throwable throwable) {
+            return "could not read log: " + throwable + "\n";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String line : lines) {
+            sb.append(line).append('\n');
+        }
+        return sb.toString();
     }
 
     static void applyDisplayOrientation(Activity activity) {
@@ -1363,6 +1647,14 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
 
     private GLSurfaceView glView;
     private ThemeRenderer themeRenderer;
+    // The themed home background is decorative and animated; drive it at ~30 fps on demand
+    // instead of RENDERMODE_CONTINUOUSLY (which repaints at the display refresh rate, e.g.
+    // 60/120 Hz, forever and keeps the device hot even while idle on the game list).
+    private static final long GL_FRAME_INTERVAL_MS = 50L; // ~20 fps ambient background
+    private android.os.Handler glFrameHandler;
+    private Runnable glFrameTick;
+    private volatile boolean glFrameLoopActive;
+    private String appliedGlTheme;
 
     private void playBgm() {
         if (gameRunning || bgmSuppressed) {
@@ -1962,6 +2254,42 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         return row;
     }
 
+    private void confirmResetGameData(GameEntry game) {
+        new AlertDialog.Builder(this)
+                .setTitle(getString(R.string.reset_data_title))
+                .setMessage(getString(R.string.reset_data_message))
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> resetGameData(game))
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private void resetGameData(GameEntry game) {
+        File jam = game.jam;
+        String base = stripExtension(jam.getName());
+        File dir = jam.getParentFile();
+        File sp = new File(dir, base + ".sp");
+        File orig = new File(dir, base + ".sp.orig");
+        // Prefer the pristine import-time snapshot; fall back to the bundled sp/ copy.
+        File source = orig.exists() ? orig : new File(new File(dir, "sp"), base + ".sp");
+        if (!source.exists()) {
+            Toast.makeText(this, getString(R.string.reset_data_unavailable), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            java.nio.file.Files.copy(source.toPath(), sp.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            try {
+                java.nio.file.Files.deleteIfExists(new File(sp.getAbsolutePath() + ".undo").toPath());
+            } catch (IOException ignored) {
+            }
+            Toast.makeText(this, getString(R.string.reset_data_done), Toast.LENGTH_SHORT).show();
+        } catch (IOException exception) {
+            Toast.makeText(this, getString(R.string.reset_data_failed) + " " + exception.getMessage(),
+                    Toast.LENGTH_SHORT).show();
+        }
+        refreshGames();
+    }
+
     private void showRenameDialog(GameEntry game) {
         final android.widget.EditText input = new android.widget.EditText(this);
         input.setText(game.displayName);
@@ -2017,6 +2345,8 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
                         Intent kmIntent = new Intent(this, KeyMappingActivity.class);
                         kmIntent.putExtra("gameId", game.jam.getName());
                         startActivity(kmIntent);
+                    } else if (which == 7) {
+                        confirmResetGameData(game);
                     } else {
                         File jam = game.jam;
                         File jar = siblingFile(jam, ".jar");
@@ -2251,6 +2581,15 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
             try (java.io.FileOutputStream fos = new java.io.FileOutputStream(target)) {
                 fos.write(fe.getValue());
             }
+        }
+        // A freshly imported save must not be rolled back by a journal left over from the
+        // session that corrupted the old save.
+        try {
+            File undo = new File(JamAssets.gamesDir(this), base + ".sp.undo");
+            if (undo.exists()) {
+                undo.delete();
+            }
+        } catch (Throwable ignored) {
         }
     }
 
@@ -2672,7 +3011,9 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
             for (File sibling : siblings) {
                 String name = sibling.getName().toLowerCase();
                 if (name.equals(base + ".jam") || name.equals(base + ".jar")
-                        || name.equals(base + ".sp") || name.equals(base + ".dex")) {
+                        || name.equals(base + ".sp") || name.equals(base + ".dex")
+                        || name.equals(base + ".sp.undo") || name.equals(base + ".sp.orig")
+                        || name.equals(base + ".jar.dex.ok") || name.equals(base + ".jar.sjisfix.jar")) {
                     if (sibling.delete()) {
                         deleted++;
                     }
@@ -3064,6 +3405,22 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
                 result.failed++;
                 result.errors.add("????: " + source.displayName);
                 continue;
+            }
+        }
+        // Keep a pristine copy of each imported scratchpad so a later corrupt or
+        // network-gated .sp can be restored without re-importing the game.
+        for (String destName : toCopy.keySet()) {
+            if (!destName.endsWith(".sp")) {
+                continue;
+            }
+            File live = new File(gamesDir, destName);
+            File snapshot = new File(gamesDir, destName + ".orig");
+            if (live.exists() && !snapshot.exists()) {
+                try {
+                    java.nio.file.Files.copy(live.toPath(), snapshot.toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException ignored) {
+                }
             }
         }
         return result;

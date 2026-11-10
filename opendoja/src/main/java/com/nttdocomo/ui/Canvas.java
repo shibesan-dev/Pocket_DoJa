@@ -53,7 +53,22 @@ public abstract class Canvas extends Frame {
      * @return the graphics object for the canvas
      */
     public Graphics getGraphics() {
+        throwIfOwnerShutdown();
         return createGraphics();
+    }
+
+    /**
+     * Cooperative shutdown hook. Android's Thread.stop() is unsupported (throws
+     * UnsupportedOperationException) and titles routinely swallow interrupt(), so a game
+     * thread cannot be force-killed. Instead, once this canvas's runtime has shut down, any
+     * further API call throws {@link opendoja.host.GameTerminatedException} (an Error, so the
+     * title's {@code catch (Exception)} loops cannot swallow it). The game's own loop unwinds
+     * and the thread exits cleanly.
+     */
+    private void throwIfOwnerShutdown() {
+        DoJaRuntime runtime = ownerRuntime;
+        boolean shuttingDown = runtime != null ? runtime.isShutdown() : DoJaRuntime.isShuttingDown();
+        DoJaRuntime.terminateOrParkIfShuttingDown(shuttingDown);
     }
 
     Graphics runtimeGraphics() {
@@ -73,7 +88,9 @@ public abstract class Canvas extends Frame {
             }
             hookRuntime.notifySurfaceFlush(this, frame, frameBoundary);
         });
-        return Graphics.createPlatformGraphics(surface);
+        Graphics graphics = Graphics.createPlatformGraphics(surface);
+        graphics.attachOwnerRuntime(ownerRuntime);
+        return graphics;
     }
 
     /**
@@ -155,6 +172,7 @@ public abstract class Canvas extends Frame {
      * @return the keypad state bit mask
      */
     public int getKeypadState() {
+        throwIfOwnerShutdown();
         DoJaRuntime runtime = DoJaRuntime.current();
         return runtime == null ? 0 : runtime.keypadState();
     }
@@ -169,6 +187,7 @@ public abstract class Canvas extends Frame {
         if (group < 0) {
             throw new IllegalArgumentException("group");
         }
+        throwIfOwnerShutdown();
         DoJaRuntime runtime = DoJaRuntime.current();
         return runtime == null ? 0 : runtime.keypadState(group);
     }
