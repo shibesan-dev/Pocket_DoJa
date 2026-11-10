@@ -43,6 +43,7 @@ Thank you for your interest in Pocket DoJa!
     <string name="opt_import_save">Import Save</string>
     <string name="opt_remove">Remove From Library</string>
     <string name="opt_reset_data">Reset Game Data</string>
+    <string name="opt_import_sd">Import SD Data</string>
     <string name="reset_data_title">Reset game data?</string>
     <string name="reset_data_message">Restore the original game data (scratchpad). Any progress or settings saved after the game was imported will be lost.</string>
     <string name="reset_data_done">Game data reset to original</string>
@@ -62,6 +63,7 @@ Thank you for your interest in Pocket DoJa!
         <item>@string/opt_import_save</item>
         <item>@string/menu_key_mapping</item>
         <item>@string/opt_reset_data</item>
+        <item>@string/opt_import_sd</item>
         <item>@string/opt_remove</item>
     </string-array>
 

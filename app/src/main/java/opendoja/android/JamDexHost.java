@@ -44,7 +44,7 @@ public final class JamDexHost {
      * the game jar are unchanged, so an update no longer forces every game to be re-dexed (slow
      * "Booting..." on large titles).
      */
-    private static final int DEX_REWRITE_VERSION = 1;
+    private static final int DEX_REWRITE_VERSION = 3;
 
     private static volatile long appUpdateTimeMillis = 0L;
 
@@ -565,9 +565,43 @@ public final class JamDexHost {
                                     "(Ljava/nio/charset/Charset;)[B", isInterface);
                             return;
                         }
+                        // java.io readers/writers without an explicit charset use
+                        // Charset.defaultCharset(), which is UTF-8 on Android unless the hidden
+                        // cache override succeeded. Force the DoJa charset so text streams
+                        // (e.g. nexframe readStringArray) decode as Shift_JIS.
+                        if (opcode == org.objectweb.asm.Opcodes.INVOKESPECIAL
+                                && "java/io/InputStreamReader".equals(owner) && "<init>".equals(name)
+                                && "(Ljava/io/InputStream;)V".equals(descriptor)) {
+                            super.visitFieldInsn(org.objectweb.asm.Opcodes.GETSTATIC,
+                                    "opendoja/host/DoJaEncoding", "DEFAULT_CHARSET",
+                                    "Ljava/nio/charset/Charset;");
+                            super.visitMethodInsn(opcode, owner, name,
+                                    "(Ljava/io/InputStream;Ljava/nio/charset/Charset;)V", isInterface);
+                            return;
+                        }
+                        if (opcode == org.objectweb.asm.Opcodes.INVOKESPECIAL
+                                && "java/io/OutputStreamWriter".equals(owner) && "<init>".equals(name)
+                                && "(Ljava/io/OutputStream;)V".equals(descriptor)) {
+                            super.visitFieldInsn(org.objectweb.asm.Opcodes.GETSTATIC,
+                                    "opendoja/host/DoJaEncoding", "DEFAULT_CHARSET",
+                                    "Ljava/nio/charset/Charset;");
+                            super.visitMethodInsn(opcode, owner, name,
+                                    "(Ljava/io/OutputStream;Ljava/nio/charset/Charset;)V", isInterface);
+                            return;
+                        }
                         super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
                     }
                 };
+                // GGenMobile's nexframe.StorageIO.cleanup()/deleteFile() wipe the whole SD
+                // package whenever the live server's resource manifest differs from the
+                // imported sdcarddata, which deletes data the user imported and makes the game
+                // unplayable offline. Replace those two methods with "return true" so the
+                // imported data is never removed.
+                if ("nexframe/StorageIO".equals(classNameHolder[0])
+                        && (("deleteFile".equals(name) && "(Ljava/lang/String;)Z".equals(descriptor))
+                        || ("cleanup".equals(name) && "()Z".equals(descriptor)))) {
+                    return new NoOpBooleanMV(org.objectweb.asm.Opcodes.ASM9, sjisMv);
+                }
                 if ("GameCanvas".equals(classNameHolder[0]) && "<clinit>".equals(name) && "()V".equals(descriptor)) {
                     hasClinit[0] = true;
                     if (hasUsInfo[0] && hasNnInfo[0]) {
@@ -601,6 +635,44 @@ public final class JamDexHost {
         };
         reader.accept(visitor, org.objectweb.asm.ClassReader.EXPAND_FRAMES);
         return writer.toByteArray();
+    }
+
+    /** Replaces a boolean-returning method body with {@code return true;} (discards original code). */
+    static final class NoOpBooleanMV extends org.objectweb.asm.MethodVisitor {
+        NoOpBooleanMV(int api, org.objectweb.asm.MethodVisitor mv) {
+            super(api, mv);
+        }
+
+        @Override
+        public void visitCode() {
+            super.visitCode();
+            super.visitInsn(org.objectweb.asm.Opcodes.ICONST_1);
+            super.visitInsn(org.objectweb.asm.Opcodes.IRETURN);
+        }
+
+        @Override public void visitInsn(int opcode) { }
+        @Override public void visitIntInsn(int opcode, int operand) { }
+        @Override public void visitVarInsn(int opcode, int var) { }
+        @Override public void visitTypeInsn(int opcode, String type) { }
+        @Override public void visitFieldInsn(int opcode, String owner, String name, String descriptor) { }
+        @Override public void visitMethodInsn(int opcode, String owner, String name, String descriptor, boolean isInterface) { }
+        @Override public void visitInvokeDynamicInsn(String name, String descriptor, org.objectweb.asm.Handle bsm, Object... bsmArgs) { }
+        @Override public void visitJumpInsn(int opcode, org.objectweb.asm.Label label) { }
+        @Override public void visitLabel(org.objectweb.asm.Label label) { }
+        @Override public void visitLdcInsn(Object value) { }
+        @Override public void visitIincInsn(int var, int increment) { }
+        @Override public void visitTableSwitchInsn(int min, int max, org.objectweb.asm.Label dflt, org.objectweb.asm.Label... labels) { }
+        @Override public void visitLookupSwitchInsn(org.objectweb.asm.Label dflt, int[] keys, org.objectweb.asm.Label[] labels) { }
+        @Override public void visitMultiANewArrayInsn(String descriptor, int numDimensions) { }
+        @Override public void visitFrame(int type, int numLocal, Object[] local, int numStack, Object[] stack) { }
+        @Override public void visitTryCatchBlock(org.objectweb.asm.Label start, org.objectweb.asm.Label end, org.objectweb.asm.Label handler, String type) { }
+        @Override public void visitLocalVariable(String name, String descriptor, String signature, org.objectweb.asm.Label start, org.objectweb.asm.Label end, int index) { }
+        @Override public void visitLineNumber(int line, org.objectweb.asm.Label start) { }
+
+        @Override
+        public void visitMaxs(int maxStack, int maxLocals) {
+            super.visitMaxs(1, 0);
+        }
     }
 
     /** Fills null entries of a game's static info array with empty strings.

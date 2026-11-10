@@ -159,7 +159,15 @@ public class ThemeActivity extends Activity {
             intent.setType("*/*");
             intent.putExtra(Intent.EXTRA_MIME_TYPES,
                     new String[]{"audio/*", "application/octet-stream"});
-            startActivityForResult(intent, 1);
+            if (intent.resolveActivity(getPackageManager()) == null) {
+                pickBgmCustom();
+                return;
+            }
+            try {
+                startActivityForResult(intent, 1);
+            } catch (RuntimeException exception) {
+                pickBgmCustom();
+            }
         });
         root.addView(selectBgmButton, matchWrap());
 
@@ -224,63 +232,81 @@ public class ThemeActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == 1 && resultCode == RESULT_OK && data != null && data.getData() != null) {
             Uri uri = data.getData();
-            // Some pickers (Android 10's DocumentsUI in particular) return URIs
-            // such as "document/audio:1234" whose path segment carries no file
-            // name or extension. Resolve the real name through the resolver and,
-            // failing that, identify the format from the content itself.
+            // Some pickers return URIs without a file name/extension; resolve the display name
+            // and identify the format from the content itself.
             String name = queryDisplayName(uri);
             if (name == null || name.isEmpty()) name = uri.getLastPathSegment();
             if (name == null) name = "track";
-
-            // Copy to app-private storage right away: the picker's URI grant does
-            // not outlive this screen, and type detection needs the bytes anyway.
-            File dir = new File(getFilesDir(), "bgm");
-            dir.mkdirs();
-            File tmp = new File(dir, "bgm_track.tmp");
-            try (InputStream in = getContentResolver().openInputStream(uri);
-                 FileOutputStream fos = new FileOutputStream(tmp)) {
-                byte[] buf = new byte[8192];
-                int n;
-                while ((n = in.read(buf)) > 0) fos.write(buf, 0, n);
+            try (InputStream in = getContentResolver().openInputStream(uri)) {
+                if (in != null) {
+                    installBgmFromStream(in, name);
+                }
             } catch (Exception e) {
-                tmp.delete();
                 Toast.makeText(this, R.string.bgm_import_failed, Toast.LENGTH_LONG).show();
-                return;
             }
-
-            String lower = name.toLowerCase(Locale.ROOT);
-            byte[] magic = readMagic(tmp);
-            String ext;
-            if (lower.endsWith(".mld") || isMeloMagic(magic)) {
-                ext = ".mld";
-            } else if (lower.endsWith(".ogg") || isOggMagic(magic)) {
-                ext = ".ogg";
-            } else if (lower.endsWith(".mp3") || isMp3Magic(magic)) {
-                ext = ".mp3";
-            } else {
-                tmp.delete();
-                Toast.makeText(this, R.string.unsupported_audio, Toast.LENGTH_LONG).show();
-                return;
-            }
-
-            File out = new File(dir, "bgm_track" + ext);
-            if (out.exists()) out.delete();
-            if (!tmp.renameTo(out)) {
-                tmp.delete();
-                Toast.makeText(this, R.string.bgm_import_failed, Toast.LENGTH_LONG).show();
-                return;
-            }
-            if (ext.equals(".mld") && !looksLikeMld(out)) {
-                out.delete();
-                Toast.makeText(this, R.string.invalid_mld, Toast.LENGTH_LONG).show();
-                return;
-            }
-            pendingBgmPath = out.getAbsolutePath();
-            pendingBgmEnabled = true;
-            pendingBgmName = name;
-            HomeActivity.stopBgmStatic();
-            updateBgmSelection();
         }
+    }
+
+    /** Fallback used when the device has no system document picker. */
+    private void pickBgmCustom() {
+        CustomFilePicker.pickFile(this, "Select audio file",
+                new String[]{".mp3", ".ogg", ".mld"}, file -> {
+                    try (InputStream in = new FileInputStream(file)) {
+                        installBgmFromStream(in, file.getName());
+                    } catch (Exception e) {
+                        Toast.makeText(this, R.string.bgm_import_failed, Toast.LENGTH_LONG).show();
+                    }
+                });
+    }
+
+    private void installBgmFromStream(InputStream in, String name) {
+        // Copy to app-private storage right away: the picker's URI grant does not outlive
+        // this screen, and type detection needs the bytes anyway.
+        File dir = new File(getFilesDir(), "bgm");
+        dir.mkdirs();
+        File tmp = new File(dir, "bgm_track.tmp");
+        try (InputStream source = in; FileOutputStream fos = new FileOutputStream(tmp)) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = source.read(buf)) > 0) fos.write(buf, 0, n);
+        } catch (Exception e) {
+            tmp.delete();
+            Toast.makeText(this, R.string.bgm_import_failed, Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        String lower = name.toLowerCase(Locale.ROOT);
+        byte[] magic = readMagic(tmp);
+        String ext;
+        if (lower.endsWith(".mld") || isMeloMagic(magic)) {
+            ext = ".mld";
+        } else if (lower.endsWith(".ogg") || isOggMagic(magic)) {
+            ext = ".ogg";
+        } else if (lower.endsWith(".mp3") || isMp3Magic(magic)) {
+            ext = ".mp3";
+        } else {
+            tmp.delete();
+            Toast.makeText(this, R.string.unsupported_audio, Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        File out = new File(dir, "bgm_track" + ext);
+        if (out.exists()) out.delete();
+        if (!tmp.renameTo(out)) {
+            tmp.delete();
+            Toast.makeText(this, R.string.bgm_import_failed, Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (ext.equals(".mld") && !looksLikeMld(out)) {
+            out.delete();
+            Toast.makeText(this, R.string.invalid_mld, Toast.LENGTH_LONG).show();
+            return;
+        }
+        pendingBgmPath = out.getAbsolutePath();
+        pendingBgmEnabled = true;
+        pendingBgmName = name;
+        HomeActivity.stopBgmStatic();
+        updateBgmSelection();
     }
 
     /** Resolves a picker URI to its display name; many providers omit it from the path. */

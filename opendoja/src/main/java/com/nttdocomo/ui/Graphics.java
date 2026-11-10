@@ -930,6 +930,7 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
         if (text == null) {
             return;
         }
+        opendoja.host.TextSampleLog.record(text);
         Rectangle bounds = new Rectangle(
                 originX + x,
                 originY + y - font.getAscent(),

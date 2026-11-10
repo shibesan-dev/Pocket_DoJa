@@ -89,6 +89,10 @@ public class HomeActivity extends Activity {
     private static final int REQUEST_IMPORT_FOLDER = 1;
     private static final int REQUEST_EXPORT_SAVE = 3;
     private static final int REQUEST_IMPORT_SAVE = 4;
+    private static final int REQUEST_IMPORT_SD_DATA = 5;
+    private File pendingSdDataGame;
+    // Shown in diagnostics so we can confirm which build is actually installed.
+    private static final String DIAG_BUILD = "2026-11-11 05:40 text-debug";
     private GameEntry pendingIconGame;
     private GameEntry pendingSaveGame;
     private String[] menuItems;
@@ -1290,7 +1294,16 @@ public class HomeActivity extends Activity {
     private String buildDiagnosticsReport() throws Exception {
         StringBuilder sb = new StringBuilder(16384);
         sb.append("PocketDoJa diagnostics\n");
+        sb.append("build: ").append(DIAG_BUILD).append('\n');
         sb.append("time: ").append(new java.util.Date()).append('\n');
+        try {
+            android.content.pm.PackageInfo info = getPackageManager()
+                    .getPackageInfo(getPackageName(), 0);
+            sb.append("installed: ").append(new java.util.Date(info.lastUpdateTime))
+                    .append(" versionCode=").append(info.versionCode)
+                    .append(" versionName=").append(info.versionName).append('\n');
+        } catch (Throwable ignored) {
+        }
         Runtime rt = Runtime.getRuntime();
         long mb = 1024L * 1024L;
         sb.append("memory: used=").append((rt.totalMemory() - rt.freeMemory()) / mb)
@@ -1374,11 +1387,37 @@ public class HomeActivity extends Activity {
         sb.append("theme events:\n").append(ThemeRenderer.recentEvents());
 
         try {
+            java.io.File sdRoot = new java.io.File(getFilesDir(), ".opendoja/storage/ext0/SD_BIND");
+            java.io.File[] sdFolders = sdRoot.listFiles();
+            sb.append("\nSD_BIND folders:\n");
+            if (sdFolders == null || sdFolders.length == 0) {
+                sb.append("  (none)\n");
+            } else {
+                for (java.io.File folder : sdFolders) {
+                    sb.append("  ").append(folder.getName())
+                            .append(" (").append(countFiles(folder)).append(" files)\n");
+                    appendFileNames(sb, folder, 20);
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
+            java.io.File stubTrace = new java.io.File(getFilesDir(), ".opendoja/pocketdoja-http-stub.txt");
+            sb.append("\nhttp-stub trace:\n");
+            if (stubTrace.exists()) {
+                sb.append(tail(stubTrace, 60));
+            } else {
+                sb.append("  (none)\n");
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
             java.io.File log = new java.io.File(getExternalFilesDir(null), "pocketdoja-log.txt");
             if (!log.exists()) {
                 log = new java.io.File(getFilesDir(), "pocketdoja-log.txt");
             }
             if (log.exists()) {
+                appendLogMatches(sb, log);
                 sb.append("\nlog tail (").append(log.getName()).append("):\n").append(tail(log, 150));
             } else {
                 sb.append("\n(no runtime log file; enable Debugging to capture it)\n");
@@ -1386,6 +1425,33 @@ public class HomeActivity extends Activity {
         } catch (Throwable ignored) {
         }
         return sb.toString();
+    }
+
+    /** Surfaces manifest/HTTP diagnostics even when they are far outside the log tail. */
+    private static void appendLogMatches(StringBuilder sb, java.io.File log) {
+        sb.append("\nhttp/manifest log lines:\n");
+        int shown = 0;
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(log))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String lower = line.toLowerCase(java.util.Locale.ROOT);
+                if (lower.contains("manifest") || lower.contains("api.php") || lower.contains("zc=10")
+                        || lower.contains("http request") || lower.contains("http response")
+                        || lower.contains("appname") || lower.contains("package.lst")
+                        || lower.contains("no runtime") || lower.contains("stub")
+                        || lower.contains("text sample") || lower.contains("charset check")
+                        || lower.contains("sjis")) {
+                    if (shown < 80) {
+                        sb.append("  ").append(line).append('\n');
+                        shown++;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        if (shown == 0) {
+            sb.append("  (none)\n");
+        }
     }
 
     private static java.util.Map<String, TaskCpu> readProcTasks() {
@@ -1434,6 +1500,30 @@ public class HomeActivity extends Activity {
                 }
                 try (java.io.FileWriter writer = new java.io.FileWriter(candidate, false)) {
                     writer.write(report);
+                }
+                return candidate;
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
+    }
+
+    /** Writes a small diagnostic report to Downloads / app storage under the given name. */
+    private java.io.File writeExternalReport(String name, String content) {
+        java.io.File[] candidates = {
+                new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS), name),
+                new java.io.File(getExternalFilesDir(null), name),
+                new java.io.File(getFilesDir(), name)
+        };
+        for (java.io.File candidate : candidates) {
+            try {
+                java.io.File parent = candidate.getParentFile();
+                if (parent != null) {
+                    parent.mkdirs();
+                }
+                try (java.io.FileWriter writer = new java.io.FileWriter(candidate, false)) {
+                    writer.write(content);
                 }
                 return candidate;
             } catch (Throwable ignored) {
@@ -2347,6 +2437,8 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
                         startActivity(kmIntent);
                     } else if (which == 7) {
                         confirmResetGameData(game);
+                    } else if (which == 8) {
+                        pickSdDataFolder(game);
                     } else {
                         File jam = game.jam;
                         File jar = siblingFile(jam, ".jar");
@@ -2367,7 +2459,32 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("application/zip");
         intent.putExtra(Intent.EXTRA_TITLE, stripExtension(game.jam.getName()) + ".pdsave");
-        startActivityForResult(intent, REQUEST_EXPORT_SAVE);
+        if (intent.resolveActivity(getPackageManager()) == null) {
+            exportSaveCustom(game);
+            return;
+        }
+        try {
+            startActivityForResult(intent, REQUEST_EXPORT_SAVE);
+        } catch (RuntimeException exception) {
+            exportSaveCustom(game);
+        }
+    }
+
+    private void exportSaveCustom(GameEntry game) {
+        CustomFilePicker.pickFolder(this, "Choose export folder", dir -> {
+            final GameEntry target = game;
+            new Thread(() -> {
+                try {
+                    File out = new File(dir, stripExtension(target.jam.getName()) + ".pdsave");
+                    exportSaveToUri(target, Uri.fromFile(out));
+                    runOnUiThread(() -> Toast.makeText(this,
+                            "Save exported to " + out.getAbsolutePath(), Toast.LENGTH_LONG).show());
+                } catch (Exception exception) {
+                    runOnUiThread(() -> Toast.makeText(this,
+                            "Export failed: " + exception.getMessage(), Toast.LENGTH_LONG).show());
+                }
+            }).start();
+        });
     }
 
     private void startImportSave(GameEntry game) {
@@ -2375,7 +2492,30 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("*/*");
-        startActivityForResult(intent, REQUEST_IMPORT_SAVE);
+        if (intent.resolveActivity(getPackageManager()) == null) {
+            importSaveCustom(game);
+            return;
+        }
+        try {
+            startActivityForResult(intent, REQUEST_IMPORT_SAVE);
+        } catch (RuntimeException exception) {
+            importSaveCustom(game);
+        }
+    }
+
+    private void importSaveCustom(GameEntry game) {
+        CustomFilePicker.pickFile(this, "Select save file", new String[]{".pdsave", ".zip"}, file -> {
+            final GameEntry target = game;
+            new Thread(() -> {
+                try {
+                    importSaveFromUri(target, Uri.fromFile(file));
+                    runOnUiThread(() -> Toast.makeText(this, "Save imported", Toast.LENGTH_SHORT).show());
+                } catch (Exception exception) {
+                    runOnUiThread(() -> Toast.makeText(this,
+                            "Import failed: " + exception.getMessage(), Toast.LENGTH_LONG).show());
+                }
+            }).start();
+        });
     }
 
     private void exportSaveToUri(GameEntry game, Uri uri) throws Exception {
@@ -3068,9 +3208,274 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         }
     }
 
+    /** Import a game's external SD-card data (e.g. a "sdcarddata" folder) into its SD folder. */
+    private void pickSdDataFolder(GameEntry game) {
+        pendingSdDataGame = game.jam;
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        if (intent.resolveActivity(getPackageManager()) == null) {
+            pickSdFolderCustom(game.jam);
+            return;
+        }
+        try {
+            startActivityForResult(intent, REQUEST_IMPORT_SD_DATA);
+        } catch (RuntimeException exception) {
+            pickSdFolderCustom(game.jam);
+        }
+    }
+
+    private void pickSdFolderCustom(File jam) {
+        CustomFilePicker.pickFolder(this, "Select SD data folder", dir -> {
+            final File jamFile = jam;
+            new Thread(() -> {
+                try {
+                    String appName = readJamAppName(jamFile);
+                    if (appName == null) {
+                        appName = stripExtension(jamFile.getName());
+                    }
+                    File target = new File(getFilesDir(),
+                            ".opendoja/storage/ext0/SD_BIND/" + sanitizeSdName(appName));
+                    if (!target.exists() && !target.mkdirs()) {
+                        throw new java.io.IOException("cannot create " + target);
+                    }
+                    File source = new File(dir, "sdcarddata");
+                    if (!source.isDirectory()) {
+                        source = dir;
+                    }
+                    int count = copyDirectoryTo(source, target);
+                    final int copied = count;
+                    writeExternalReport("pocketdoja-sd-import.txt",
+                            "source=File\ndir=" + dir.getAbsolutePath()
+                                    + "\nusedSource=" + source.getAbsolutePath()
+                                    + "\ntarget=" + target.getAbsolutePath()
+                                    + "\ncopied=" + count + "\n");
+                    runOnUiThread(() -> {
+                        Toast.makeText(this,
+                                "Imported " + copied + " SD file(s) into " + target.getAbsolutePath(),
+                                Toast.LENGTH_LONG).show();
+                        if (copied == 0) {
+                            Toast.makeText(this,
+                                    "No files found in that folder (select the folder containing the .BIN files).",
+                                    Toast.LENGTH_LONG).show();
+                        }
+                    });
+                } catch (Throwable throwable) {
+                    runOnUiThread(() -> Toast.makeText(this,
+                            "SD data import failed: " + throwable.getMessage(), Toast.LENGTH_LONG).show());
+                }
+            }).start();
+        });
+    }
+
+    private static int copyDirectoryTo(File sourceDir, File destDir) throws java.io.IOException {
+        destDir.mkdirs();
+        File[] children = sourceDir.listFiles();
+        if (children == null) {
+            return 0;
+        }
+        int copied = 0;
+        for (File child : children) {
+            File out = new File(destDir, child.getName());
+            if (child.isDirectory()) {
+                copied += copyDirectoryTo(child, out);
+            } else {
+                try (java.io.InputStream in = new java.io.FileInputStream(child);
+                     java.io.OutputStream os = new java.io.FileOutputStream(out)) {
+                    byte[] buffer = new byte[8192];
+                    int read;
+                    while ((read = in.read(buffer)) > 0) {
+                        os.write(buffer, 0, read);
+                    }
+                    copied++;
+                }
+            }
+        }
+        return copied;
+    }
+
+    private static String readJamAppName(File jam) {
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(jam))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                int eq = line.indexOf('=');
+                if (eq > 0 && line.substring(0, eq).trim().equalsIgnoreCase("AppName")) {
+                    String value = line.substring(eq + 1).trim();
+                    return value.isEmpty() ? null : value;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private static String sanitizeSdName(String value) {
+        StringBuilder builder = new StringBuilder();
+        boolean replaced = false;
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            if (Character.isLetterOrDigit(ch) || ch == '_' || ch == '-' || ch == '.') {
+                builder.append(ch);
+                replaced = false;
+            } else if (!replaced) {
+                builder.append('_');
+                replaced = true;
+            }
+        }
+        String sanitized = builder.toString();
+        return sanitized.isEmpty() ? "app" : sanitized;
+    }
+
+    /** Finds a child directory named "sdcarddata" (so picking the game folder still works). */
+    private String findSdcardDataChild(Uri treeUri, String parentDocId) {
+        Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId);
+        try (android.database.Cursor cursor = getContentResolver().query(children, new String[]{
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document.COLUMN_MIME_TYPE}, null, null, null)) {
+            if (cursor == null) {
+                return null;
+            }
+            while (cursor.moveToNext()) {
+                String name = cursor.getString(1);
+                String mime = cursor.getString(2);
+                if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)
+                        && name != null && name.equalsIgnoreCase("sdcarddata")) {
+                    return cursor.getString(0);
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private static int countFiles(File dir) {
+        File[] children = dir.listFiles();
+        if (children == null) {
+            return 0;
+        }
+        int count = 0;
+        for (File child : children) {
+            count += child.isDirectory() ? countFiles(child) : 1;
+        }
+        return count;
+    }
+
+    private static void appendFileNames(StringBuilder sb, File dir, int max) {
+        File[] children = dir.listFiles();
+        if (children == null) {
+            return;
+        }
+        java.util.Arrays.sort(children, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+        int shown = 0;
+        for (File child : children) {
+            if (shown >= max) {
+                sb.append("    ...\n");
+                break;
+            }
+            sb.append("    ").append(child.isDirectory() ? child.getName() + "/" : child.getName()).append('\n');
+            shown++;
+        }
+    }
+
+    private int copyTreeToDir(Uri treeUri, String parentDocId, File destDir, int depth) throws Exception {
+        if (depth > 8) {
+            return 0;
+        }
+        destDir.mkdirs();
+        int copied = 0;
+        Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId);
+        try (android.database.Cursor cursor = getContentResolver().query(children, new String[]{
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document.COLUMN_MIME_TYPE}, null, null, null)) {
+            if (cursor == null) {
+                return 0;
+            }
+            while (cursor.moveToNext()) {
+                String docId = cursor.getString(0);
+                String name = cursor.getString(1);
+                String mime = cursor.getString(2);
+                if (name == null || name.isEmpty()) {
+                    continue;
+                }
+                File out = new File(destDir, name);
+                if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
+                    copied += copyTreeToDir(treeUri, docId, out, depth + 1);
+                } else {
+                    Uri docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId);
+                    try (java.io.InputStream in = getContentResolver().openInputStream(docUri);
+                         java.io.OutputStream os = new java.io.FileOutputStream(out)) {
+                        if (in != null) {
+                            byte[] buffer = new byte[8192];
+                            int read;
+                            while ((read = in.read(buffer)) > 0) {
+                                os.write(buffer, 0, read);
+                            }
+                            copied++;
+                        }
+                    }
+                }
+            }
+        }
+        return copied;
+    }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_IMPORT_SD_DATA) {
+            if (resultCode == RESULT_OK && data != null && data.getData() != null && pendingSdDataGame != null) {
+                final Uri treeUri = data.getData();
+                final File jam = pendingSdDataGame;
+                try {
+                    getContentResolver().takePersistableUriPermission(treeUri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                } catch (Throwable ignored) {
+                }
+                new Thread(() -> {
+                    try {
+                        String appName = readJamAppName(jam);
+                        if (appName == null) {
+                            appName = stripExtension(jam.getName());
+                        }
+                        File target = new File(getFilesDir(),
+                                ".opendoja/storage/ext0/SD_BIND/" + sanitizeSdName(appName));
+                        if (!target.exists() && !target.mkdirs()) {
+                            throw new java.io.IOException("cannot create " + target);
+                        }
+                        String rootId = DocumentsContract.getTreeDocumentId(treeUri);
+                        String sdChild = findSdcardDataChild(treeUri, rootId);
+                        String sourceId = sdChild != null ? sdChild : rootId;
+                        int count = copyTreeToDir(treeUri, sourceId, target, 0);
+                        final int copied = count;
+                        writeExternalReport("pocketdoja-sd-import.txt",
+                                "source=SAF\ntreeDocId=" + rootId
+                                        + "\nsdcardChild=" + sdChild
+                                        + "\ntarget=" + target.getAbsolutePath()
+                                        + "\ncopied=" + count + "\n");
+                        runOnUiThread(() -> {
+                            Toast.makeText(this,
+                                    "Imported " + copied + " SD file(s) into " + target.getAbsolutePath(),
+                                    Toast.LENGTH_LONG).show();
+                            if (copied == 0) {
+                                Toast.makeText(this,
+                                        "No files found there. Pick the folder that contains the .BIN files.",
+                                        Toast.LENGTH_LONG).show();
+                                pickSdFolderCustom(jam);
+                            }
+                        });
+                    } catch (Throwable throwable) {
+                        writeExternalReport("pocketdoja-sd-import.txt",
+                                "source=SAF\nerror=" + throwable + "\n");
+                        runOnUiThread(() -> Toast.makeText(this,
+                                "SD data import failed: " + throwable.getMessage(),
+                                Toast.LENGTH_LONG).show());
+                    }
+                }).start();
+            }
+            pendingSdDataGame = null;
+            return;
+        }
         if (requestCode == REQUEST_CHANGE_ICON) {
             if (resultCode == RESULT_OK && data != null && data.getData() != null && pendingIconGame != null) {
                 try {

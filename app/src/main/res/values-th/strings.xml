@@ -49,6 +49,7 @@
         <item>@string/opt_import_save</item>
         <item>@string/menu_key_mapping</item>
         <item>@string/opt_reset_data</item>
+        <item>@string/opt_import_sd</item>
         <item>@string/opt_remove</item>
     </string-array>
 

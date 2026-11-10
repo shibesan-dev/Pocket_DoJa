@@ -1049,6 +1049,11 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
                                     }
                                 }
                             }
+                        } else if ("storage".equals(child.getName())
+                                || "configs".equals(child.getName())) {
+                            // Preserve the emulated SD card (storage/ext0/SD_BIND) and persistent
+                            // configs. Previously this sweep recursively deleted them on every
+                            // launch, which wiped user-imported SD resource packs (sdcarddata).
                         } else {
                             deleteRecursively(child);
                         }
@@ -1113,6 +1118,13 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
                         + java.nio.charset.Charset.forName("SJIS_i").getClass().getName());
             } catch (Throwable throwable) {
                 opendoja.host.OpenDoJaLog.warn(EntryActivity.class, "forName SJIS_i failed: " + throwable);
+            }
+            try {
+                opendoja.host.OpenDoJaLog.info(EntryActivity.class, "charset check jvm="
+                        + java.nio.charset.Charset.defaultCharset().name()
+                        + " doja=" + opendoja.host.DoJaEncoding.defaultCharsetName());
+            } catch (Throwable throwable) {
+                opendoja.host.OpenDoJaLog.warn(EntryActivity.class, "charset check failed: " + throwable);
             }
 
             android.content.Context appContext = getApplicationContext();
