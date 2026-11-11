@@ -916,7 +916,7 @@ public final void glGetIntegerv(int pname, int[] params) {
         case GraphicsOGL.GL_MAX_TEXTURE_SIZE -> params[0] = 2048;
         case GraphicsOGL.GL_MAX_TEXTURE_UNITS -> params[0] = OGL_TEXTURE_UNIT_COUNT;
         case GraphicsOGL.GL_MAX_PALETTE_MATRICES_OES -> params[0] = OGL_MAX_PALETTE_MATRICES;
-        case GraphicsOGL.GL_MAX_VERTEX_UNITS_OES -> params[0] = OGL_MAX_VERTE
+        case GraphicsOGL.GL_MAX_VERTEX_UNITS_OES -> params[0] = OGL_MAX_VERTEX_UNITS;
         case 0xD56 -> params[0] = 1;
         default -> ogl.lastError = GraphicsOGL.GL_INVALID_ENUM;
     }

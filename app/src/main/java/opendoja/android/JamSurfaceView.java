@@ -154,6 +154,10 @@ public class JamSurfaceView extends View {
     private int batteryPercent = -1;
     private final Paint ledGlowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint ledCorePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final RectF ledRect = new RectF();
+    private final RectF ledGlowRect = new RectF();
+    private static final long LED_BLINK_CYCLE_MS = 5000L;
+    private static final long LED_BLINK_ON_MS = 120L;
     private android.content.BroadcastReceiver batteryReceiver;
 
     private JamInputController input;
@@ -488,9 +492,10 @@ try {
             }
             canvas.drawText(pausedText, cx, cy, overlayTextPaint);
         }
-        // Keep the status LED blinking even when the game presents a static frame.
+        // Keep the status LED blinking even when the game presents a static frame. Wake up only
+        // at the next edge (flash start or end) instead of polling continuously.
         if (!released && !fullScreen && batteryPercent >= 0) {
-            postInvalidateDelayed(200L);
+            postInvalidateDelayed(nextLedFrameDelayMs());
         }
         if (rotationAngle != 0) {
             canvas.restore();
@@ -542,19 +547,40 @@ try {
         }
         float sx = viewWidth / vbW;
         float sy = viewHeight / vbH;
-        float r = 7f * Math.min(sx, sy);
         float cx = lensX * sx;
         float cy = lensY * sy;
+        // The skin lens is a 7-unit circle with a 2-unit white ring, so the visible grey window
+        // is the 6-unit inner radius. The skin bitmap is stretched to the view, so match it with
+        // the per-axis scale (an ellipse) instead of a min-scale circle, which left a gap on the
+        // axis that was scaled more.
+        float radiusX = 6.15f * sx;
+        float radiusY = 6.15f * sy;
+        ledRect.set(cx - radiusX, cy - radiusY, cx + radiusX, cy + radiusY);
+        if (!isLedBlinkOn()) {
+            return;
+        }
         int color = batteryPercent > 30 ? 0xFF2EFF6B : 0xFFFF3B30;
-        // Smooth breathing blink on a ~2.2 s cycle.
-        float phase = (android.os.SystemClock.elapsedRealtime() % 2200L) / 2200f;
-        float blink = 0.15f + 0.85f * (0.5f - 0.5f * (float) Math.cos(2.0 * Math.PI * phase));
+        // Hard-edged pulse: one short flash every five seconds, no fade.
         ledGlowPaint.setColor(color);
-        ledGlowPaint.setAlpha((int) (255 * blink * 0.30f));
-        canvas.drawCircle(cx, cy, r * 2.1f, ledGlowPaint);
+        ledGlowPaint.setAlpha(76);
+        ledGlowRect.set(cx - radiusX * 2.1f, cy - radiusY * 2.1f,
+                cx + radiusX * 2.1f, cy + radiusY * 2.1f);
+        canvas.drawOval(ledGlowRect, ledGlowPaint);
         ledCorePaint.setColor(color);
-        ledCorePaint.setAlpha((int) (255 * blink));
-        canvas.drawCircle(cx, cy, r * 0.85f, ledCorePaint);
+        ledCorePaint.setAlpha(255);
+        canvas.drawOval(ledRect, ledCorePaint);
+    }
+
+    private static boolean isLedBlinkOn() {
+        return android.os.SystemClock.elapsedRealtime() % LED_BLINK_CYCLE_MS < LED_BLINK_ON_MS;
+    }
+
+    private static long nextLedFrameDelayMs() {
+        long phase = android.os.SystemClock.elapsedRealtime() % LED_BLINK_CYCLE_MS;
+        long delay = phase < LED_BLINK_ON_MS
+                ? LED_BLINK_ON_MS - phase
+                : LED_BLINK_CYCLE_MS - phase;
+        return Math.max(16L, delay + 2L);
     }
 
     private void computeZones() {

@@ -92,7 +92,7 @@ public class HomeActivity extends Activity {
     private static final int REQUEST_IMPORT_SD_DATA = 5;
     private File pendingSdDataGame;
     // Shown in diagnostics so we can confirm which build is actually installed.
-    private static final String DIAG_BUILD = "2026-11-11 06:08 skin-portrait-digits";
+    private static final String DIAG_BUILD = "2026-11-11 15:55 led-blink";
     private GameEntry pendingIconGame;
     private GameEntry pendingSaveGame;
     private String[] menuItems;
