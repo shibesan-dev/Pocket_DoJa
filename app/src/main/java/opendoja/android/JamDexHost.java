@@ -27,6 +27,8 @@ import opendoja.host.OpenDoJaLog;
  */
 public final class JamDexHost {
     private static final String TAG = "OpenDoJa";
+    private static final boolean SUPPRESS_EXPLICIT_GC = !opendoja.host.OpenDoJaLaunchArgs.getBoolean(
+            opendoja.host.OpenDoJaLaunchArgs.KEEP_EXPLICIT_GC);
 
     private JamDexHost() {
     }
@@ -44,7 +46,7 @@ public final class JamDexHost {
      * the game jar are unchanged, so an update no longer forces every game to be re-dexed (slow
      * "Booting..." on large titles).
      */
-    private static final int DEX_REWRITE_VERSION = 3;
+    private static final int DEX_REWRITE_VERSION = 4;
 
     private static volatile long appUpdateTimeMillis = 0L;
 
@@ -521,6 +523,13 @@ public final class JamDexHost {
                     @Override
                     public void visitMethodInsn(int opcode, String owner, String name,
                                                 String descriptor, boolean isInterface) {
+                        if (SUPPRESS_EXPLICIT_GC
+                                && opcode == org.objectweb.asm.Opcodes.INVOKESTATIC
+                                && "java/lang/System".equals(owner)
+                                && "gc".equals(name)
+                                && "()V".equals(descriptor)) {
+                            return;
+                        }
                         if (opcode == org.objectweb.asm.Opcodes.INVOKEVIRTUAL
                                 && "java/lang/Throwable".equals(owner)
                                 && "toString".equals(name)

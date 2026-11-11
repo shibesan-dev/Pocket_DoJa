@@ -913,9 +913,11 @@ public final void glGetIntegerv(int pname, int[] params) {
     }
     switch (pname) {
         case GraphicsOGL.GL_MAX_LIGHTS -> params[0] = 8;
+        case GraphicsOGL.GL_MAX_TEXTURE_SIZE -> params[0] = 2048;
         case GraphicsOGL.GL_MAX_TEXTURE_UNITS -> params[0] = OGL_TEXTURE_UNIT_COUNT;
         case GraphicsOGL.GL_MAX_PALETTE_MATRICES_OES -> params[0] = OGL_MAX_PALETTE_MATRICES;
-        case GraphicsOGL.GL_MAX_VERTEX_UNITS_OES -> params[0] = OGL_MAX_VERTEX_UNITS;
+        case GraphicsOGL.GL_MAX_VERTEX_UNITS_OES -> params[0] = OGL_MAX_VERTE
+        case 0xD56 -> params[0] = 1;
         default -> ogl.lastError = GraphicsOGL.GL_INVALID_ENUM;
     }
 }
@@ -1512,6 +1514,29 @@ float readFloatComponent(OglPointer pointer, int vertexIndex, int componentIndex
     }
     ogl.lastError = GraphicsOGL.GL_INVALID_VALUE;
     return 0f;
+}
+
+/**
+ * Reads one component from a vertex-array pointer regardless of its declared GL type.
+ * Mobile titles commonly store geometry as GL_SHORT (integer world units scaled by the
+ * model-view matrix) while colors stay GL_FLOAT. The software rasterizer previously
+ * accepted only GL_FLOAT vertices, which silently dropped every draw in those titles.
+ */
+float readArrayComponent(OglPointer pointer, int vertexIndex, int componentIndex) {
+    int byteOffset = pointer.componentByteOffset(vertexIndex, componentIndex);
+    if (pointer.bufferObject() != null) {
+        return readTypedFloat(pointer.type(), pointer.bufferObject().data(), byteOffset);
+    }
+    return switch (pointer.type()) {
+        case GraphicsOGL.GL_FLOAT -> readFloatComponent(pointer, vertexIndex, componentIndex);
+        case GraphicsOGL.GL_SHORT -> readDirectShortComponent(pointer, byteOffset);
+        case GraphicsOGL.GL_BYTE -> readDirectByteComponent(pointer, byteOffset);
+        case GraphicsOGL.GL_UNSIGNED_BYTE -> readUnsignedByteComponent(pointer, vertexIndex, componentIndex);
+        default -> {
+            ogl.lastError = GraphicsOGL.GL_INVALID_ENUM;
+            yield 0f;
+        }
+    };
 }
 
 float readNormalComponent(OglPointer pointer, int vertexIndex, int componentIndex) {

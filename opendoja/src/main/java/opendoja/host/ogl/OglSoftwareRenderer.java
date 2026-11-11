@@ -117,20 +117,16 @@ final class OglSoftwareRenderer {
         if (vertexPointer == null) {
             return false;
         }
-        if (vertexPointer.type() != GraphicsOGL.GL_FLOAT) {
-            ogl.lastError = GraphicsOGL.GL_INVALID_ENUM;
-            return false;
-        }
         int positionSize = Math.max(1, vertexPointer.size());
-        float x = owner.readFloatComponent(vertexPointer, vertexIndex, 0);
+        float x = owner.readArrayComponent(vertexPointer, vertexIndex, 0);
         if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
             return false;
         }
-        float y = positionSize > 1 ? owner.readFloatComponent(vertexPointer, vertexIndex, 1) : 0f;
+        float y = positionSize > 1 ? owner.readArrayComponent(vertexPointer, vertexIndex, 1) : 0f;
         if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
             return false;
         }
-        float z = positionSize > 2 ? owner.readFloatComponent(vertexPointer, vertexIndex, 2) : 0f;
+        float z = positionSize > 2 ? owner.readArrayComponent(vertexPointer, vertexIndex, 2) : 0f;
         if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
             return false;
         }
@@ -138,17 +134,13 @@ final class OglSoftwareRenderer {
         float v = 0f;
         OglRenderer.OglPointer texCoordPointer = ogl.texCoordArrayEnabled ? ogl.texCoordPointer : null;
         if (texCoordPointer != null) {
-            if (texCoordPointer.type() != GraphicsOGL.GL_FLOAT) {
-                ogl.lastError = GraphicsOGL.GL_INVALID_ENUM;
-                return false;
-            }
             int texSize = Math.max(1, texCoordPointer.size());
-            u = owner.readFloatComponent(texCoordPointer, vertexIndex, 0);
+            u = owner.readArrayComponent(texCoordPointer, vertexIndex, 0);
             if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
                 return false;
             }
             if (texSize > 1) {
-                v = owner.readFloatComponent(texCoordPointer, vertexIndex, 1);
+                v = owner.readArrayComponent(texCoordPointer, vertexIndex, 1);
                 if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
                     return false;
                 }
@@ -205,27 +197,59 @@ final class OglSoftwareRenderer {
             return ogl.color;
         }
         OglRenderer.OglPointer colorPointer = ogl.colorPointer;
-        if (colorPointer.type() != GraphicsOGL.GL_UNSIGNED_BYTE) {
-            ogl.lastError = GraphicsOGL.GL_INVALID_ENUM;
-            return 0;
+        int size = colorPointer.size();
+        int red;
+        int green;
+        int blue;
+        int alpha;
+        switch (colorPointer.type()) {
+            case GraphicsOGL.GL_UNSIGNED_BYTE -> {
+                red = size > 0 ? owner.readUnsignedByteComponent(colorPointer, vertexIndex, 0) : 255;
+                if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
+                    return 0;
+                }
+                green = size > 1 ? owner.readUnsignedByteComponent(colorPointer, vertexIndex, 1) : red;
+                if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
+                    return 0;
+                }
+                blue = size > 2 ? owner.readUnsignedByteComponent(colorPointer, vertexIndex, 2) : red;
+                if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
+                    return 0;
+                }
+                alpha = size > 3 ? owner.readUnsignedByteComponent(colorPointer, vertexIndex, 3) : 255;
+            }
+            case GraphicsOGL.GL_FLOAT -> {
+                red = size > 0 ? floatColorChannel(owner.readArrayComponent(colorPointer, vertexIndex, 0)) : 255;
+                if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
+                    return 0;
+                }
+                green = size > 1 ? floatColorChannel(owner.readArrayComponent(colorPointer, vertexIndex, 1)) : red;
+                if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
+                    return 0;
+                }
+                blue = size > 2 ? floatColorChannel(owner.readArrayComponent(colorPointer, vertexIndex, 2)) : red;
+                if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
+                    return 0;
+                }
+                alpha = size > 3 ? floatColorChannel(owner.readArrayComponent(colorPointer, vertexIndex, 3)) : 255;
+            }
+            default -> {
+                ogl.lastError = GraphicsOGL.GL_INVALID_ENUM;
+                return 0;
+            }
         }
-        int red = colorPointer.size() > 0 ? owner.readUnsignedByteComponent(colorPointer, vertexIndex, 0) : 255;
-        if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
-            return 0;
-        }
-        int green = colorPointer.size() > 1 ? owner.readUnsignedByteComponent(colorPointer, vertexIndex, 1) : red;
-        if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
-            return 0;
-        }
-        int blue = colorPointer.size() > 2 ? owner.readUnsignedByteComponent(colorPointer, vertexIndex, 2) : red;
-        if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
-            return 0;
-        }
-        int alpha = colorPointer.size() > 3 ? owner.readUnsignedByteComponent(colorPointer, vertexIndex, 3) : 255;
         if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
             return 0;
         }
         return (alpha << 24) | (red << 16) | (green << 8) | blue;
+    }
+
+    private static int floatColorChannel(float value) {
+        if (!Float.isFinite(value)) {
+            return 0;
+        }
+        int scaled = Math.round(value * 255f);
+        return Math.max(0, Math.min(255, scaled));
     }
 
     private int resolveLitColor(int vertexIndex, OglRenderer.ClipVector eyePosition, int sourceColor, boolean backFace) {

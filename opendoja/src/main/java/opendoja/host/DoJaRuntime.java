@@ -988,12 +988,6 @@ public final class DoJaRuntime {
         // Hibernating: park frame delivery until the user resumes the game.
         awaitSuspendRelease();
         PlatformPresenter presenter = platformPresenter;
-        try {
-            Class<?> logClass = Class.forName("android.util.Log");
-            java.lang.reflect.Method m = logClass.getMethod("d", String.class, String.class);
-            m.invoke(null, "OpenDoJa", "presentPlatformFrame: frame=" + (frame == null ? "null" : frame.getWidth() + "x" + frame.getHeight()) + " presenter=" + (presenter == null ? "null" : "set"));
-        } catch (Throwable ignored) {
-        }
         if (presenter == null) {
             return;
         }
@@ -1477,6 +1471,8 @@ public final class DoJaRuntime {
         BufferedImage copy = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2 = copy.createGraphics();
         try {
+            // LCD frames are RGB-only; preserve RGB even where alpha is zero (GL mask passes).
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC, 1.0f));
             g2.drawImage(image, 0, 0, null);
         } finally {
             g2.dispose();

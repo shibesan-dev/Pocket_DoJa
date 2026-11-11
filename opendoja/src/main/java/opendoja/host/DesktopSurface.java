@@ -34,6 +34,7 @@ public final class DesktopSurface {
      */
     private int[] oglFramePixels;
     private volatile boolean oglFrameDirty;
+    private int[] presentationPixels;
     public DesktopSurface(int width, int height) {
         this.image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
     }
@@ -102,6 +103,12 @@ public final class DesktopSurface {
             }
             int width = image.getWidth();
             int height = image.getHeight();
+            // The handset LCD has no alpha channel. The GL framebuffer alpha is not part of the
+            // displayed picture, and Android bitmaps store premultiplied colors, so publishing
+            // RGB with alpha zero would erase pixels that are visible on real hardware.
+            for (int i = 0; i < oglFramePixels.length; i++) {
+                oglFramePixels[i] |= 0xFF000000;
+            }
             image.getBitmap().setPixels(oglFramePixels, 0, width, 0, 0, width, height);
             oglFrameDirty = false;
         }
@@ -184,11 +191,34 @@ public final class DesktopSurface {
         // be blitting one of the previous snapshots into the host window.
         Graphics2D g2 = copy.createGraphics();
         try {
+            // The handset LCD has no alpha channel: the surface's RGB is the picture even where
+            // the software GL mask passes left alpha at zero. Composite with Src, not SrcOver, so
+            // transparent surface pixels still replace (rather than preserve) the reused snapshot.
+            // Otherwise stale pixels from an earlier frame - e.g. the boot white screen - reappear
+            // as white boxes wherever a GL mask pass zeroed the framebuffer alpha.
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC, 1.0f));
             g2.drawImage(image, 0, 0, null);
         } finally {
             g2.dispose();
         }
+        // The handset LCD has no alpha channel: RGB is displayed as-is. Software GL blending can
+        // leave framebuffer alpha at zero (e.g. mask passes using GL_ZERO/GL_ONE_MINUS_SRC_COLOR),
+        // and compositing that snapshot as transparent would erase the drawn RGB on the host.
+        forceOpaquePresentation(copy, width, height);
         return copy;
+    }
+
+    private void forceOpaquePresentation(BufferedImage frame, int width, int height) {
+        int[] pixels = presentationPixels;
+        if (pixels == null || pixels.length != width * height) {
+            pixels = new int[width * height];
+            presentationPixels = pixels;
+        }
+        frame.getBitmap().getPixels(pixels, 0, width, 0, 0, width, height);
+        for (int i = 0; i < pixels.length; i++) {
+            pixels[i] |= 0xFF000000;
+        }
+        frame.getBitmap().setPixels(pixels, 0, width, 0, 0, width, height);
     }
 
     public synchronized void waitForRenderSync(long intervalNanos) {

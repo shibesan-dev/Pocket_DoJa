@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="400" height="330" viewBox="0 0 400 330"
+     role="img" aria-labelledby="title desc">
+  <title id="title">Pocket DoJa retro black keypad and D-pad overlay</title>
+  <desc id="desc">Transparent overlay matching a 400 by 300 Pocket DoJa layout. Individually named, separately grouped soft keys, menu and clear keys, numeric keypad, and five-way directional pad.</desc>
+  <metadata>
+    Pocket DoJa custom button overlay.
+    Coordinate system: 400x330 viewBox, matching the supplied reference screenshot.
+    Each key is an independent SVG group with id, data-key, and data-label attributes.
+    Button hit regions are the visible rounded rectangles; use the group bounds for input mapping.
+    No background panel is included. The canvas is transparent.
+  </metadata>
+
+  <defs>
+    <linearGradient id="keyFace" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#242424"/>
+      <stop offset="0.48" stop-color="#111111"/>
+      <stop offset="1" stop-color="#050505"/>
+    </linearGradient>
+    <linearGradient id="keyFacePressed" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#555555"/>
+      <stop offset="1" stop-color="#242424"/>
+    </linearGradient>
+    <linearGradient id="dpadFace" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#555044"/>
+      <stop offset="1" stop-color="#292820"/>
+    </linearGradient>
+    <style>
+      .key-shape {
+        fill: url(#keyFace);
+        stroke: #d9d9d9;
+        stroke-width: 0.85;
+      }
+      .key-highlight {
+        fill: none;
+        stroke: #ffffff;
+        stroke-opacity: 0.16;
+        stroke-width: 0.65;
+      }
+      .key-label {
+        fill: #f7f7f7;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 12px;
+        font-weight: 500;
+        text-anchor: middle;
+        dominant-baseline: central;
+        pointer-events: none;
+      }
+      .soft-label {
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .number-label {
+        font-size: 14px;
+      }
+      .dpad-shape {
+        fill: url(#dpadFace);
+        stroke: #f0e9cf;
+        stroke-width: 0.9;
+      }
+      .dpad-label {
+        fill: #ffffff;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 12px;
+        font-weight: 700;
+        text-anchor: middle;
+        dominant-baseline: central;
+        pointer-events: none;
+      }
+    </style>
+  </defs>
+
+  <!-- RIGHT-SIDE PHONE KEYPAD: 94px wide, aligned to x=302..396. -->
+  <g id="numeric-keypad" data-component="numeric-keypad" aria-label="Numeric keypad">
+    <!-- Soft keys: 44 x 34 px each -->
+    <g id="key-soft1" data-key="SOFT1" data-label="SOFT1" data-row="soft" data-col="1">
+      <rect class="key-shape" x="303" y="4" width="44" height="34" rx="6"/>
+      <path class="key-highlight" d="M309 5.5H341Q345.5 5.5 345.5 10V12"/>
+      <text class="key-label soft-label" x="325" y="21">SOFT1</text>
+    </g>
+    <g id="key-soft2" data-key="SOFT2" data-label="SOFT2" data-row="soft" data-col="2">
+      <rect class="key-shape" x="350" y="4" width="44" height="34" rx="6"/>
+      <path class="key-highlight" d="M356 5.5H388Q392.5 5.5 392.5 10V12"/>
+      <text class="key-label soft-label" x="372" y="21">SOFT2</text>
+    </g>
+
+    <!-- Menu / Clear: 44 x 34 px each -->
+    <g id="key-menu" data-key="MENU" data-label="MENU" data-row="function" data-col="1">
+      <rect class="key-shape" x="303" y="40" width="44" height="34" rx="6"/>
+      <path class="key-highlight" d="M309 41.5H341Q345.5 41.5 345.5 46V48"/>
+      <text class="key-label" x="325" y="57">MENU</text>
+    </g>
+    <g id="key-clear" data-key="CLEAR" data-label="CLEAR" data-row="function" data-col="2">
+      <rect class="key-shape" x="350" y="40" width="44" height="34" rx="6"/>
+      <path class="key-highlight" d="M356 41.5H388Q392.5 41.5 392.5 46V48"/>
+      <text class="key-label" x="372" y="57">CLEAR</text>
+    </g>
+
+    <!-- Numeric keys: 29 x 34 px, 3 columns, 2 px horizontal gap -->
+    <g id="key-1" data-key="1" data-label="1" data-row="1" data-col="1">
+      <rect class="key-shape" x="303" y="78" width="29" height="34" rx="5"/>
+      <path class="key-highlight" d="M308 79.5H327Q330.5 79.5 330.5 84V86"/>
+      <text class="key-label number-label" x="317.5" y="95">1</text>
+    </g>
+    <g id="key-2" data-key="2" data-label="2" data-row="1" data-col="2">
+      <rect class="key-shape" x="334" y="78" width="29" height="34" rx="5"/>
+      <path class="key-highlight" d="M339 79.5H358Q361.5 79.5 361.5 84V86"/>
+      <text class="key-label number-label" x="348.5" y="95">2</text>
+    </g>
+    <g id="key-3" data-key="3" data-label="3" data-row="1" data-col="3">
+      <rect class="key-shape" x="365" y="78" width="29" height="34" rx="5"/>
+      <path class="key-highlight" d="M370 79.5H389Q392.5 79.5 392.5 84V86"/>
+      <text class="key-label number-label" x="379.5" y="95">3</text>
+    </g>
+
+    <g id="key-4" data-key="4" data-label="4" data-row="2" data-col="1">
+      <rect class="key-shape" x="303" y="114" width="29" height="34" rx="5"/>
+      <path class="key-highlight" d="M308 115.5H327Q330.5 115.5 330.5 120V122"/>
+      <text class="key-label number-label" x="317.5" y="131">4</text>
+    </g>
+    <g id="key-5" data-key="5" data-label="5" data-row="2" data-col="2">
+      <rect class="key-shape" x="334" y="114" width="29" height="34" rx="5"/>
+      <path class="key-highlight" d="M339 115.5H358Q361.5 115.5 361.5 120V122"/>
+      <text class="key-label number-label" x="348.5" y="131">5</text>
+    </g>
+    <g id="key-6" data-key="6" data-label="6" data-row="2" data-col="3">
+      <rect class="key-shape" x="365" y="114" width="29" height="34" rx="5"/>
+      <path class="key-highlight" d="M370 115.5H389Q392.5 115.5 392.5 120V122"/>
+      <text class="key-label number-label" x="379.5" y="131">6</text>
+    </g>
+
+    <g id="key-7" data-key="7" data-label="7" data-row="3" data-col="1">
+      <rect class="key-shape" x="303" y="150" width="29" height="34" rx="5"/>
+      <path class="key-highlight" d="M308 151.5H327Q330.5 151.5 330.5 156V158"/>
+      <text class="key-label number-label" x="317.5" y="167">7</text>
+    </g>
+    <g id="key-8" data-key="8" data-label="8" data-row="3" data-col="2">
+      <rect class="key-shape" x="334" y="150" width="29" height="34" rx="5"/>
+      <path class="key-highlight" d="M339 151.5H358Q361.5 151.5 361.5 156V158"/>
+      <text class="key-label number-label" x="348.5" y="167">8</text>
+    </g>
+    <g id="key-9" data-key="9" data-label="9" data-row="3" data-col="3">
+      <rect class="key-shape" x="365" y="150" width="29" height="34" rx="5"/>
+      <path class="key-highlight" d="M370 151.5H389Q392.5 151.5 392.5 156V158"/>
+      <text class="key-label number-label" x="379.5" y="167">9</text>
+    </g>
+
+    <g id="key-star" data-key="*" data-label="*" data-row="4" data-col="1">
+      <rect class="key-shape" x="303" y="186" width="29" height="34" rx="5"/>
+      <path class="key-highlight" d="M308 187.5H327Q330.5 187.5 330.5 192V194"/>
+      <text class="key-label number-label" x="317.5" y="203">*</text>
+    </g>
+    <g id="key-0" data-key="0" data-label="0" data-row="4" data-col="2">
+      <rect class="key-shape" x="334" y="186" width="29" height="34" rx="5"/>
+      <path class="key-highlight" d="M339 187.5H358Q361.5 187.5 361.5 192V194"/>
+      <text class="key-label number-label" x="348.5" y="203">0</text>
+    </g>
+    <g id="key-hash" data-key="#" data-label="#" data-row="4" data-col="3">
+      <rect class="key-shape" x="365" y="186" width="29" height="34" rx="5"/>
+      <path class="key-highlight" d="M370 187.5H389Q392.5 187.5 392.5 192V194"/>
+      <text class="key-label number-label" x="379.5" y="203">#</text>
+    </g>
+  </g>
+
+  <!-- FIVE-WAY D-PAD: separate directional hit targets, 29 x 29 px. -->
+  <g id="directional-pad" data-component="dpad" aria-label="Five-way directional pad">
+    <g id="dpad-up" data-key="UP" data-label="UP" data-direction="up">
+      <rect class="dpad-shape" x="57" y="237" width="29" height="29" rx="4"/>
+      <path d="M71.5 241L66.5 249H76.5Z" fill="#ffffff"/>
+    </g>
+    <g id="dpad-left" data-key="LEFT" data-label="LEFT" data-direction="left">
+      <rect class="dpad-shape" x="28" y="266" width="29" height="29" rx="4"/>
+      <path d="M32 280.5L40 275.5V285.5Z" fill="#ffffff"/>
+    </g>
+    <g id="dpad-center" data-key="CENTER" data-label="CENTER" data-direction="center">
+      <rect class="dpad-shape" x="57" y="266" width="29" height="29" rx="4"/>
+      <circle cx="71.5" cy="280.5" r="4.2" fill="#f7f7f7" stroke="#181818" stroke-width="1"/>
+    </g>
+    <g id="dpad-right" data-key="RIGHT" data-label="RIGHT" data-direction="right">
+      <rect class="dpad-shape" x="86" y="266" width="29" height="29" rx="4"/>
+      <path d="M111 280.5L103 275.5V285.5Z" fill="#ffffff"/>
+    </g>
+    <g id="dpad-down" data-key="DOWN" data-label="DOWN" data-direction="down">
+      <rect class="dpad-shape" x="57" y="295" width="29" height="29" rx="4"/>
+      <path d="M71.5 320L66.5 312H76.5Z" fill="#ffffff"/>
+    </g>
+  </g>
+</svg>

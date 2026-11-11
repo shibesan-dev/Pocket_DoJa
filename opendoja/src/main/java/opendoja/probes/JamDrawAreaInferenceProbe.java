@@ -17,6 +17,7 @@ public final class JamDrawAreaInferenceProbe {
         verifyFolderHintTargetDeviceInfersDrawArea();
         verifyExplicitDrawAreaStillWins();
         verifyUndocumentedTargetDeviceKeepsDefaultViewport();
+        verifyNumericPackageUrlHostIsNotTargetDevice();
 
         System.out.println("Jam draw area inference probe OK");
     }
@@ -62,6 +63,19 @@ public final class JamDrawAreaInferenceProbe {
         check(config.width() == LaunchConfig.DEFAULT_VIEWPORT_WIDTH
                         && config.height() == LaunchConfig.DEFAULT_VIEWPORT_HEIGHT,
                 "undocumented TargetDevice should keep the existing 240x240 default");
+    }
+ //fix the hostname issue//
+    private static void verifyNumericPackageUrlHostIsNotTargetDevice() throws Exception {
+        Path root = Files.createTempDirectory("jam-draw-area-numeric-host");
+        Path jam = writeJam(root.resolve("ColumnsJewel.jam"),
+                "PackageURL=http://2000.mydstyle.com/di/iappli/columns/java_J/columns.jar\n");
+
+        LaunchConfig config = JamLauncher.buildLaunchConfig(jam, false);
+        check(config.parameters().get("TargetDevice") == null,
+                "numeric package-URL tokens such as the 2000.mydstyle.com hostname should not become TargetDevice");
+        check(config.width() == LaunchConfig.DEFAULT_VIEWPORT_WIDTH
+                        && config.height() == LaunchConfig.DEFAULT_VIEWPORT_HEIGHT,
+                "a numeric hostname should not change the default viewport");
     }
 
     private static Path writeJam(Path jam, String extraProperties) throws Exception {

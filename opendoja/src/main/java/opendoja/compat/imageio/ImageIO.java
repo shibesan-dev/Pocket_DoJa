@@ -57,6 +57,14 @@ public final class ImageIO {
                 return new BufferedImage(bitmap, model, raster);
             }
         }
+        if (isBmp(data)) {
+            BmpPalette bmp = BmpPalette.parse(data);
+            if (bmp != null && bmp.width == bitmap.getWidth() && bmp.height == bitmap.getHeight()) {
+                WritableRaster raster = new WritableRaster(bmp.width, bmp.height, bmp.indices);
+                IndexColorModel model = new IndexColorModel(8, bmp.size, bmp.red, bmp.green, bmp.blue, -1);
+                return new BufferedImage(bitmap, model, raster);
+            }
+        }
         return new BufferedImage(bitmap);
     }
 
@@ -131,6 +139,97 @@ public final class ImageIO {
     private static boolean isGif(byte[] data) {
         return data.length > 5
                 && data[0] == 'G' && data[1] == 'I' && data[2] == 'F';
+    }
+
+    private static boolean isBmp(byte[] data) {
+        return data.length >= 54 && data[0] == 'B' && data[1] == 'M';
+    }
+
+    /**
+     * Palette and index raster for uncompressed 8-bit BMP images. Android's BMP decoder
+     * returns only opaque ARGB pixels, which strips the palette indices that DoJa texture
+     * color-keying relies on ({@code ATTR_COLOR_KEY} makes palette index 0 transparent).
+     */
+    private static final class BmpPalette {
+        final byte[] red;
+        final byte[] green;
+        final byte[] blue;
+        final int size;
+        final int width;
+        final int height;
+        final int[] indices;
+
+        private BmpPalette(byte[] red, byte[] green, byte[] blue, int size,
+                           int width, int height, int[] indices) {
+            this.red = red;
+            this.green = green;
+            this.blue = blue;
+            this.size = size;
+            this.width = width;
+            this.height = height;
+            this.indices = indices;
+        }
+
+        static BmpPalette parse(byte[] data) {
+            if (data.length < 54) {
+                return null;
+            }
+            int dibSize = readIntLE(data, 14);
+            if (dibSize < 40 || 14 + dibSize > data.length) {
+                return null;
+            }
+            int width = readIntLE(data, 18);
+            int rawHeight = readIntLE(data, 22);
+            int planes = readShortLE(data, 26);
+            int bitsPerPixel = readShortLE(data, 28);
+            int compression = readIntLE(data, 30);
+            if (planes != 1 || bitsPerPixel != 8 || compression != 0 || width <= 0 || rawHeight == 0) {
+                return null;
+            }
+            int height = java.lang.Math.abs(rawHeight);
+            long pixelOffset = readIntLE(data, 10) & 0xFFFFFFFFL;
+            int paletteStart = 14 + dibSize;
+            int colorsUsed = readIntLE(data, 46);
+            int size = colorsUsed > 0 && colorsUsed <= 256 ? colorsUsed : 256;
+            if (paletteStart + size * 4 > data.length) {
+                return null;
+            }
+            long stride = (width + 3L) & ~3L;
+            if (pixelOffset + stride * height > data.length) {
+                return null;
+            }
+            byte[] red = new byte[size];
+            byte[] green = new byte[size];
+            byte[] blue = new byte[size];
+            for (int i = 0; i < size; i++) {
+                int offset = paletteStart + i * 4;
+                blue[i] = data[offset];
+                green[i] = data[offset + 1];
+                red[i] = data[offset + 2];
+            }
+            int[] indices = new int[width * height];
+            int pixelStart = (int) pixelOffset;
+            for (int row = 0; row < height; row++) {
+                int sourceRow = rawHeight > 0 ? height - 1 - row : row;
+                int source = pixelStart + (int) (sourceRow * stride);
+                int destination = row * width;
+                for (int x = 0; x < width; x++) {
+                    indices[destination + x] = data[source + x] & 0xFF;
+                }
+            }
+            return new BmpPalette(red, green, blue, size, width, height, indices);
+        }
+
+        private static int readIntLE(byte[] data, int offset) {
+            return (data[offset] & 0xFF)
+                    | ((data[offset + 1] & 0xFF) << 8)
+                    | ((data[offset + 2] & 0xFF) << 16)
+                    | ((data[offset + 3] & 0xFF) << 24);
+        }
+
+        private static int readShortLE(byte[] data, int offset) {
+            return (data[offset] & 0xFF) | ((data[offset + 1] & 0xFF) << 8);
+        }
     }
 
     /** GIF global/first-image color table plus transparency index. */

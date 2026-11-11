@@ -250,10 +250,26 @@ public final class JamMetadataResolver {
             return null;
         }
         Matcher matcher = DEVICE_HINT_PATTERN.matcher(candidate);
-        if (!matcher.find()) {
-            return null;
+        while (matcher.find()) {
+            String hint = matcher.group(1).trim();
+            if (isHandsetModelHint(hint)) {
+                return hint;
+            }
         }
-        return matcher.group(1).trim();
+        return null;
+    }
+
+    private static boolean isHandsetModelHint(String hint) {
+        String model = hint;
+        if (model.regionMatches(true, 0, "FOMA", 0, 4)) {
+            model = model.substring(4).trim();
+        }
+        for (int i = 0; i < model.length(); i++) {
+            if (Character.isLetter(model.charAt(i))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static int[] parseDrawArea(String rawDrawArea) {

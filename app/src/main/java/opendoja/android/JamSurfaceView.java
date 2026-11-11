@@ -157,6 +157,7 @@ public class JamSurfaceView extends View {
     private android.content.BroadcastReceiver batteryReceiver;
 
     private JamInputController input;
+    private ControlsSkin controlsSkin;
 
     /** Set true after releaseAllControls() so present() from a stale game thread is ignored. */
     private boolean released = false;
@@ -181,6 +182,11 @@ public class JamSurfaceView extends View {
         if (current != null && sessionId != current.sessionId()) return;
         android.graphics.Bitmap bmp = frame.getBitmap();
         if (bmp == null) return;
+        // DoJa LCD frames are RGB; GL mask blending may leave alpha at zero while RGB still
+        // carries the visible picture. Ignore alpha when compositing the presented frame.
+        if (bmp.hasAlpha()) {
+            bmp.setHasAlpha(false);
+        }
         setScreen(bmp, bmp.getWidth(), bmp.getHeight(), screenVersion + 1);
         android.content.Context ctx = getContext();
         if (ctx instanceof EntryActivity) {
@@ -203,6 +209,7 @@ public class JamSurfaceView extends View {
     private void init() {
         setFocusable(false);
         setFocusableInTouchMode(false);
+        controlsSkin = ControlsSkin.load(getContext());
         keyFillPaint.setStyle(Paint.Style.FILL);
         keyStrokePaint.setStyle(Paint.Style.STROKE);
         keyStrokePaint.setStrokeWidth(2f);
@@ -648,19 +655,20 @@ try {
         if (innerWidth <= 0f || innerHeight <= 0f) return;
 
         float gap = innerWidth * 0.018f;
-        float dpadWidth = innerWidth * 0.34f;
-        float softWidth = innerWidth * 0.22f;
+        float dpadWidth = innerWidth * 0.32f;
+        float softWidth = innerWidth * 0.20f;
         float dialWidth = innerWidth - dpadWidth - softWidth - 2f * gap;
 
-        float side = Math.min(innerHeight, dpadWidth);
-        float centerDx = innerLeft + dpadWidth / 2f;
-        float centerDy = innerTop + innerHeight / 2f;
-        float arm = side / 3f;
-        upKey.rect.set(centerDx - arm / 2f, centerDy - side / 2f, centerDx + arm / 2f, centerDy);
-        downKey.rect.set(centerDx - arm / 2f, centerDy, centerDx + arm / 2f, centerDy + side / 2f);
-        leftKey.rect.set(centerDx - side / 2f, centerDy - arm / 2f, centerDx, centerDy + arm / 2f);
-        rightKey.rect.set(centerDx, centerDy - arm / 2f, centerDx + side / 2f, centerDy + arm / 2f);
-        selectKey.rect.set(centerDx - arm / 2f, centerDy - arm / 2f, centerDx + arm / 2f, centerDy + arm / 2f);
+        float cell = Math.min(innerHeight / 3f, dpadWidth / 3f);
+        float padCenterX = innerLeft + dpadWidth / 2f;
+        float padCenterY = innerTop + innerHeight / 2f;
+        float gridLeft = padCenterX - cell * 1.5f;
+        float gridTop = padCenterY - cell * 1.5f;
+        upKey.rect.set(gridLeft + cell, gridTop, gridLeft + 2f * cell, gridTop + cell);
+        downKey.rect.set(gridLeft + cell, gridTop + 2f * cell, gridLeft + 2f * cell, gridTop + 3f * cell);
+        leftKey.rect.set(gridLeft, gridTop + cell, gridLeft + cell, gridTop + 2f * cell);
+        rightKey.rect.set(gridLeft + 2f * cell, gridTop + cell, gridLeft + 3f * cell, gridTop + 2f * cell);
+        selectKey.rect.set(gridLeft + cell, gridTop + cell, gridLeft + 2f * cell, gridTop + 2f * cell);
 
         float softLeft = innerLeft + dpadWidth + gap;
         float cellHeight = innerHeight / 4f;
@@ -676,15 +684,19 @@ try {
         }
 
         float dialLeft = softLeft + softWidth + gap;
-        float cellWidth = dialWidth / 3f;
-        inset = Math.min(cellWidth, cellHeight) * 0.05f;
+        float dialCellW = dialWidth / 3f;
+        // Wider-than-tall number keys: cap the cell height and centre the 3x4 block vertically
+        // in the pad band so the digits read as longer rectangles instead of squares.
+        float dialCellH = Math.min(cellHeight, dialCellW / 1.22f);
+        float dialTop = innerTop + (innerHeight - dialCellH * 4f) / 2f;
+        inset = Math.min(dialCellW, dialCellH) * 0.015f;
         for (int i = 0; i < DIAL_LABELS.length; i++) {
             int col = i % 3;
             int row = i / 3;
             KeyDef def = keysById.get(CTRL_DIAL_BASE + i);
             if (def == null) continue;
-            def.rect.set(dialLeft + col * cellWidth + inset, innerTop + row * cellHeight + inset,
-                    dialLeft + (col + 1) * cellWidth - inset, innerTop + (row + 1) * cellHeight - inset);
+            def.rect.set(dialLeft + col * dialCellW + inset, dialTop + row * dialCellH + inset,
+                    dialLeft + (col + 1) * dialCellW - inset, dialTop + (row + 1) * dialCellH - inset);
         }
         }
     }
@@ -723,7 +735,7 @@ try {
             if (!keypadVisible) {
                 padRect.set(0f, 0f, 0f, 0f);
             } else {
-                padRect.set(510f * sx, 26f * sy, (510f + 264f) * sx, (26f + 348f) * sy);
+                padRect.set(514f * sx, 44f * sy, (514f + 256f) * sx, (44f + 304f) * sy);
             }
         } else {
         float rightW = Math.max(viewWidth * 0.24f, 180f * getResources().getDisplayMetrics().density);
@@ -795,12 +807,14 @@ try {
         float dpadSize = Math.min(viewWidth * 0.22f, viewHeight * 0.30f);
         float cx = viewWidth * 0.18f;
         float cy = viewHeight - dpadSize / 2f - 8f * density;
-        float arm = dpadSize / 3f;
-        upKey.rect.set(cx - arm / 2f, cy - dpadSize / 2f, cx + arm / 2f, cy);
-        downKey.rect.set(cx - arm / 2f, cy, cx + arm / 2f, cy + dpadSize / 2f);
-        leftKey.rect.set(cx - dpadSize / 2f, cy - arm / 2f, cx, cy + arm / 2f);
-        rightKey.rect.set(cx, cy - arm / 2f, cx + dpadSize / 2f, cy + arm / 2f);
-        selectKey.rect.set(cx - arm / 2f, cy - arm / 2f, cx + arm / 2f, cy + arm / 2f);
+        float cell = dpadSize / 3f;
+        float gridLeft = cx - cell * 1.5f;
+        float gridTop = cy - cell * 1.5f;
+        upKey.rect.set(gridLeft + cell, gridTop, gridLeft + 2f * cell, gridTop + cell);
+        downKey.rect.set(gridLeft + cell, gridTop + 2f * cell, gridLeft + 2f * cell, gridTop + 3f * cell);
+        leftKey.rect.set(gridLeft, gridTop + cell, gridLeft + cell, gridTop + 2f * cell);
+        rightKey.rect.set(gridLeft + 2f * cell, gridTop + cell, gridLeft + 3f * cell, gridTop + 2f * cell);
+        selectKey.rect.set(gridLeft + cell, gridTop + cell, gridLeft + 2f * cell, gridTop + 2f * cell);
     }
     }
 
@@ -1009,8 +1023,19 @@ try {
     private void drawKey(Canvas canvas, KeyDef def) {
         RectF rect = def.rect;
         if (rect.width() <= 0f || rect.height() <= 0f) return;
-        float radius = Math.min(rect.width(), rect.height()) * 0.18f;
         boolean pressed = activeControls.contains(def.id);
+        if (controlsSkin != null) {
+            String artId = skinIdForControl(def.id);
+            if (artId != null) {
+                boolean landscape = isLandscapeOrientation();
+                int alpha = (artId.startsWith("dpad-") && landscape) ? 128 : 255;
+                boolean stretch = !landscape && isDialArt(artId);
+                if (controlsSkin.draw(canvas, artId, rect, pressed, alpha, stretch)) {
+                    return;
+                }
+            }
+        }
+        float radius = Math.min(rect.width(), rect.height()) * 0.18f;
         if (def.id == CTRL_UP || def.id == CTRL_DOWN || def.id == CTRL_LEFT
                 || def.id == CTRL_RIGHT || def.id == CTRL_SELECT) {
             keyFillPaint.setColor(pressed ? 0xCC505050 : 0x99303030);
@@ -1032,6 +1057,37 @@ try {
         if (keyTextPaint.getTextSize() < 8f) keyTextPaint.setTextSize(8f);
         canvas.drawText(def.label, rect.centerX(),
                 rect.centerY() + keyTextPaint.getTextSize() * 0.34f, keyTextPaint);
+    }
+
+    private static boolean isDialArt(String artId) {
+        if (artId == null || !artId.startsWith("key-")) {
+            return false;
+        }
+        String tail = artId.substring(4);
+        return tail.length() == 1 || "star".equals(tail) || "hash".equals(tail);
+    }
+
+    private String skinIdForControl(int id) {
+        switch (id) {
+            case CTRL_SOFT1: return "key-soft1";
+            case CTRL_SOFT2: return "key-soft2";
+            case CTRL_MENU: return "key-menu";
+            case CTRL_CLEAR: return "key-clear";
+            case CTRL_UP: return "dpad-up";
+            case CTRL_DOWN: return "dpad-down";
+            case CTRL_LEFT: return "dpad-left";
+            case CTRL_RIGHT: return "dpad-right";
+            case CTRL_SELECT: return "dpad-center";
+            default:
+                break;
+        }
+        if (id >= CTRL_DIAL_BASE && id < CTRL_DIAL_BASE + DIAL_LABELS.length) {
+            String label = DIAL_LABELS[id - CTRL_DIAL_BASE];
+            if ("*".equals(label)) return "key-star";
+            if ("#".equals(label)) return "key-hash";
+            return "key-" + label;
+        }
+        return null;
     }
 
     private int hitTest(float x, float y) {

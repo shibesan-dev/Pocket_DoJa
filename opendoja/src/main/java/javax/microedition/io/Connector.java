@@ -1,5 +1,6 @@
 package javax.microedition.io;
 
+import opendoja.host.AppliServerStub;
 import opendoja.host.DesktopHttpConnection;
 import opendoja.host.DoJaRuntime;
 import opendoja.host.OpenDoJaLog;
@@ -46,6 +47,9 @@ public class Connector {
             );
         }
         if (lower.startsWith("file:///")) {
+            if (AppliServerStub.isOfflineMemberCheck(name)) {
+                return AppliServerStub.openMemberCheck(name);
+            }
             int dataLength = tekkenDataLength(name);
             if (dataLength > 0) {
                 return new SimpleStreamConnection(
@@ -111,6 +115,9 @@ public class Connector {
             return asDataInputStream(((DesktopHttpConnection) open(name, READ, false)).openInputStream());
         }
         if (lower.startsWith("file:///")) {
+            if (AppliServerStub.isOfflineMemberCheck(name)) {
+                return asDataInputStream(new java.io.ByteArrayInputStream(AppliServerStub.memberCheckBody()));
+            }
             int dataLength = tekkenDataLength(name);
             if (dataLength > 0) {
                 return asDataInputStream(new java.io.ByteArrayInputStream(new byte[dataLength]));
