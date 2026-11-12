@@ -32,9 +32,14 @@ public final class FueTrekResourceAudioEngine
     private static final float INV_MIX_SCALE = 1.0f / 8388608.0f;
     // lib002 creates the DS handle with packet[0x0c] = 8, so DSModule keeps the block size at 4096 frames.
     private static final int NATIVE_MOTION_BLOCK_FRAMES = 4096;
+    private static final int MACHINE_SLOT_COUNT = 64;
+    private static final int MACHINE_VOICE_LIMIT = 16;
+    private static final int MACHINE_START_LEVEL = 127;
     private final DecodedResourceAudio[] decodedCatalog;
     private final ChannelState[] channelStates = new ChannelState[64];
     private final ArrayList<ActiveClip> activeClips = new ArrayList<>();
+    private final MachineSlot[] machineSlots = new MachineSlot[MACHINE_SLOT_COUNT];
+    private final ArrayList<MachineVoice> machineVoices = new ArrayList<>();
     private final int[] initialAudioRouteRaw = new int[64];
     private final int[] initialSynthRouteRaw = new int[64];
     private final int outputSampleRate;
@@ -57,6 +62,8 @@ public final class FueTrekResourceAudioEngine
 
     public void reset() {
         this.activeClips.clear();
+        this.machineVoices.clear();
+        Arrays.fill(this.machineSlots, null);
         for (ChannelState state : this.channelStates) {
             state.level = DEFAULT_LEVEL;
             state.pan = DEFAULT_PAN;
@@ -114,9 +121,51 @@ public final class FueTrekResourceAudioEngine
         }
     }
 
+    /**
+     * Consume a machine-dependent ext-info event (the {@code 0xFF 0xFF}
+     * descriptor family).
+     *
+     * @param framePosition Current player frame position.
+     * @param trackIndex Zero-based source track index.
+     * @param message Descriptor prefix and body.
+     * @return {@code true} if this engine recognized the descriptor.
+     */
+    public boolean handleMachineDependent(long framePosition, int trackIndex,
+            byte[] message) {
+        if (message == null || message.length < 3) {
+            return false;
+        }
+        int prefix = message[0] & 0xFF;
+        // FueTrek machine-dependent descriptors carry the 0x41 marker. Other
+        // first bytes are raw channel SysEx (0x00-0x3f) or the 0x71 wrapper
+        // family, both of which the sampler owns.
+        if (prefix != 0x41) {
+            return false;
+        }
+        switch (message[1] & 0xFF) {
+            case 0x81:
+                this.setMachineLevel(trackIndex, message[2] & 0xFF);
+                return true;
+            case 0x80:
+            case 0x82:
+                this.setMachinePan(trackIndex, message[2] & 0xFF);
+                return true;
+            case 0x83:
+                this.handleMachineSlot(framePosition, trackIndex, message, 2,
+                    false);
+                return true;
+            case 0x86:
+                this.handleMachineSlot(framePosition, trackIndex, message, 2,
+                    true);
+                return true;
+            default:
+                return false;
+        }
+    }
+
     public void render(float[] samples, int offset, int frames, float left, float right, boolean clamp, long framePosition) {
         this.pruneFinished(framePosition);
-        if (this.activeClips.isEmpty()) {
+        if (this.activeClips.isEmpty() && this.machineVoices.isEmpty()) {
             return;
         }
 
@@ -157,12 +206,43 @@ public final class FueTrekResourceAudioEngine
                 segmentStart = segmentEnd;
             }
         }
+        this.renderMachineVoices(samples, offset, frames, leftScale,
+            rightScale, clamp, framePosition, frameLimit);
         this.pruneFinished(frameLimit);
+    }
+
+    private void renderMachineVoices(float[] samples, int offset, int frames,
+            float leftScale, float rightScale, boolean clamp,
+            long framePosition, long frameLimit) {
+        for (int i = 0; i < this.machineVoices.size(); i++) {
+            MachineVoice voice = this.machineVoices.get(i);
+            long mixStart = Math.max(framePosition, voice.startFrame);
+            long mixEnd = Math.min(frameLimit, voice.endFrame());
+            if (mixStart >= mixEnd) {
+                continue;
+            }
+            StereoGain gain = this.computeStereoGain(
+                this.channelStates[voice.logicalChannel],
+                MACHINE_START_LEVEL);
+            int inputIndex = (int) (mixStart - voice.startFrame);
+            int outputIndex = offset + (int) (mixStart - framePosition) * 2;
+            int mixFrames = (int) (mixEnd - mixStart);
+            for (int frame = 0; frame < mixFrames; frame++) {
+                int sample = voice.audio[inputIndex + frame];
+                int base = outputIndex + frame * 2;
+                samples[base] += scaleMixedSample(sample, gain.leftQ16) * leftScale;
+                samples[base + 1] += scaleMixedSample(sample, gain.rightQ16) * rightScale;
+                if (clamp) {
+                    samples[base] = clampSample(samples[base]);
+                    samples[base + 1] = clampSample(samples[base + 1]);
+                }
+            }
+        }
     }
 
     public boolean hasLiveAudio(long framePosition) {
         this.pruneFinished(framePosition);
-        return !this.activeClips.isEmpty();
+        return !this.activeClips.isEmpty() || !this.machineVoices.isEmpty();
     }
 
     public int framesUntilSilence(long framePosition) {
@@ -179,7 +259,193 @@ public final class FueTrekResourceAudioEngine
                 remaining = frames;
             }
         }
+        for (int i = 0; i < this.machineVoices.size(); i++) {
+            MachineVoice voice = this.machineVoices.get(i);
+            long end = voice.endFrame();
+            if (end <= framePosition) {
+                continue;
+            }
+            int frames = (int) Math.min(Integer.MAX_VALUE, end - framePosition);
+            if (remaining == -1 || frames < remaining) {
+                remaining = frames;
+            }
+        }
         return Math.max(0, remaining);
+    }
+
+    private void setMachineLevel(int trackIndex, int packed) {
+        int channel = clamp(0, this.channelStates.length - 1,
+            trackIndex * 4 + ((packed >> 6) & 0x03));
+        this.channelStates[channel].level = clamp(0, 127,
+            2 * (packed & 0x3F));
+    }
+
+    private void setMachinePan(int trackIndex, int packed) {
+        int channel = clamp(0, this.channelStates.length - 1,
+            trackIndex * 4 + ((packed >> 6) & 0x03));
+        this.channelStates[channel].pan = clamp(0, 127,
+            2 * (packed & 0x3F));
+    }
+
+    private void handleMachineSlot(long framePosition, int trackIndex,
+            byte[] message, int headerOffset, boolean durationPrefixed) {
+        if (message.length < headerOffset + 3) {
+            return;
+        }
+        int channelSlot = message[headerOffset] & 0xFF;
+        int opFormat = message[headerOffset + 1] & 0xFF;
+        int control = message[headerOffset + 2] & 0xFF;
+        int operation = (opFormat >> 6) & 0x03;
+        int formatCode = opFormat & 0x3F;
+        int slotIndex = channelSlot & 0x3F;
+        int localChannel = (channelSlot >> 6) & 0x03;
+        int logicalChannel = clamp(0, this.channelStates.length - 1,
+            trackIndex * 4 + localChannel);
+        int payloadOffset = headerOffset + 3;
+        int durationByteCount = -1;
+        if (durationPrefixed) {
+            if (message.length < headerOffset + 7) {
+                return;
+            }
+            durationByteCount = readBigEndianInt(message, headerOffset + 3);
+            payloadOffset += 4;
+        }
+
+        boolean load = operation == 0 || operation == 1;
+        boolean start = operation == 1 || operation == 2;
+        if ((control & 0x01) != 0 && operation != 2) {
+            // A control bit of 1 asks the backend to refresh the slot
+            // without consuming a new start operation.
+            load = true;
+            if (operation == 3) {
+                start = false;
+            }
+        }
+        if (!load && !start) {
+            return;
+        }
+
+        if (load) {
+            int sampleRate = machineSampleRate(formatCode);
+            if (sampleRate <= 0 || machineCodedBits(formatCode) != 4
+                    || payloadOffset >= message.length) {
+                // Only the 4-bit ROHM variant is validated; 2-bit formats
+                // (4/12/20) use a different codec and stay unsupported.
+                return;
+            }
+            int[] pcm = MLDRohmADPCMDecoder.decode(message, payloadOffset,
+                message.length - payloadOffset);
+            int[] frames = new int[pcm.length];
+            for (int i = 0; i < pcm.length; i++) {
+                frames[i] = pcm[i] << 7;
+            }
+            int[] resampled = sampleRate == this.outputSampleRate
+                ? frames
+                : resampleLinear(frames, sampleRate, this.outputSampleRate);
+            this.machineSlots[slotIndex] = new MachineSlot(formatCode,
+                resampled);
+            this.retireMachineVoices(logicalChannel, slotIndex);
+        }
+
+        if (!start) {
+            return;
+        }
+        MachineSlot slot = this.machineSlots[slotIndex];
+        if (slot == null || slot.audio.length == 0) {
+            return;
+        }
+        int voiceFrames = slot.audio.length;
+        if (durationByteCount >= 0) {
+            long capped = machineDurationFrames(durationByteCount, formatCode);
+            if (capped >= 0 && capped < voiceFrames) {
+                voiceFrames = (int) capped;
+            }
+        }
+        if (voiceFrames <= 0) {
+            return;
+        }
+        this.startMachineVoice(framePosition, logicalChannel, slotIndex,
+            slot.audio, voiceFrames);
+    }
+
+    private static int readBigEndianInt(byte[] bytes, int offset) {
+        return ((bytes[offset] & 0xFF) << 24)
+            | ((bytes[offset + 1] & 0xFF) << 16)
+            | ((bytes[offset + 2] & 0xFF) << 8)
+            | (bytes[offset + 3] & 0xFF);
+    }
+
+    private long machineDurationFrames(int durationByteCount, int formatCode) {
+        int sampleRate = machineSampleRate(formatCode);
+        int codedBits = machineCodedBits(formatCode);
+        if (sampleRate <= 0 || codedBits <= 0) {
+            return -1L;
+        }
+        long samplesPerByte = 8L / codedBits;
+        long sampleCount = ((long) durationByteCount * samplesPerByte)
+            & 0xFFFF_FFFFL;
+        long durationMillis = (sampleCount * 1000L + sampleRate / 2L)
+            / sampleRate;
+        return durationMillis * this.outputSampleRate / 1000L;
+    }
+
+    private static int machineSampleRate(int formatCode) {
+        switch (formatCode) {
+            case 4:
+            case 5:
+                return 8000;
+            case 12:
+            case 13:
+                return 16000;
+            case 20:
+            case 21:
+                return 32000;
+            default:
+                return -1;
+        }
+    }
+
+    private static int machineCodedBits(int formatCode) {
+        switch (formatCode) {
+            case 4:
+            case 12:
+            case 20:
+                return 2;
+            case 5:
+            case 13:
+            case 21:
+                return 4;
+            default:
+                return -1;
+        }
+    }
+
+    private void startMachineVoice(long framePosition, int logicalChannel,
+            int slotIndex, int[] audio, int length) {
+        if (this.machineVoices.size() >= MACHINE_VOICE_LIMIT) {
+            int oldestIndex = 0;
+            long oldestStart = this.machineVoices.get(0).startFrame;
+            for (int i = 1; i < this.machineVoices.size(); i++) {
+                long start = this.machineVoices.get(i).startFrame;
+                if (start < oldestStart) {
+                    oldestStart = start;
+                    oldestIndex = i;
+                }
+            }
+            this.machineVoices.remove(oldestIndex);
+        }
+        this.machineVoices.add(new MachineVoice(logicalChannel, slotIndex,
+            framePosition, audio, Math.min(length, audio.length)));
+    }
+
+    private void retireMachineVoices(int logicalChannel, int slotIndex) {
+        for (int i = this.machineVoices.size() - 1; i >= 0; i--) {
+            MachineVoice voice = this.machineVoices.get(i);
+            if (voice.logicalChannel == logicalChannel &&
+                voice.slotIndex == slotIndex) {
+                this.machineVoices.remove(i);
+            }
+        }
     }
 
     private void startClip(long framePosition, int logicalChannel, MLDEvent event) {
@@ -344,6 +610,12 @@ public final class FueTrekResourceAudioEngine
                 continue;
             }
             this.activeClips.remove(i--);
+        }
+        for (int i = 0; i < this.machineVoices.size(); i++) {
+            if (this.machineVoices.get(i).endFrame() > framePosition) {
+                continue;
+            }
+            this.machineVoices.remove(i--);
         }
     }
 
@@ -584,6 +856,37 @@ public final class FueTrekResourceAudioEngine
     }
 
     private record DecodedResourceAudio(int[] frames) {
+    }
+
+    private static final class MachineSlot {
+        final int formatCode;
+        final int[] audio;
+
+        MachineSlot(int formatCode, int[] audio) {
+            this.formatCode = formatCode;
+            this.audio = audio;
+        }
+    }
+
+    private static final class MachineVoice {
+        final int logicalChannel;
+        final int slotIndex;
+        final long startFrame;
+        final int[] audio;
+        final int length;
+
+        MachineVoice(int logicalChannel, int slotIndex, long startFrame,
+                int[] audio, int length) {
+            this.logicalChannel = logicalChannel;
+            this.slotIndex = slotIndex;
+            this.startFrame = startFrame;
+            this.audio = audio;
+            this.length = length;
+        }
+
+        long endFrame() {
+            return this.startFrame + this.length;
+        }
     }
 
     private static final class ActiveClip {

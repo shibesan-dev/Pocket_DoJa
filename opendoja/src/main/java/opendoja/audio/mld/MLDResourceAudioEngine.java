@@ -20,6 +20,17 @@ public interface MLDResourceAudioEngine
 
     void handleEvent(long framePosition, MLDEvent event);
 
+    /**
+     * Handle a machine-dependent ext-info descriptor.
+     *
+     * @param framePosition Current player frame position.
+     * @param trackIndex Zero-based source track index.
+     * @param message Descriptor prefix and body.
+     * @return {@code true} if the descriptor was recognized.
+     */
+    boolean handleMachineDependent(long framePosition, int trackIndex,
+        byte[] message);
+
     void render(float[] samples, int offset, int frames, float left,
         float right, boolean clamp, long framePosition);
 

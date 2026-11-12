@@ -177,6 +177,11 @@ public class MLDEvent
         return this.channelIndex;
     }
 
+    public byte[] getData()
+    {
+        return this.data;
+    }
+
     public int getId()
     {
         return this.id;

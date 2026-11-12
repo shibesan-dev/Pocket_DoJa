@@ -2025,6 +2025,14 @@ final class FueTrekSampler implements Sampler, MLDRawExtBHandler {
         int noteFine;
         int mixLeftWord;
         int mixRightWord;
+        // Pitch and mix words only change when a channel/mix event fires, but the
+        // render loop asks for them once per sample per voice. Cache the last
+        // inputs so steady notes skip the table lookups entirely.
+        int lastPitchQ16 = Integer.MIN_VALUE;
+        long lastMixKey = Long.MIN_VALUE;
+        int lastMixKey2 = -1;
+        int cachedMixLeftWord;
+        int cachedMixRightWord;
         float outLeft = 0.0f;
         float outRight = 0.0f;
 
@@ -2166,7 +2174,16 @@ final class FueTrekSampler implements Sampler, MLDRawExtBHandler {
         }
 
         private void updatePitchWords(float masterTuneSemitones) {
-            int pitchQ16 = staticPitchQ16 + livePitchQ16 + Math.round(masterTuneSemitones * 65536.0f);
+            // Math.round(float) is a JNI transition on ART; master tune is almost
+            // always zero, and the derived words only change on pitch events.
+            int masterTuneQ16 = masterTuneSemitones == 0f ? 0
+                    : (int) (masterTuneSemitones * 65536.0f
+                            + (masterTuneSemitones >= 0f ? 0.5f : -0.5f));
+            int pitchQ16 = staticPitchQ16 + livePitchQ16 + masterTuneQ16;
+            if (pitchQ16 == lastPitchQ16) {
+                return;
+            }
+            lastPitchQ16 = pitchQ16;
             int coarse;
             int fine;
             if (pitchQ16 < 0) {
@@ -2188,6 +2205,25 @@ final class FueTrekSampler implements Sampler, MLDRawExtBHandler {
         }
 
         private void updateMixWords() {
+            // The mix words are derived only from channel/global mix state. It
+            // changes on MIDI events, not per sample, so compare a compact key
+            // before redoing the gain/pan table lookups.
+            long mixKey = (channel.channelVolumeByte & 0xFFL)
+                    | ((long) (mixState.globalVolumeByte & 0xFF) << 8)
+                    | ((long) (velocityByte & 0xFF) << 16)
+                    | ((long) (channel.expressionByte & 0xFF) << 24)
+                    | ((long) (mixState.global338Byte & 0xFF) << 32)
+                    | ((long) (mixState.global339Byte & 0xFF) << 40)
+                    | ((long) ((mixState.masterPanByte + 128) & 0xFF) << 48)
+                    | ((long) ((channel.channelPanByte + 64) & 0xFF) << 56);
+            int mixKey2 = channel.nativePanModeIndex | (channel.drum ? 0x1000000 : 0);
+            if (mixKey == lastMixKey && mixKey2 == lastMixKey2) {
+                mixLeftWord = cachedMixLeftWord;
+                mixRightWord = cachedMixRightWord;
+                return;
+            }
+            lastMixKey = mixKey;
+            lastMixKey2 = mixKey2;
             int gain = mulWord(
                     FueTrekMixTables.gainWord(channel.channelVolumeByte),
                     FueTrekMixTables.gainWord(mixState.globalVolumeByte));
@@ -2200,7 +2236,7 @@ final class FueTrekSampler implements Sampler, MLDRawExtBHandler {
                 } else if (remapped > 127.0) {
                     remapped = 127.0;
                 }
-                velocity = clampRange((int) Math.floor(remapped + 0.5), 0, 0x7f);
+                velocity = clampRange((int) (remapped + 0.5), 0, 0x7f);
             }
             gain = mulWord(gain, FueTrekMixTables.gainWord(velocity));
             gain = mulWord(gain, FueTrekMixTables.gainWord(channel.expressionByte));
@@ -2235,6 +2271,8 @@ final class FueTrekSampler implements Sampler, MLDRawExtBHandler {
             }
             mixLeftWord = clampRange(leftWord << 1, 0, 0x7fff);
             mixRightWord = clampRange(rightWord << 1, 0, 0x7fff);
+            cachedMixLeftWord = mixLeftWord;
+            cachedMixRightWord = mixRightWord;
         }
 
         private static int mulCurve(int lhs, int rhs) {
@@ -2322,7 +2360,7 @@ final class FueTrekSampler implements Sampler, MLDRawExtBHandler {
             if (scaled < 0) {
                 scaled = 0;
             }
-            return Math.max(0, (int) Math.round(scaled * romStepScale));
+            return Math.max(0, (int) (scaled * romStepScale + 0.5f));
         }
 
         private int sampleAt(int index) {

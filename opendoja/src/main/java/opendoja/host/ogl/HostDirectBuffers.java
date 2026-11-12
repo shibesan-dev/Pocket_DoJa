@@ -105,6 +105,7 @@ public final class HostDirectBuffers {
 
     public static class HostShortBuffer extends HostDirectBufferBase implements ShortBuffer {
         private final short[] values;
+        private boolean dynamic;
 
         public HostShortBuffer(short[] values) {
             this.values = values;
@@ -113,6 +114,10 @@ public final class HostDirectBuffers {
 
         public final short[] values() {
             return values;
+        }
+
+        public final boolean isDynamic() {
+            return dynamic;
         }
 
         @Override
@@ -155,6 +160,7 @@ public final class HostDirectBuffers {
             if (buff == null) {
                 throw new NullPointerException("buff");
             }
+            dynamic = true;
             put(index, buff, 0, buff.length);
         }
 

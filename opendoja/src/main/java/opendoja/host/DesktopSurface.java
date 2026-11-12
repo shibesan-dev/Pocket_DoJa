@@ -11,6 +11,13 @@ public final class DesktopSurface {
     // at ~30 fps prevents fast loops from burning CPU/heat without hurting the games.
     private static final long PRESENT_SYNC_INTERVAL_NANOS = 33_000_000L;
     private static final int PRESENTATION_BUFFER_COUNT = 3;
+    /**
+     * Serializes snapshot writers (copyForPresentation) against readers
+     * (the Android view copying a frame for its own stable display buffer).
+     * The rotating presentation buffers can wrap while a reader is copying,
+     * which shows up as horizontal seams of old/new frame content.
+     */
+    public static final Object PRESENTATION_COPY_LOCK = new Object();
     private BufferedImage image;
     private final BufferedImage[] presentationBuffers = new BufferedImage[PRESENTATION_BUFFER_COUNT];
     private int presentationBufferIndex;
@@ -178,34 +185,36 @@ public final class DesktopSurface {
     }
 
     public synchronized BufferedImage copyForPresentation() {
-        flushOglFrameToBitmap();
-        int width = image.getWidth();
-        int height = image.getHeight();
-        presentationBufferIndex = (presentationBufferIndex + 1) % PRESENTATION_BUFFER_COUNT;
-        BufferedImage copy = presentationBuffers[presentationBufferIndex];
-        if (copy == null || copy.getWidth() != width || copy.getHeight() != height) {
-            copy = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-            presentationBuffers[presentationBufferIndex] = copy;
+        synchronized (PRESENTATION_COPY_LOCK) {
+            flushOglFrameToBitmap();
+            int width = image.getWidth();
+            int height = image.getHeight();
+            presentationBufferIndex = (presentationBufferIndex + 1) % PRESENTATION_BUFFER_COUNT;
+            BufferedImage copy = presentationBuffers[presentationBufferIndex];
+            if (copy == null || copy.getWidth() != width || copy.getHeight() != height) {
+                copy = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+                presentationBuffers[presentationBufferIndex] = copy;
+            }
+            // Presentation must remain stable while the app keeps drawing and while the EDT may still
+            // be blitting one of the previous snapshots into the host window.
+            Graphics2D g2 = copy.createGraphics();
+            try {
+                // The handset LCD has no alpha channel: the surface's RGB is the picture even where
+                // the software GL mask passes left alpha at zero. Composite with Src, not SrcOver, so
+                // transparent surface pixels still replace (rather than preserve) the reused snapshot.
+                // Otherwise stale pixels from an earlier frame - e.g. the boot white screen - reappear
+                // as white boxes wherever a GL mask pass zeroed the framebuffer alpha.
+                g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC, 1.0f));
+                g2.drawImage(image, 0, 0, null);
+            } finally {
+                g2.dispose();
+            }
+            // The handset LCD has no alpha channel: RGB is displayed as-is. Software GL blending can
+            // leave framebuffer alpha at zero (e.g. mask passes using GL_ZERO/GL_ONE_MINUS_SRC_COLOR),
+            // and compositing that snapshot as transparent would erase the drawn RGB on the host.
+            forceOpaquePresentation(copy, width, height);
+            return copy;
         }
-        // Presentation must remain stable while the app keeps drawing and while the EDT may still
-        // be blitting one of the previous snapshots into the host window.
-        Graphics2D g2 = copy.createGraphics();
-        try {
-            // The handset LCD has no alpha channel: the surface's RGB is the picture even where
-            // the software GL mask passes left alpha at zero. Composite with Src, not SrcOver, so
-            // transparent surface pixels still replace (rather than preserve) the reused snapshot.
-            // Otherwise stale pixels from an earlier frame - e.g. the boot white screen - reappear
-            // as white boxes wherever a GL mask pass zeroed the framebuffer alpha.
-            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC, 1.0f));
-            g2.drawImage(image, 0, 0, null);
-        } finally {
-            g2.dispose();
-        }
-        // The handset LCD has no alpha channel: RGB is displayed as-is. Software GL blending can
-        // leave framebuffer alpha at zero (e.g. mask passes using GL_ZERO/GL_ONE_MINUS_SRC_COLOR),
-        // and compositing that snapshot as transparent would erase the drawn RGB on the host.
-        forceOpaquePresentation(copy, width, height);
-        return copy;
     }
 
     private void forceOpaquePresentation(BufferedImage frame, int width, int height) {
@@ -244,19 +253,40 @@ public final class DesktopSurface {
     }
 
     public void flush(BufferedImage presentedFrame, boolean paced, boolean frameBoundary) {
-        if (paced) {
-            // Cap the on-screen present rate by COALESCING, never by sleeping the game
-            // thread. Blocking here made titles that present many times while building their
-            // startup display list take minutes to leave "Booting...". If a present arrives
-            // before the interval, drop it (the surface keeps the newest content and the next
-            // present after the interval shows it); the game itself runs at full speed.
-            long now = System.nanoTime();
-            if (nextRenderSyncNanos != 0L && now < nextRenderSyncNanos) {
-                return;
-            }
-            nextRenderSyncNanos = now + PRESENT_SYNC_INTERVAL_NANOS;
+        if (!shouldPresentNow(paced)) {
+            return;
         }
         present(presentedFrame, frameBoundary);
+    }
+
+    /**
+     * Presents the current surface, taking the snapshot only after the pacing
+     * check. Callers that snapshot eagerly (once per unlock) otherwise rotate
+     * the presentation buffers even for frames that are never displayed, letting
+     * a buffer be overwritten while a reader is still copying it.
+     */
+    public void flushSnapshot(boolean paced, boolean frameBoundary) {
+        if (!shouldPresentNow(paced)) {
+            return;
+        }
+        present(copyForPresentation(), frameBoundary);
+    }
+
+    private boolean shouldPresentNow(boolean paced) {
+        if (!paced) {
+            return true;
+        }
+        // Cap the on-screen present rate by COALESCING, never by sleeping the game
+        // thread. Blocking here made titles that present many times while building their
+        // startup display list take minutes to leave "Booting...". If a present arrives
+        // before the interval, drop it (the surface keeps the newest content and the next
+        // present after the interval shows it); the game itself runs at full speed.
+        long now = System.nanoTime();
+        if (nextRenderSyncNanos != 0L && now < nextRenderSyncNanos) {
+            return false;
+        }
+        nextRenderSyncNanos = now + PRESENT_SYNC_INTERVAL_NANOS;
+        return true;
     }
 
     private void present(BufferedImage presentedFrame, boolean frameBoundary) {

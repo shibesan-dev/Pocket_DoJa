@@ -291,6 +291,13 @@ private static final class SharedEngine {
 
         private void runLoop() {
             try {
+                // Keep synthesis ahead of the AudioTrack drain even when the game
+                // render thread is saturated (explosions, scene transitions).
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);
+            } catch (Throwable ignored) {
+                // Non-Android hosts keep the default priority.
+            }
+            try {
                 while (true) {
                     runIteration();
                 }
@@ -499,7 +506,9 @@ private static final class SharedEngine {
             int output = 0;
             for (int i = 0; i < frames * 2; i++) {
                 float sample = Math.max(-1.0f, Math.min(1.0f, mixBuffer[i]));
-                int value = Math.round(sample * 32767.0f);
+                // Math.round(float) is a JNI transition on ART; this loop runs
+                // once per output sample and stays on the audio worker thread.
+                int value = (int) (sample * 32767.0f + (sample >= 0.0f ? 0.5f : -0.5f));
                 pcmBuffer[output++] = (byte) (value & 0xFF);
                 pcmBuffer[output++] = (byte) ((value >>> 8) & 0xFF);
                 mixBuffer[i] = 0.0f;

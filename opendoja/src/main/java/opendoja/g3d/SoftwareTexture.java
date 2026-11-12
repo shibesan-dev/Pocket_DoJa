@@ -14,6 +14,12 @@ public final class SoftwareTexture {
     private final boolean sphereMap;
     private final int[] indexedPixels;
     private final IndexColorModel indexedColorModel;
+    private final int textureWidth;
+    private final int textureHeight;
+    /** ARGB palette expanded once from the indexed color model. */
+    private final int[] paletteArgb;
+    /** ARGB pixels for non-indexed textures, loaded in bulk on first sample. */
+    private int[] colorPixels;
     private boolean repeatEnabled;
     private boolean toonShaderEnabled;
     private int toonThreshold = 128;
@@ -71,11 +77,11 @@ public final class SoftwareTexture {
     }
 
     public int width() {
-        return image.getWidth();
+        return textureWidth;
     }
 
     public int height() {
-        return image.getHeight();
+        return textureHeight;
     }
 
     public int sampleColor(float u, float v) {
@@ -83,16 +89,24 @@ public final class SoftwareTexture {
     }
 
     public int sampleColor(float u, float v, boolean transparentPaletteZero) {
-        int x = repeatEnabled ? wrap((int) java.lang.Math.floor(u), width()) : clamp((int) java.lang.Math.floor(u), 0, Math.max(0, width() - 1));
-        int y = repeatEnabled ? wrap((int) java.lang.Math.floor(v), height()) : clamp((int) java.lang.Math.floor(v), 0, Math.max(0, height() - 1));
-        if (indexedPixels != null && indexedColorModel != null) {
-            int index = indexedPixels[y * width() + x];
+        int x = repeatEnabled ? wrap((int) java.lang.Math.floor(u), textureWidth) : clamp((int) java.lang.Math.floor(u), 0, Math.max(0, textureWidth - 1));
+        int y = repeatEnabled ? wrap((int) java.lang.Math.floor(v), textureHeight) : clamp((int) java.lang.Math.floor(v), 0, Math.max(0, textureHeight - 1));
+        if (indexedPixels != null && paletteArgb != null) {
+            int index = indexedPixels[y * textureWidth + x];
             if (transparentPaletteZero && index == 0) {
                 return 0;
             }
-            return indexedColorModel.getRGB(index);
+            return index < paletteArgb.length ? paletteArgb[index] : 0;
         }
-        return image.getRGB(x, y);
+        // Sampling the bitmap through getRGB() is a JNI transition per fragment. Cache the
+        // whole texture as ARGB once; textures are immutable after decoding.
+        int[] pixels = colorPixels;
+        if (pixels == null) {
+            pixels = new int[textureWidth * textureHeight];
+            image.getRGB(0, 0, textureWidth, textureHeight, pixels, 0, textureWidth);
+            colorPixels = pixels;
+        }
+        return pixels[y * textureWidth + x];
     }
 
     public void setNormalShader() {
@@ -132,6 +146,18 @@ public final class SoftwareTexture {
         this.indexedPixels = indexedPixels;
         this.indexedColorModel = indexedColorModel;
         this.sphereMap = sphereMap;
+        this.textureWidth = image.getWidth();
+        this.textureHeight = image.getHeight();
+        if (indexedColorModel != null) {
+            int size = indexedColorModel.getMapSize();
+            int[] palette = new int[size];
+            for (int i = 0; i < size; i++) {
+                palette[i] = indexedColorModel.getRGB(i);
+            }
+            this.paletteArgb = palette;
+        } else {
+            this.paletteArgb = null;
+        }
         if (TRACE_3D_CALLS) {
             int transparentPixels = countTransparentPixels(this.image, this.indexedPixels, this.indexedColorModel);
             OpenDoJaLog.debug(SoftwareTexture.class, () -> "3D texture decode forModel=" + forModel
@@ -154,15 +180,20 @@ public final class SoftwareTexture {
         BufferedImage converted = new BufferedImage(raw.getWidth(), raw.getHeight(), BufferedImage.TYPE_INT_ARGB);
         if (raw.getColorModel() instanceof IndexColorModel colorModel) {
             Raster raster = raw.getRaster();
-            int[] indexedPixels = new int[raw.getWidth() * raw.getHeight()];
-            for (int y = 0; y < raw.getHeight(); y++) {
-                for (int x = 0; x < raw.getWidth(); x++) {
+            int width = raw.getWidth();
+            int height = raw.getHeight();
+            int[] indexedPixels = new int[width * height];
+            int[] argbPixels = new int[width * height];
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
                     int index = raster.getSample(x, y, 0);
-                    indexedPixels[y * raw.getWidth() + x] = index;
-                    int argb = colorModel.getRGB(index);
-                    converted.setRGB(x, y, argb);
+                    int offset = y * width + x;
+                    indexedPixels[offset] = index;
+                    argbPixels[offset] = colorModel.getRGB(index);
                 }
             }
+            // One bulk write instead of one JNI setPixel per texel.
+            converted.setRGB(0, 0, width, height, argbPixels, 0, width);
             return new DecodedTexture(converted, indexedPixels, colorModel);
         }
         opendoja.compat.awt.Graphics2D g2 = converted.createGraphics();

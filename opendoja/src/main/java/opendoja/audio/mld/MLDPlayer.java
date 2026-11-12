@@ -909,7 +909,8 @@ public class MLDPlayer
      */
     void evtExtInfo(MLDPlayerTrack track, MLDEvent e)
     {
-        this.sampler.sysEx(e.data);
+        if (!this.playbackEngine.handleExtInfo(this, track, e))
+            this.sampler.sysEx(e.data);
         this.setTrackOffset(track, track.offset + 1);
     }
 

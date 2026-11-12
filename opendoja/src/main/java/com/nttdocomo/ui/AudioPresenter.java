@@ -2,6 +2,7 @@ package com.nttdocomo.ui;
 
 import com.nttdocomo.opt.ui.AudioPresenter2;
 import opendoja.audio.MidiEventPlayer;
+import opendoja.audio.MidiMediaPlayer;
 import opendoja.audio.SampledPCMPlayer;
 import opendoja.audio.mld.MLDPCMPlayer;
 import opendoja.host.DoJaProfile;
@@ -258,6 +259,7 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
     private MediaListener mediaListener;
     private SampledPCMPlayer sampledPlayer;
     private MidiEventPlayer midiEventPlayer;
+    private MidiMediaPlayer midiMediaPlayer;
     private MLDPCMPlayer mldPlayer;
     private Sequencer sequencer;
     private int pausedPosition;
@@ -507,32 +509,15 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
             }
             activeSoundKind = prepared.kind();
             if (prepared.kind() == MediaManager.PreparedSound.Kind.MIDI) {
-                if (useDirectMidiPlayback(prepared, loopCount)) {
-                    if (midiEventPlayer == null) {
-                        midiEventPlayer = new MidiEventPlayer(new MidiEventListener());
+                if (midiMediaPlayer == null) {
+                    if (opendoja.host.DoJaRuntime.isShuttingDown()) {
+                        return;
                     }
-                    midiEventPlayer.start(prepared, time, playbackToken);
-                } else {
-                    sequencer = MidiSystem.getSequencer();
-                    sequencer.open();
-                    sequencer.addMetaEventListener(meta -> {
-                        // 0x2F is the standard MIDI End-of-Track meta event.
-                        if (meta.getType() == 0x2F) {
-                            handlePlaybackComplete(playbackToken);
-                        }
-                    });
-                    sequencer.setSequence(prepared.midiSequence());
-                    if (loopCount < 0) {
-                        sequencer.setLoopCount(Sequencer.LOOP_CONTINUOUSLY);
-                    } else {
-                        sequencer.setLoopCount(loopCount);
-                    }
-                    if (time > 0) {
-                        sequencer.setMicrosecondPosition(Math.min((long) time * 1_000L, sequencer.getMicrosecondLength()));
-                    }
-                    sequencer.setTempoFactor(configuredTempoRate(true));
-                    sequencer.start();
+                    midiMediaPlayer = new MidiMediaPlayer(new MidiMediaListener());
                 }
+                midiMediaPlayer.setVolumeLevel(currentVolumeLevel());
+                midiMediaPlayer.setPlaybackRate(configuredTempoRate(true));
+                midiMediaPlayer.start(prepared.bytes(), loopCount, time, playbackToken);
             } else if (prepared.kind() == MediaManager.PreparedSound.Kind.MLD) {
                 if (mldPlayer == null) {
                     if (opendoja.host.DoJaRuntime.isShuttingDown()) {
@@ -600,6 +585,12 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
             playing = false;
             cancelSyncEvents();
             if (notify) notifyListener(AUDIO_PAUSED, 0);
+        } else if (activeSoundKind == MediaManager.PreparedSound.Kind.MIDI
+                && midiMediaPlayer != null && midiMediaPlayer.isActive()) {
+            midiMediaPlayer.pause();
+            playing = false;
+            cancelSyncEvents();
+            if (notify) notifyListener(AUDIO_PAUSED, 0);
         } else if (activeSoundKind == MediaManager.PreparedSound.Kind.MIDI && sequencer != null) {
             pausedPosition = (int) sequencer.getTickPosition();
             sequencer.stop();
@@ -635,6 +626,11 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
             mldPlayer.restart();
             playing = true;
             if (notify) notifyListener(AUDIO_RESTARTED, 0);
+        } else if (activeSoundKind == MediaManager.PreparedSound.Kind.MIDI
+                && midiMediaPlayer != null && midiMediaPlayer.isActive()) {
+            midiMediaPlayer.restart();
+            playing = true;
+            if (notify) notifyListener(AUDIO_RESTARTED, 0);
         } else if (activeSoundKind == MediaManager.PreparedSound.Kind.MIDI && sequencer != null) {
             sequencer.setTickPosition(pausedPosition);
             sequencer.start();
@@ -657,6 +653,10 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
             return mldPlayer.getCurrentTimeMillis();
         }
         if (activeSoundKind == MediaManager.PreparedSound.Kind.MIDI
+                && midiMediaPlayer != null && midiMediaPlayer.isActive()) {
+            return midiMediaPlayer.getCurrentTimeMillis();
+        }
+        if (activeSoundKind == MediaManager.PreparedSound.Kind.MIDI
                 && midiEventPlayer != null && midiEventPlayer.isActive()) {
             return midiEventPlayer.getCurrentTimeMillis();
         }
@@ -677,6 +677,12 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
         }
         if (activeSoundKind == MediaManager.PreparedSound.Kind.MLD && mldPlayer != null) {
             return mldPlayer.getTotalTimeMillis();
+        }
+        if (activeSoundKind == MediaManager.PreparedSound.Kind.MIDI && midiMediaPlayer != null) {
+            int total = midiMediaPlayer.getTotalTimeMillis();
+            if (total > 0) {
+                return total;
+            }
         }
         if (activeSoundKind == MediaManager.PreparedSound.Kind.MIDI
                 && midiEventPlayer != null && midiEventPlayer.isActive()) {
@@ -749,6 +755,12 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
             } catch (Throwable ignored) {
             }
         }
+        if (midiMediaPlayer != null) {
+            try {
+                midiMediaPlayer.stop();
+            } catch (Throwable ignored) {
+            }
+        }
         if (sequencer != null) {
             try {
                 sequencer.stop();
@@ -809,6 +821,10 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
             midiEventPlayer.close();
             midiEventPlayer = null;
         }
+        if (midiMediaPlayer != null) {
+            midiMediaPlayer.close();
+            midiMediaPlayer = null;
+        }
         if (mldPlayer != null) {
             mldPlayer.close();
             mldPlayer = null;
@@ -859,9 +875,15 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
             if (mldPlayer != null) {
                 mldPlayer.setVolumeLevel(level);
             }
+            if (midiMediaPlayer != null) {
+                midiMediaPlayer.setVolumeLevel(level);
+            }
         } else if (key == CHANGE_TEMPO || key == AudioPresenter2.TEMPO) {
             if (key == CHANGE_TEMPO && mldPlayer != null) {
                 mldPlayer.setPlaybackRate(mldPlaybackRate());
+            }
+            if (midiMediaPlayer != null) {
+                midiMediaPlayer.setPlaybackRate(configuredTempoRate(true));
             }
             if (sequencer != null) {
                 sequencer.setTempoFactor(configuredTempoRate(true));
@@ -1132,7 +1154,11 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
         return switch (prepared.kind()) {
             case MIDI -> {
                 Sequence sequence = prepared.midiSequence();
-                yield (int) Math.round(sequence.getMicrosecondLength() / 1_000.0d);
+                // The platform MIDI backend reports duration after preparing
+                // the file; the compat Sequence is absent on Android.
+                yield sequence == null
+                        ? Integer.MAX_VALUE
+                        : (int) Math.round(sequence.getMicrosecondLength() / 1_000.0d);
             }
             case MLD -> {
                 double seconds = prepared.mld().getDuration(true);
@@ -1248,6 +1274,18 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
         @Override
         public void onFailure(Exception exception, long playbackToken) {
             handlePlaybackFailure(playbackToken, exception, "MIDI event playback failed");
+        }
+    }
+
+    private final class MidiMediaListener implements MidiMediaPlayer.Listener {
+        @Override
+        public void onComplete(MidiMediaPlayer source, long playbackToken) {
+            handlePlaybackComplete(playbackToken);
+        }
+
+        @Override
+        public void onFailure(MidiMediaPlayer source, long playbackToken, Exception exception) {
+            handlePlaybackFailure(playbackToken, exception, "MIDI playback failed");
         }
     }
 }

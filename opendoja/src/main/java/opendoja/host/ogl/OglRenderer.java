@@ -1212,7 +1212,243 @@ private void drawOgl(int mode, int first, int count, OglIndexSource indexSource)
     }
     hardware.flush();
     host.onSoftwareSurfaceMutation();
+    SceneTrace.onDraw(ogl, mode, first, count, indexSource);
     software.draw(mode, first, count, indexSource);
+    SceneTrace.endDraw();
+}
+
+/**
+ * Temporary passive render diagnostics. Never reads GL state through getters,
+ * so the shared GL error flag is not disturbed.
+ */
+private static final class SceneTrace {
+    static final boolean ENABLED = true;
+    static final long WINDOW_NANOS = 1_000_000_000L;
+    static int draws;
+    static int dynamicDraws;
+    static int staticDraws;
+    static long staticTriangles;
+    static long dynamicTriangles;
+    static long dynamicIndices;
+    static long windowStartNanos;
+    static long lastSummaryNanos;
+    static boolean insideDynamicDraw;
+    static boolean rasterActive;
+    static long rasterLastNanos;
+    static int rasterTriangles;
+    static int rasterClipped;
+    static int rasterCulled;
+    static int rasterDegenerate;
+    static int rasterEmpty;
+    static long rasterDepthFailed;
+    static long rasterAlphaFailed;
+    static long rasterPixelsWritten;
+
+    static void onDraw(OglState state, int mode, int first, int count, OglIndexSource indexSource) {
+        if (!ENABLED) {
+            return;
+        }
+        try {
+            OglPointer vertexPointer = state.vertexPointer;
+            if (vertexPointer == null || vertexPointer.pointer() == null) {
+                return;
+            }
+            boolean dynamic = vertexPointer.pointer() instanceof HostDirectBuffers.HostShortBuffer shortBuffer
+                    && shortBuffer.isDynamic();
+            draws++;
+            long now = System.nanoTime();
+            if (windowStartNanos == 0L) {
+                windowStartNanos = now;
+                lastSummaryNanos = now;
+            }
+            int triangles = switch (mode) {
+                case GraphicsOGL.GL_TRIANGLES -> count / 3;
+                case GraphicsOGL.GL_TRIANGLE_STRIP -> Math.max(0, count - 2);
+                default -> 0;
+            };
+            if (dynamic) {
+                dynamicDraws++;
+                dynamicTriangles += triangles;
+                dynamicIndices += count;
+                insideDynamicDraw = true;
+                if (now - lastSummaryNanos >= 500_000_000L) {
+                    lastSummaryNanos = now;
+                    logDynamicDraw(state, mode, first, count, indexSource, vertexPointer);
+                }
+                if (count >= 500 && now - rasterLastNanos >= 1_000_000_000L) {
+                    rasterLastNanos = now;
+                    rasterTriangles = 0;
+                    rasterClipped = 0;
+                    rasterCulled = 0;
+                    rasterDegenerate = 0;
+                    rasterEmpty = 0;
+                    rasterDepthFailed = 0;
+                    rasterAlphaFailed = 0;
+                    rasterPixelsWritten = 0;
+                    rasterActive = true;
+                }
+            } else {
+                staticDraws++;
+                staticTriangles += triangles;
+            }
+            if (now - windowStartNanos >= WINDOW_NANOS) {
+                System.out.println("OGLTRACE summary draws=" + draws
+                        + " dynamicDraws=" + dynamicDraws + " dynamicTris=" + dynamicTriangles
+                        + " dynamicIndices=" + dynamicIndices
+                        + " staticDraws=" + staticDraws + " staticTris=" + staticTriangles);
+                draws = 0;
+                dynamicDraws = 0;
+                staticDraws = 0;
+                staticTriangles = 0;
+                dynamicTriangles = 0;
+                dynamicIndices = 0;
+                windowStartNanos = now;
+            }
+        } catch (Throwable ignored) {
+            // Diagnostics must never affect rendering.
+        }
+    }
+
+    private static void logDynamicDraw(OglState state, int mode, int first, int count,
+                                       OglIndexSource indexSource, OglPointer vertexPointer) {
+        HostDirectBuffers.HostShortBuffer vertexBuffer =
+                (HostDirectBuffers.HostShortBuffer) vertexPointer.pointer();
+        short[] values = vertexBuffer.values();
+        int offset = DirectBufferFactory.getSegmentOffset(vertexBuffer);
+        int available = Math.min(DirectBufferFactory.getSegmentLength(vertexBuffer), values.length - offset);
+        StringBuilder builder = new StringBuilder(320);
+        builder.append("OGLTRACE dynamic mode=").append(mode)
+                .append(" first=").append(first)
+                .append(" count=").append(count)
+                .append(" indexLen=").append(indexSource == null ? -1 : indexSource.elementCount())
+                .append(" vtxBytes=").append(available)
+                .append(" vtxSegOff=").append(offset)
+                .append(" verts=").append(available / 3);
+        builder.append(" v0=");
+        appendVertex(builder, values, offset, 0, available);
+        builder.append(" v1=");
+        appendVertex(builder, values, offset, 1, available);
+        builder.append(" v2=");
+        appendVertex(builder, values, offset, 2, available);
+        builder.append(" min=");
+        appendBounds(builder, values, offset, available, false);
+        builder.append(" max=");
+        appendBounds(builder, values, offset, available, true);
+        OglTexture texture = state.boundTexture();
+        builder.append(" tex=").append(state.boundTextureId);
+        if (texture != null) {
+            builder.append(' ').append(texture.width).append('x').append(texture.height)
+                    .append(" fmt=").append(texture.baseFormat());
+            appendTextureAlphaStats(builder, texture);
+        }
+        builder.append(" color=").append(Integer.toHexString(state.color));
+        builder.append(" env=").append(state.textureEnvMode)
+                .append(" texOn=").append(state.textureEnabled())
+                .append(" depthTest=").append(state.depthTestEnabled)
+                .append(" depthMask=").append(state.depthMask)
+                .append(" depthFunc=").append(state.depthFunc)
+                .append(" depthRange=").append(state.depthRangeNear).append(',').append(state.depthRangeFar)
+                .append(" alphaTest=").append(state.alphaTestEnabled)
+                .append(" alphaFunc=").append(state.alphaFunc)
+                .append(" alphaRef=").append(state.alphaRef)
+                .append(" blend=").append(state.blendCapEnabled)
+                .append(" blendFunc=").append(state.blendSrcFactor).append(',').append(state.blendDstFactor)
+                .append(" cull=").append(state.cullFaceEnabled).append(' ').append(state.cullFace)
+                .append(" frontFace=").append(state.frontFace)
+                .append(" light=").append(state.lightingCapEnabled)
+                .append(" colorArray=").append(state.colorArrayEnabled)
+                .append(" normalArray=").append(state.normalArrayEnabled)
+                .append(" texCoordArray=").append(state.texCoordArrayEnabled)
+                .append(" shade=").append(state.shadeModel);
+        float[] mv = state.modelViewMatrix;
+        if (mv != null) {
+            builder.append(" mvT=").append(mv[12]).append(',').append(mv[13]).append(',').append(mv[14]);
+        }
+        float[] projection = state.projectionMatrix;
+        if (projection != null) {
+            float m10 = projection[10];
+            float m14 = projection[14];
+            if (Math.abs(m10 - 1f) > 0.00001f) {
+                builder.append(" near=").append(m14 / (m10 - 1f))
+                        .append(" far=").append(m14 / (m10 + 1f));
+            }
+        }
+        System.out.println(builder.toString());
+    }
+
+    private static void appendTextureAlphaStats(StringBuilder builder, OglTexture texture) {
+        int[] pixels = texture.pixels;
+        if (pixels.length == 0) {
+            return;
+        }
+        int min = 255;
+        int max = 0;
+        int zero = 0;
+        int opaque = 0;
+        for (int pixel : pixels) {
+            int alpha = (pixel >>> 24) & 0xFF;
+            min = Math.min(min, alpha);
+            max = Math.max(max, alpha);
+            if (alpha == 0) {
+                zero++;
+            } else if (alpha == 255) {
+                opaque++;
+            }
+        }
+        builder.append(" aMin=").append(min).append(" aMax=").append(max)
+                .append(" a0=").append(zero).append(" a255=").append(opaque)
+                .append('/').append(pixels.length)
+                .append(" fil=").append(texture.minFilter).append(',').append(texture.magFilter)
+                .append(" wrap=").append(texture.wrapS).append(',').append(texture.wrapT);
+    }
+
+    private static void appendVertex(StringBuilder builder, short[] values, int offset, int vertex, int available) {
+        int base = offset + (vertex * 3);
+        if (base + 2 >= offset + available) {
+            builder.append("oob");
+            return;
+        }
+        builder.append('(').append(values[base]).append(',')
+                .append(values[base + 1]).append(',')
+                .append(values[base + 2]).append(')');
+    }
+
+    private static void appendBounds(StringBuilder builder, short[] values, int offset, int available,
+                                     boolean maximum) {
+        int vertices = Math.min(available / 3, 512);
+        int x = maximum ? Short.MIN_VALUE : Short.MAX_VALUE;
+        int y = x;
+        int z = x;
+        for (int i = 0; i < vertices; i++) {
+            int base = offset + (i * 3);
+            int vx = values[base];
+            int vy = values[base + 1];
+            int vz = values[base + 2];
+            x = maximum ? Math.max(x, vx) : Math.min(x, vx);
+            y = maximum ? Math.max(y, vy) : Math.min(y, vy);
+            z = maximum ? Math.max(z, vz) : Math.min(z, vz);
+        }
+        builder.append('(').append(x).append(',').append(y).append(',').append(z).append(')');
+    }
+
+    static void endDraw() {
+        insideDynamicDraw = false;
+        if (!rasterActive) {
+            return;
+        }
+        rasterActive = false;
+        System.out.println("OGLTRACE raster tris=" + rasterTriangles
+                + " clipped=" + rasterClipped
+                + " culled=" + rasterCulled
+                + " degenerate=" + rasterDegenerate
+                + " empty=" + rasterEmpty
+                + " depthFailPx=" + rasterDepthFailed
+                + " alphaFailPx=" + rasterAlphaFailed
+                + " writtenPx=" + rasterPixelsWritten);
+    }
+
+    private SceneTrace() {
+    }
 }
 
     // Shared transform and buffer-decoding helpers used by both backends.
@@ -1692,6 +1928,9 @@ void drawRasterTriangle(RasterVertex v0, RasterVertex v1, RasterVertex v2, int[]
         scratch = swap;
     }
     if (count < 3) {
+        if (SceneTrace.rasterActive) {
+            SceneTrace.rasterClipped++;
+        }
         return;
     }
     RasterVertex first = input[0];
@@ -1788,11 +2027,21 @@ float viewportY(float ndcY) {
 
 private void rasterizeProjectedTriangle(RasterVertex v0, RasterVertex v1, RasterVertex v2, int[] pixels, float[] depthBuffer,
                                         Rectangle clip, int width, int height) {
+    boolean traceRaster = SceneTrace.rasterActive;
+    if (traceRaster) {
+        SceneTrace.rasterTriangles++;
+    }
     if (isCulled(v0, v1, v2)) {
+        if (traceRaster) {
+            SceneTrace.rasterCulled++;
+        }
         return;
     }
     float area = edge(v0.x, v0.y, v1.x, v1.y, v2.x, v2.y);
     if (Math.abs(area) < 0.0001f) {
+        if (traceRaster) {
+            SceneTrace.rasterDegenerate++;
+        }
         return;
     }
     boolean useBackColor = ogl.lightModelTwoSide && !isFrontFacing(v0, v1, v2);
@@ -1807,6 +2056,9 @@ private void rasterizeProjectedTriangle(RasterVertex v0, RasterVertex v1, Raster
         maxY = Math.min(maxY, clip.y + clip.height - 1);
     }
     if (minX > maxX || minY > maxY) {
+        if (traceRaster) {
+            SceneTrace.rasterEmpty++;
+        }
         return;
     }
     float inverseArea = 1f / area;
@@ -1846,6 +2098,9 @@ private void rasterizeProjectedTriangle(RasterVertex v0, RasterVertex v1, Raster
             float depth = (w0 * v0.depth) + (w1 * v1.depth) + (w2 * v2.depth);
             int offset = (y * width) + x;
             if (!passesDepth(depth, depthBuffer[offset])) {
+                if (traceRaster) {
+                    SceneTrace.rasterDepthFailed++;
+                }
                 continue;
             }
             float denominator = Math.max(0.000001f,
@@ -1863,12 +2118,18 @@ private void rasterizeProjectedTriangle(RasterVertex v0, RasterVertex v1, Raster
             int sampled = texturing ? texture.sample(u, v) : 0xFFFFFFFF;
             int fragmentColor = applyTextureEnvironment(primaryColor, sampled, texture);
             if (!passesAlphaTest(fragmentColor)) {
+                if (traceRaster) {
+                    SceneTrace.rasterAlphaFailed++;
+                }
                 continue;
             }
             int blended = blendEnabled
                     ? blend(fragmentColor, pixels[offset], ogl.blendSrcFactor, ogl.blendDstFactor)
                     : fragmentColor;
             pixels[offset] = blended;
+            if (traceRaster) {
+                SceneTrace.rasterPixelsWritten++;
+            }
             if (depthWriteEnabled) {
                 depthBuffer[offset] = depth;
             }

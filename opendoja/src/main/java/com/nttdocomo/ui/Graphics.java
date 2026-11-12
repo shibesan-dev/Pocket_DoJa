@@ -1094,7 +1094,7 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
         if (lockDepth == 0) {
             return;
         }
-        BufferedImage presentedFrame = null;
+        boolean presentFrame = false;
         boolean outermostUnlock = lockDepth == 1;
         boolean nestedCanvasUnlock = !flush && !outermostUnlock && surface.hasRepaintHook();
         boolean pacedPresentation = flush;
@@ -1107,11 +1107,11 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
         if (flush) {
             traceOpenGlesSync("unlock present flush=true outermost=" + outermostUnlock);
             oglRenderer.flushHardwarePresentation();
-            presentedFrame = copyImage(surface.image());
+            presentFrame = true;
         } else if (nestedCanvasUnlock) {
             traceOpenGlesSync("unlock present flush=false outermost=false");
             oglRenderer.flushHardwarePresentation();
-            presentedFrame = copyImage(surface.image());
+            presentFrame = true;
             pacedPresentation = false;
         } else if (outermostUnlock && surface.hasRepaintHook()) {
             // Some games draw directly to Canvas.getGraphics() and finish the frame with unlock(false)
@@ -1121,7 +1121,7 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
             // explicit unlock(true)/flush() paths use.
             traceOpenGlesSync("unlock present flush=false outermost=true");
             oglRenderer.flushHardwarePresentation();
-            presentedFrame = copyImage(surface.image());
+            presentFrame = true;
             pacedPresentation = false;
         }
         lockDepth--;
@@ -1134,11 +1134,13 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
             // slice, so it is another safe point to release queued callbacks.
             runtime.drainApplicationCallbacks();
         }
-        if (outermostUnlock && presentedFrame == null) {
+        if (outermostUnlock && !presentFrame) {
             surface.endDepthFrame();
         }
-        if (presentedFrame != null) {
-            surface.flush(presentedFrame, pacedPresentation);
+        if (presentFrame) {
+            // Snapshot after the pacing decision so frames that will not be shown
+            // do not rotate the presentation buffers at all.
+            surface.flushSnapshot(pacedPresentation, true);
         }
     }
 

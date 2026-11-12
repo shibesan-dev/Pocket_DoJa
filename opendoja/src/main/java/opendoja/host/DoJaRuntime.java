@@ -167,7 +167,9 @@ public final class DoJaRuntime {
     private volatile boolean currentCanvasPresentedByApplication;
     private volatile Canvas presentedCanvas;
     private volatile BufferedImage presentedFrame;
+    private final Object keypadLock = new Object();
     private volatile long keypadStateBits;
+    private long keypadPressLatchBits;
     private volatile long selectLatchedUntilNanos;
     private volatile Thread renderThread;
     private final Set<Integer> enabledKeypadGroups = ConcurrentHashMap.newKeySet();
@@ -1097,13 +1099,21 @@ public final class DoJaRuntime {
         if (!isKeypadGroupEnabled(group)) {
             return 0;
         }
-        long state = keypadStateBits;
-        if (group == 0 && MINIMUM_SELECT_PRESS_NANOS > 0L && selectLatchedUntilNanos > System.nanoTime()) {
-            state |= absoluteKeyBit(Display.KEY_SELECT);
-        }
         int shift = group * 32;
         if (shift < 0 || shift >= Long.SIZE) {
             return 0;
+        }
+        long state;
+        synchronized (keypadLock) {
+            state = keypadStateBits | keypadPressLatchBits;
+            if (group == 0 && MINIMUM_SELECT_PRESS_NANOS > 0L && selectLatchedUntilNanos > System.nanoTime()) {
+                state |= absoluteKeyBit(Display.KEY_SELECT);
+            }
+            // A tap can begin and end between two guest polls (King's Field
+            // targets 20 fps while input is sampled once per frame). Keep each
+            // press visible until the guest has actually read it once.
+            long groupMask = 0xFFFF_FFFFL << shift;
+            keypadPressLatchBits &= ~(state & groupMask);
         }
         return (int) ((state >>> shift) & 0xFFFF_FFFFL);
     }
@@ -1164,12 +1174,17 @@ public final class DoJaRuntime {
         }
         long now = System.nanoTime();
         if (eventType == Display.KEY_PRESSED_EVENT) {
-            keypadStateBits |= mask;
-            if (dojaKey == Display.KEY_SELECT && MINIMUM_SELECT_PRESS_NANOS > 0L) {
-                selectLatchedUntilNanos = now + MINIMUM_SELECT_PRESS_NANOS;
+            synchronized (keypadLock) {
+                keypadStateBits |= mask;
+                keypadPressLatchBits |= mask;
+                if (dojaKey == Display.KEY_SELECT && MINIMUM_SELECT_PRESS_NANOS > 0L) {
+                    selectLatchedUntilNanos = now + MINIMUM_SELECT_PRESS_NANOS;
+                }
             }
         } else if (eventType == Display.KEY_RELEASED_EVENT) {
-            keypadStateBits &= ~mask;
+            synchronized (keypadLock) {
+                keypadStateBits &= ~mask;
+            }
         }
         if (!(currentFrame instanceof Canvas canvas)) {
             return;

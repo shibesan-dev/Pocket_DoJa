@@ -24,6 +24,11 @@ public final class OptJ3DRenderer {
     private AffineTrans[] viewTransforms = new AffineTrans[0];
     private boolean sphereMapEnabled;
     private SoftwareTexture sphereTexture;
+    private int ambientLight;
+    private int directionLightX;
+    private int directionLightY;
+    private int directionLightZ = 4096;
+    private int directionLightIntensity = 4096;
     private boolean toonShaderEnabled;
     private int toonThreshold = 128;
     private int toonMid = 255;
@@ -39,6 +44,11 @@ public final class OptJ3DRenderer {
         this.viewTransforms = source.viewTransforms.clone();
         this.sphereMapEnabled = source.sphereMapEnabled;
         this.sphereTexture = source.sphereTexture;
+        this.ambientLight = source.ambientLight;
+        this.directionLightX = source.directionLightX;
+        this.directionLightY = source.directionLightY;
+        this.directionLightZ = source.directionLightZ;
+        this.directionLightIntensity = source.directionLightIntensity;
         this.toonShaderEnabled = source.toonShaderEnabled;
         this.toonThreshold = source.toonThreshold;
         this.toonMid = source.toonMid;
@@ -140,6 +150,8 @@ public final class OptJ3DRenderer {
         if (traceCalls) {
             OpenDoJaLog.debug(OptJ3DRenderer.class, () -> "3D call setAmbientLight value=" + color);
         }
+        this.ambientLight = color;
+        context.setOptAmbientLight(color);
     }
 
     public void setDirectionLight(Vector3D direction, int color) {
@@ -149,6 +161,11 @@ public final class OptJ3DRenderer {
                     + (direction == null ? 0 : direction.y) + ","
                     + (direction == null ? 0 : direction.z) + ") value=" + color);
         }
+        this.directionLightX = direction == null ? 0 : direction.x;
+        this.directionLightY = direction == null ? 0 : direction.y;
+        this.directionLightZ = direction == null ? 0 : direction.z;
+        this.directionLightIntensity = color;
+        context.setOptDirectionLight(directionLightX, directionLightY, directionLightZ, color);
     }
 
     public void enableSemiTransparent(boolean enabled) {
@@ -312,6 +329,8 @@ public final class OptJ3DRenderer {
     private void syncState() {
         context.enableOptSphereMap(sphereMapEnabled);
         context.setOptSphereTexture(sphereTexture);
+        context.setOptAmbientLight(ambientLight);
+        context.setOptDirectionLight(directionLightX, directionLightY, directionLightZ, directionLightIntensity);
         context.enableOptToonShader(toonShaderEnabled);
         context.setOptToonShader(toonThreshold, toonMid, toonShadow);
     }

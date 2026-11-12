@@ -61,6 +61,16 @@ public class MLDPlayerTrack
     final int[] channelMap = new int[4];
 
     /**
+     * Retrieve the zero-based index of this track within the sequence.
+     *
+     * @return The track index.
+     */
+    public int getIndex()
+    {
+        return this.index;
+    }
+
+    /**
      * Event list
      */
     MLDTrack mld;

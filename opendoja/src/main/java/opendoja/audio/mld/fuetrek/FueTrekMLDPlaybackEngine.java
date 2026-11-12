@@ -36,6 +36,14 @@ public final class FueTrekMLDPlaybackEngine
     }
 
     @Override
+    public boolean handleExtInfo(MLDPlayer player, MLDPlayerTrack track,
+        MLDEvent event)
+    {
+        return this.resourceAudioEngine.handleMachineDependent(
+            player.framePosition(), track.getIndex(), event.getData());
+    }
+
+    @Override
     public void render(float[] samples, int offset, int frames, float left,
         float right, boolean clamp, long framePosition)
     {

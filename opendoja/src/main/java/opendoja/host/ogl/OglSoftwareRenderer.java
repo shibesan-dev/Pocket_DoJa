@@ -73,6 +73,10 @@ final class OglSoftwareRenderer {
                     if (!populateRasterVertex(next, nextClip, resolveVertexIndex(first, indexSource, i))) {
                         continue;
                     }
+                    // The buffer holding the oldest vertex of the previous triangle is
+                    // free to receive the next strip vertex. Remember it before the
+                    // parity swap below, which exchanges the v0/v1 references.
+                    OglRenderer.RasterVertex oldest = previous0;
                     OglRenderer.RasterVertex v0 = previous0;
                     OglRenderer.RasterVertex v1 = previous1;
                     OglRenderer.RasterVertex v2 = next;
@@ -85,7 +89,7 @@ final class OglSoftwareRenderer {
                             width, height, clipInput, clipScratch, project0, project1, project2);
                     previous0 = previous1;
                     previous1 = next;
-                    next = v0;
+                    next = oldest;
                     nextClip = next == scratch0 ? clip0 : clip1;
                 }
             }

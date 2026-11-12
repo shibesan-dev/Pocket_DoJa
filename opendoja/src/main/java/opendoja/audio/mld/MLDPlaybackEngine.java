@@ -41,6 +41,23 @@ public interface MLDPlaybackEngine
     void handleResource(MLDPlayer player, MLDPlayerTrack track, MLDEvent event);
 
     /**
+     * Handle a system/machine-dependent ext-info event.
+     *
+     * <p>Returning {@code false} leaves the event to the sampler's
+     * {@link Sampler#sysEx(byte[])} handler.</p>
+     *
+     * @param player //active player.//
+     * @param track //source track.//
+     * @param event //parsed event.//
+     * @return //{@code true} if the engine consumed the event.//
+     */
+    default boolean handleExtInfo(MLDPlayer player, MLDPlayerTrack track,
+        MLDEvent event)
+    {
+        return false;
+    }
+
+    /**
      * Render synth-owned overlay/resource audio.
      */
     void render(float[] samples, int offset, int frames, float left,

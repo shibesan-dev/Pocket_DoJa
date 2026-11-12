@@ -89,6 +89,13 @@ public class JamSurfaceView extends View {
     private Bitmap upscaleBitmap;
     private Canvas upscaleCanvas;
     private Paint upscalePaint;
+    private static final int DISPLAY_SNAPSHOT_COUNT = 3;
+    private final Bitmap[] displaySnapshots = new Bitmap[DISPLAY_SNAPSHOT_COUNT];
+    private int displaySnapshotIndex;
+    private int[] displaySnapshotPixels;
+    private Bitmap stableDisplayFrame;
+    private int stableDisplayVersion = Integer.MIN_VALUE;
+
     private final android.graphics.Rect upscaleSrcRect = new android.graphics.Rect();
     private final android.graphics.RectF upscaleDstRectF = new android.graphics.RectF();
     private int upSrcWidth;
@@ -388,6 +395,10 @@ try {
         screen = null;
         screenVersion = 0;
         pixels = null;
+        stableDisplayFrame = null;
+        stableDisplayVersion = Integer.MIN_VALUE;
+        displaySnapshotPixels = null;
+        java.util.Arrays.fill(displaySnapshots, null);
         upscaleBitmap = null;
         upscaleCanvas = null;
         upSrcWidth = 0;
@@ -462,7 +473,10 @@ try {
             }
         }
         if (bmp != null && !bmp.isRecycled()) {
-            drawGameUpscaled(canvas, bmp, sourceVersion);
+            Bitmap displayFrame = snapshotForDisplay(bmp, sourceVersion);
+            if (displayFrame != null) {
+                drawGameUpscaled(canvas, displayFrame, sourceVersion);
+            }
         }
         if (keypadVisible) {
             drawKeypad(canvas);
@@ -995,6 +1009,46 @@ try {
             filterVersion = sourceVersion;
         }
         return out;
+    }
+
+    /**
+     * Returns a stable, opaque copy of a presented frame. Called on the thread
+     * that produced the frame, before the emulator can rotate its presentation
+     * buffers, so the copy is always a whole frame.
+     */
+    private Bitmap snapshotForDisplay(Bitmap source, int sourceVersion) {
+        int width = source.getWidth();
+        int height = source.getHeight();
+        if (width <= 0 || height <= 0) {
+            return source;
+        }
+        if (stableDisplayFrame != null && stableDisplayVersion == sourceVersion
+                && stableDisplayFrame.getWidth() == width && stableDisplayFrame.getHeight() == height) {
+            return stableDisplayFrame;
+        }
+        int length = width * height;
+        int[] px = displaySnapshotPixels;
+        if (px == null || px.length != length) {
+            px = new int[length];
+            displaySnapshotPixels = px;
+        }
+        synchronized (opendoja.host.DesktopSurface.PRESENTATION_COPY_LOCK) {
+            source.getPixels(px, 0, width, 0, 0, width, height);
+        }
+        for (int i = 0; i < length; i++) {
+            px[i] |= 0xFF000000;
+        }
+        displaySnapshotIndex = (displaySnapshotIndex + 1) % DISPLAY_SNAPSHOT_COUNT;
+        Bitmap snapshot = displaySnapshots[displaySnapshotIndex];
+        if (snapshot == null || snapshot.getWidth() != width || snapshot.getHeight() != height) {
+            snapshot = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            displaySnapshots[displaySnapshotIndex] = snapshot;
+        }
+        snapshot.setHasAlpha(false);
+        snapshot.setPixels(px, 0, width, 0, 0, width, height);
+        stableDisplayFrame = snapshot;
+        stableDisplayVersion = sourceVersion;
+        return snapshot;
     }
 
     private void drawGameUpscaled(Canvas canvas, Bitmap bmp, int sourceVersion) {

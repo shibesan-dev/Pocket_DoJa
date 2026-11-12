@@ -40,13 +40,13 @@ public final class JamDexHost {
         return new File(jarFile.getParentFile(), base + ".dex");
     }
 
-    /**
+    /**********IMPORTANT!!
      * Bump this whenever the jar-rewrite logic below changes (SJIS fixups, US_INFO/GameScreen
      * patches, etc.). Cached dex files are reused across APK updates as long as this version and
      * the game jar are unchanged, so an update no longer forces every game to be re-dexed (slow
      * "Booting..." on large titles).
-     */
-    private static final int DEX_REWRITE_VERSION = 4;
+     ****/
+    private static final int DEX_REWRITE_VERSION = 5;
 
     private static volatile long appUpdateTimeMillis = 0L;
 
@@ -528,6 +528,19 @@ public final class JamDexHost {
                                 && "java/lang/System".equals(owner)
                                 && "gc".equals(name)
                                 && "()V".equals(descriptor)) {
+                            return;
+                        }
+                        // Some titles keep a Runtime instance and call gc() directly
+                        // from their frame loop (King's Field Mobile does this on
+                        // every iteration). On ART that is a blocking full GC per
+                        // frame, which shows up as severe input lag and stutter.
+                        // Drop the receiver so the stack stays balanced.
+                        if (SUPPRESS_EXPLICIT_GC
+                                && opcode == org.objectweb.asm.Opcodes.INVOKEVIRTUAL
+                                && "java/lang/Runtime".equals(owner)
+                                && "gc".equals(name)
+                                && "()V".equals(descriptor)) {
+                            super.visitInsn(org.objectweb.asm.Opcodes.POP);
                             return;
                         }
                         if (opcode == org.objectweb.asm.Opcodes.INVOKEVIRTUAL
