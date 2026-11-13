@@ -10,6 +10,8 @@ import com.nttdocomo.ui.Graphics;
 import opendoja.host.input.ControllerInputEvent;
 import opendoja.host.input.ControllerInputListener;
 import opendoja.host.input.ControllerInputManager;
+import opendoja.host.compat.CompatFeature;
+import opendoja.host.compat.GameCompatibility;
 
 import opendoja.compat.swing.*;
 import opendoja.compat.awt.*;
@@ -268,6 +270,7 @@ public final class DoJaRuntime {
         // stale application reference, active audio presenters, sticky shutdown flag)
         // can cause the next game to behave differently on first launch.
         resetForNewGameSession();
+        GameCompatibility.install(config.compatibility());
         DoJaRuntime runtime = new DoJaRuntime(config);
         runtime.prepareScratchpadStorage();
         runtime.createWindowIfPossible();
@@ -1165,10 +1168,11 @@ public final class DoJaRuntime {
         if (everShutdown) {
             return;
         }
-        if (!isKeypadGroupEnabled(keyGroup(dojaKey))) {
+        int key = compensateDirectionKey(dojaKey);
+        if (!isKeypadGroupEnabled(keyGroup(key))) {
             return;
         }
-        long mask = absoluteKeyBit(dojaKey);
+        long mask = absoluteKeyBit(key);
         if (mask == 0L) {
             return;
         }
@@ -1177,7 +1181,7 @@ public final class DoJaRuntime {
             synchronized (keypadLock) {
                 keypadStateBits |= mask;
                 keypadPressLatchBits |= mask;
-                if (dojaKey == Display.KEY_SELECT && MINIMUM_SELECT_PRESS_NANOS > 0L) {
+                if (key == Display.KEY_SELECT && MINIMUM_SELECT_PRESS_NANOS > 0L) {
                     selectLatchedUntilNanos = now + MINIMUM_SELECT_PRESS_NANOS;
                 }
             }
@@ -1191,11 +1195,29 @@ public final class DoJaRuntime {
         }
         dispatchCanvasUiEvent(canvas, () -> {
             if (TRACE_EVENTS) {
-                OpenDoJaLog.debug(DoJaRuntime.class, () -> "key event type=" + eventType + " key=" + dojaKey + " canvas=" + canvas.getClass().getName());
+                OpenDoJaLog.debug(DoJaRuntime.class, () -> "key event type=" + eventType + " key=" + key + " canvas=" + canvas.getClass().getName());
             }
-            canvas.processEvent(eventType, dojaKey);
+            canvas.processEvent(eventType, key);
             repaintWindow();
         }, eventType);
+    }
+
+    /**
+     * Titles that ask for a sideways display often remap their own d-pad as
+     * if the handset were rotated. Our controls follow the picture, so undo
+     * that rotation here. Press and release use the same mapping.
+     */
+    private static int compensateDirectionKey(int dojaKey) {
+        if (!GameCompatibility.isFeatureEnabled(CompatFeature.DPAD_ROTATE_FOR_SIDEWAYS_KEY_STYLE)) {
+            return dojaKey;
+        }
+        return switch (dojaKey) {
+            case Display.KEY_UP -> Display.KEY_RIGHT;
+            case Display.KEY_RIGHT -> Display.KEY_DOWN;
+            case Display.KEY_DOWN -> Display.KEY_LEFT;
+            case Display.KEY_LEFT -> Display.KEY_UP;
+            default -> dojaKey;
+        };
     }
 
     public void updatePointerPosition(int x, int y) {

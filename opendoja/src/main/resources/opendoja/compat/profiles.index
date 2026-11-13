@@ -1,0 +1,20 @@
+# Bundled per-game compatibility profiles.
+#
+# Games that work with the global defaults are not listed here. Add a profile
+# only when one title needs behavior that cannot be the default; general fixes
+# belong in the CompatFeature defaults so every game benefits.
+#
+# To add one:
+#   1. Create profiles/<id>.properties.
+#   2. Add <id> below.
+#   3. Match on JAM metadata, not the user's filename:
+#        appclass:<AppClass>         jar:<PackageURL jar base>
+#        jarname:<resolved jar base> cp:<CPName>
+#        name:<AppName>              ver:<AppVer>
+#        apid:<TrustedAPID>          sha256:<exact JAM sha-256>
+#        key:<appclass>/<jar>
+#      Fingerprints in one match.N block are ANDed; blocks are ORed.
+#
+# Removing an id disables its overrides.
+
+kh-coded-side-episode

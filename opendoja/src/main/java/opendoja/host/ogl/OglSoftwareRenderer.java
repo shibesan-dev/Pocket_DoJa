@@ -8,6 +8,7 @@ import java.util.Arrays;
 final class OglSoftwareRenderer {
     private final OglRenderer owner;
     private final DrawScratch drawScratch = new DrawScratch();
+    private final Rectangle scaledClip = new Rectangle();
 
     OglSoftwareRenderer(OglRenderer owner) {
         this.owner = owner;
@@ -24,17 +25,28 @@ final class OglSoftwareRenderer {
         opendoja.host.DesktopSurface surface = owner.host().surface();
         int width = surface.width();
         int height = surface.height();
-        // Triangle modes rasterize into the side OGL framebuffer; line/default modes draw
-        // through the delegate (bitmap), so publish any pending OGL frame before that.
+        // Triangle modes rasterize into the (possibly downscaled) side OGL framebuffer;
+        // line/default modes draw through the delegate (bitmap), so publish any pending
+        // OGL frame before that.
         int[] pixels;
+        float[] depthBuffer;
+        int renderWidth;
+        int renderHeight;
+        Rectangle renderClip;
         if (mode == GraphicsOGL.GL_TRIANGLES || mode == GraphicsOGL.GL_TRIANGLE_STRIP) {
             pixels = surface.acquireOglFramePixels();
-            surface.markOglFrameDirty();
+            depthBuffer = surface.oglDepthBufferForFrame();
+            renderWidth = surface.oglRenderWidth();
+            renderHeight = surface.oglRenderHeight();
+            renderClip = scaleClip(clip, surface, renderWidth, renderHeight);
         } else {
             pixels = null;
+            depthBuffer = null;
+            renderWidth = width;
+            renderHeight = height;
+            renderClip = clip;
             surface.flushOglFrameToBitmap();
         }
-        float[] depthBuffer = owner.host().surface().depthBufferForFrame();
         OglRenderer.RasterVertex scratch0 = drawScratch.scratch0;
         OglRenderer.RasterVertex scratch1 = drawScratch.scratch1;
         OglRenderer.RasterVertex scratch2 = drawScratch.scratch2;
@@ -53,8 +65,8 @@ final class OglSoftwareRenderer {
                             || !populateRasterVertex(scratch2, clip0, resolveVertexIndex(first, indexSource, i + 2))) {
                         continue;
                     }
-                    owner.drawRasterTriangle(scratch0, scratch1, scratch2, pixels, depthBuffer, clip,
-                            width, height, clipInput, clipScratch, project0, project1, project2);
+                    owner.drawRasterTriangle(scratch0, scratch1, scratch2, pixels, depthBuffer, renderClip,
+                            renderWidth, renderHeight, clipInput, clipScratch, project0, project1, project2);
                 }
             }
             case GraphicsOGL.GL_TRIANGLE_STRIP -> {
@@ -85,8 +97,8 @@ final class OglSoftwareRenderer {
                         v1 = v0;
                         v0 = swap;
                     }
-                    owner.drawRasterTriangle(v0, v1, v2, pixels, depthBuffer, clip,
-                            width, height, clipInput, clipScratch, project0, project1, project2);
+                    owner.drawRasterTriangle(v0, v1, v2, pixels, depthBuffer, renderClip,
+                            renderWidth, renderHeight, clipInput, clipScratch, project0, project1, project2);
                     previous0 = previous1;
                     previous1 = next;
                     next = oldest;
@@ -98,6 +110,24 @@ final class OglSoftwareRenderer {
                             scratch0, scratch1, scratch2, clip0, clip1);
             default -> ogl.lastError = GraphicsOGL.GL_INVALID_ENUM;
         }
+    }
+
+    private Rectangle scaleClip(Rectangle clip, opendoja.host.DesktopSurface surface,
+                                 int renderWidth, int renderHeight) {
+        if (clip == null) {
+            return null;
+        }
+        int surfaceWidth = surface.width();
+        int surfaceHeight = surface.height();
+        int left = (int) Math.floor((double) clip.x * renderWidth / surfaceWidth);
+        int top = (int) Math.floor((double) clip.y * renderHeight / surfaceHeight);
+        int right = (int) Math.ceil((double) (clip.x + clip.width) * renderWidth / surfaceWidth);
+        int bottom = (int) Math.ceil((double) (clip.y + clip.height) * renderHeight / surfaceHeight);
+        scaledClip.x = Math.max(0, left);
+        scaledClip.y = Math.max(0, top);
+        scaledClip.width = Math.max(0, Math.min(renderWidth, right) - scaledClip.x);
+        scaledClip.height = Math.max(0, Math.min(renderHeight, bottom) - scaledClip.y);
+        return scaledClip;
     }
 
     int resolveVertexIndex(int first, OglRenderer.OglIndexSource elementIndices, int primitiveIndex) {
@@ -134,21 +164,29 @@ final class OglSoftwareRenderer {
         if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
             return false;
         }
-        float u = 0f;
-        float v = 0f;
-        OglRenderer.OglPointer texCoordPointer = ogl.texCoordArrayEnabled ? ogl.texCoordPointer : null;
-        if (texCoordPointer != null) {
-            int texSize = Math.max(1, texCoordPointer.size());
-            u = owner.readArrayComponent(texCoordPointer, vertexIndex, 0);
-            if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
+        float u0 = 0f;
+        float v0 = 0f;
+        float q0 = 1f;
+        float u1 = 0f;
+        float v1 = 0f;
+        float q1 = 1f;
+        OglRenderer.OglTextureUnit unit0 = ogl.textureUnit(0);
+        if (unit0 != null) {
+            if (!populateTexCoords(unit0, vertexIndex, drawScratch.texCoords0)) {
                 return false;
             }
-            if (texSize > 1) {
-                v = owner.readArrayComponent(texCoordPointer, vertexIndex, 1);
-                if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
-                    return false;
-                }
+            u0 = drawScratch.texCoords0[0];
+            v0 = drawScratch.texCoords0[1];
+            q0 = drawScratch.texCoords0[3];
+        }
+        OglRenderer.OglTextureUnit unit1 = ogl.textureUnit(1);
+        if (unit1 != null) {
+            if (!populateTexCoords(unit1, vertexIndex, drawScratch.texCoords1)) {
+                return false;
             }
+            u1 = drawScratch.texCoords1[0];
+            v1 = drawScratch.texCoords1[1];
+            q1 = drawScratch.texCoords1[3];
         }
         boolean useExtensionMatrices = positionSize >= 3 && ogl.usesExtensionMatrices();
         owner.transformVertex(clipVector, owner.eyeVectorTemp(), x, y, z, vertexIndex, useExtensionMatrices);
@@ -186,12 +224,60 @@ final class OglSoftwareRenderer {
                 owner.viewportY(ndcY),
                 depth,
                 reciprocalW,
-                u,
-                v,
+                u0,
+                v0,
+                q0,
+                u1,
+                v1,
+                q1,
                 primaryColor,
                 backColor
         );
         drawScratch.cacheVertex(vertexIndex, targetVertex);
+        return true;
+    }
+
+    private boolean populateTexCoords(OglRenderer.OglTextureUnit unit, int vertexIndex, float[] out) {
+        OglRenderer.OglState ogl = owner.oglState();
+        float s = unit.currentS;
+        float t = unit.currentT;
+        float r = unit.currentR;
+        float q = unit.currentQ;
+        OglRenderer.OglPointer pointer = unit.texCoordArrayEnabled ? unit.texCoordPointer : null;
+        if (pointer != null) {
+            int size = Math.max(1, pointer.size());
+            s = owner.readArrayComponent(pointer, vertexIndex, 0);
+            if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
+                return false;
+            }
+            t = size > 1 ? owner.readArrayComponent(pointer, vertexIndex, 1) : 0f;
+            if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
+                return false;
+            }
+            r = size > 2 ? owner.readArrayComponent(pointer, vertexIndex, 2) : 0f;
+            if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
+                return false;
+            }
+            q = size > 3 ? owner.readArrayComponent(pointer, vertexIndex, 3) : 1f;
+            if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
+                return false;
+            }
+        }
+        if (!unit.textureMatrixIdentity && unit.textureMatrix != null) {
+            float[] m = unit.textureMatrix;
+            float ns = (m[0] * s) + (m[4] * t) + (m[8] * r) + (m[12] * q);
+            float nt = (m[1] * s) + (m[5] * t) + (m[9] * r) + (m[13] * q);
+            float nr = (m[2] * s) + (m[6] * t) + (m[10] * r) + (m[14] * q);
+            float nq = (m[3] * s) + (m[7] * t) + (m[11] * r) + (m[15] * q);
+            s = ns;
+            t = nt;
+            r = nr;
+            q = nq;
+        }
+        out[0] = s;
+        out[1] = t;
+        out[2] = r;
+        out[3] = q;
         return true;
     }
 
@@ -304,6 +390,8 @@ final class OglSoftwareRenderer {
         final OglRenderer.RasterVertex project2 = new OglRenderer.RasterVertex();
         final OglRenderer.ClipVector clip0 = new OglRenderer.ClipVector();
         final OglRenderer.ClipVector clip1 = new OglRenderer.ClipVector();
+        final float[] texCoords0 = new float[4];
+        final float[] texCoords1 = new float[4];
         private int[] vertexCacheKeys = new int[0];
         private OglRenderer.RasterVertex[] vertexCacheValues = new OglRenderer.RasterVertex[0];
         private boolean vertexCacheEnabled;

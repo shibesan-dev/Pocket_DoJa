@@ -3,7 +3,7 @@ package com.nttdocomo.ui.ogl.math;
 /**
  * Defines a 4x4 float matrix in OpenGL column-major order.
  */
-public final class Matrix4f {
+public class Matrix4f {
     /**
      * Constant for m.
      */

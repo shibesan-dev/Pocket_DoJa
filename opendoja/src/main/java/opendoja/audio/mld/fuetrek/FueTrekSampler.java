@@ -696,17 +696,20 @@ final class FueTrekSampler implements Sampler, MLDRawExtBHandler {
         return sample;
     }
 
-    private static int mulRoundShift(int a, int b, int shift) {
+    // Package-private so nested classes call these directly. Private static helpers
+    // used from a nested class are routed through a D8 synthetic accessor, which
+    // doubled the call overhead for every synthesized audio sample.
+    static int mulRoundShift(int a, int b, int shift) {
         int product = a * b;
         return roundNearestShift(product, shift);
     }
 
-    private static int mulSignRoundShift(int a, int b, int shift) {
+    static int mulSignRoundShift(int a, int b, int shift) {
         int product = a * b;
         return (product >> shift) + (product < 0 ? 1 : 0);
     }
 
-    private static int roundNearestShift(int value, int shift) {
+    static int roundNearestShift(int value, int shift) {
         int roundBit = (value >> (shift - 1)) & 1;
         return (value >> shift) + roundBit;
     }
@@ -733,7 +736,7 @@ final class FueTrekSampler implements Sampler, MLDRawExtBHandler {
         return floatPanToIndex(pan) - 0x40;
     }
 
-    private static int clamp16(int value) {
+    static int clamp16(int value) {
         if (value < Short.MIN_VALUE) {
             return Short.MIN_VALUE;
         }
@@ -2136,7 +2139,8 @@ final class FueTrekSampler implements Sampler, MLDRawExtBHandler {
                         tuneA,
                         modState.pitchMod(),
                         rom.pitchRatioTable);
-                mixed = clamp16(mulRoundShift(ampA, oscAValue, 9));
+                int product = ampA * oscAValue;
+                mixed = clamp16((product >> 9) + ((product >> 8) & 1));
             }
             int oscBValue = 0;
             if (oscBMode == 1) {
@@ -2153,15 +2157,21 @@ final class FueTrekSampler implements Sampler, MLDRawExtBHandler {
                         rom.pitchRatioTable);
             }
             if (ampB > 0) {
-                int scaledB = clamp16(mulRoundShift(ampB, oscBValue, 9));
+                int product = ampB * oscBValue;
+                int scaledB = clamp16((product >> 9) + ((product >> 8) & 1));
                 mixed = clamp16(mixed + scaledB);
             }
             int shaped = toneShape.apply((short) (envBOut >> 4), (short) mixed);
-            int envDriven = clamp16(mulRoundShift(zoneGainByte << 5, envAOut, 11));
-            int leftControl = clamp16(mulRoundShift((mixLeftWord >> 2) & ~3, envDriven, 11));
-            int leftVoice = clamp16(mulRoundShift((leftControl >> 3) & ~7, shaped, 9));
-            int rightControl = clamp16(mulRoundShift((mixRightWord >> 2) & ~3, envDriven, 11));
-            int rightVoice = clamp16(mulRoundShift((rightControl >> 3) & ~7, shaped, 9));
+            int product = (zoneGainByte << 5) * envAOut;
+            int envDriven = clamp16((product >> 11) + ((product >> 10) & 1));
+            product = ((mixLeftWord >> 2) & ~3) * envDriven;
+            int leftControl = clamp16((product >> 11) + ((product >> 10) & 1));
+            product = ((leftControl >> 3) & ~7) * shaped;
+            int leftVoice = clamp16((product >> 9) + ((product >> 8) & 1));
+            product = ((mixRightWord >> 2) & ~3) * envDriven;
+            int rightControl = clamp16((product >> 11) + ((product >> 10) & 1));
+            product = ((rightControl >> 3) & ~7) * shaped;
+            int rightVoice = clamp16((product >> 9) + ((product >> 8) & 1));
 
             outLeft = (leftVoice << 1) * OUTPUT_SCALE;
             outRight = (rightVoice << 1) * OUTPUT_SCALE;
@@ -2288,17 +2298,30 @@ final class FueTrekSampler implements Sampler, MLDRawExtBHandler {
         final FueTrekRom.Sample sample;
         final short[] interpolationTable;
         final float romStepScale;
+        final int loopStartQ12;
+        final int loopEndQ12;
+        final int loopLengthQ12;
         int phaseQ12 = 0;
+        private boolean hasCachedPitch;
+        private int cachedPitchDelta;
+        private int cachedOctaveShift;
+        private int cachedRemainder;
+        private int cachedRatioIndex;
 
         Oscillator(FueTrekRom.Sample sample, short[] interpolationTable, float romStepScale) {
             this.sample = sample;
             this.interpolationTable = interpolationTable;
             this.romStepScale = romStepScale;
+            // The ROM sample is immutable, so hoist its loop bounds out of the
+            // per-output-sample path.
+            this.loopStartQ12 = sample.loopStart << 12;
+            this.loopEndQ12 = sample.loopEnd << 12;
+            this.loopLengthQ12 = loopEndQ12 - loopStartQ12;
         }
 
         int next(int note, int root, int fine, int tune, int pitchMod, int[] pitchRatioTable) {
             int stepQ12 = nativeStepQ12(note, root, fine, tune, pitchMod, pitchRatioTable);
-            if (stepQ12 <= 0 || sample.sampleCount() < 4) {
+            if (stepQ12 <= 0 || sample.pcm8.length < 4) {
                 return 0;
             }
             int index = phaseQ12 >> 12;
@@ -2320,9 +2343,6 @@ final class FueTrekSampler implements Sampler, MLDRawExtBHandler {
             mixed >>= 9;
 
             phaseQ12 += stepQ12;
-            int loopStartQ12 = sample.loopStart << 12;
-            int loopEndQ12 = sample.loopEnd << 12;
-            int loopLengthQ12 = loopEndQ12 - loopStartQ12;
             if (loopLengthQ12 > 0 && phaseQ12 >= loopEndQ12) {
                 phaseQ12 = loopStartQ12 + Math.floorMod(phaseQ12 - loopStartQ12, loopLengthQ12);
             }
@@ -2331,8 +2351,22 @@ final class FueTrekSampler implements Sampler, MLDRawExtBHandler {
 
         private int nativeStepQ12(int note, int root, int fine, int tune, int pitchMod, int[] pitchRatioTable) {
             int pitchDelta = (fine >> 5) - root + note;
-            int octaveShift = pitchDelta / 12;
-            int remainder = pitchDelta % 12;
+            // note/root/fine only change on pitch events, while this runs for every
+            // output sample. Cache the two integer divisions and the ratio index.
+            if (!hasCachedPitch || pitchDelta != cachedPitchDelta) {
+                cachedPitchDelta = pitchDelta;
+                cachedOctaveShift = pitchDelta / 12;
+                cachedRemainder = pitchDelta % 12;
+                int ratioIndex = cachedRemainder;
+                int tableLength = pitchRatioTable.length;
+                while (ratioIndex < 0) {
+                    ratioIndex += tableLength;
+                }
+                cachedRatioIndex = ratioIndex;
+                hasCachedPitch = true;
+            }
+            int octaveShift = cachedOctaveShift;
+            int remainder = cachedRemainder;
             int step = ((fine & 0x1f) + 0x200) * tune;
             step <<= 1;
             step = (step + ((step >> 31) & 0x3ff)) >> 10;
@@ -2341,7 +2375,7 @@ final class FueTrekSampler implements Sampler, MLDRawExtBHandler {
             // Native `0x100092c0` indexes directly from the `0x200` ratio entry
             // at `MFiSynth_ft.dll:0x1001149c`, so remainder `0` stays on that
             // entry and negative remainders wrap naturally to the tail.
-            int ratio = pitchRatioTable[Math.floorMod(remainder, pitchRatioTable.length)];
+            int ratio = pitchRatioTable[cachedRatioIndex];
             int scaled = ((short) step) * ratio;
             scaled >>= 7;
             scaled &= ~7;
@@ -2360,29 +2394,42 @@ final class FueTrekSampler implements Sampler, MLDRawExtBHandler {
             if (scaled < 0) {
                 scaled = 0;
             }
-            return Math.max(0, (int) (scaled * romStepScale + 0.5f));
+            float scaledFloat = scaled * romStepScale + 0.5f;
+            return (int) scaledFloat;
         }
 
         private int sampleAt(int index) {
-            int length = sample.sampleCount();
+            byte[] pcm = sample.pcm8;
+            int length = pcm.length;
             if (index >= 0 && index < length) {
-                return sample.pcm8[index];
+                return pcm[index];
             }
-            int loopLen = sample.loopEnd - sample.loopStart;
+            int loopStart = sample.loopStart;
+            int loopLen = sample.loopEnd - loopStart;
             if (loopLen <= 0 || length <= 0) {
                 return 0;
             }
-            int wrapped = sample.loopStart + Math.floorMod(index - sample.loopStart, loopLen);
+            // The four interpolation taps overshoot the loop end by at most three
+            // entries, so a single subtraction replaces the general floorMod() path
+            // for all practical samples. Tiny loops fall back to a bounded loop.
+            int wrapped = index - loopStart;
+            while (wrapped >= loopLen) {
+                wrapped -= loopLen;
+            }
+            while (wrapped < 0) {
+                wrapped += loopLen;
+            }
+            wrapped += loopStart;
             if (wrapped < 0) {
                 wrapped = 0;
             } else if (wrapped >= length) {
                 wrapped = length - 1;
             }
-            return sample.pcm8[wrapped];
+            return pcm[wrapped];
         }
     }
 
-    private static void noiseShift(int[] n) {
+    static void noiseShift(int[] n) {
         int x15 = n[15];
         n[15] = n[14];
         n[14] = n[13];
@@ -2402,7 +2449,7 @@ final class FueTrekSampler implements Sampler, MLDRawExtBHandler {
         n[0] = x15;
     }
 
-    private static int noiseExpandA(int[] n) {
+    static int noiseExpandA(int[] n) {
         int bits = (n[0] != 0) ? -32 : 0;
         bits |= n[1] << 4;
         bits |= n[2] << 3;
@@ -2412,7 +2459,7 @@ final class FueTrekSampler implements Sampler, MLDRawExtBHandler {
         return bits << 6;
     }
 
-    private static int noiseExpandB(int[] n) {
+    static int noiseExpandB(int[] n) {
         int bits = (n[2] != 0) ? -32 : 0;
         bits |= n[3] << 4;
         bits |= n[4] << 3;

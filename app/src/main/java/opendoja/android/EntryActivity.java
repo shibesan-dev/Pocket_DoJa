@@ -979,6 +979,11 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
     }
 
     private void launchGame() {
+        // Turn logging on before any launch work. Previously the debug preference
+        // was applied only after dex conversion, so an early failure (missing jam,
+        // storage error, ...) was swallowed by the catch below and the user was
+        // left on the "Booting..." overlay with no diagnostic anywhere.
+        configureDebugLogging();
         // The user may back out while the "Booting..." overlay is still showing.
         // stopGame() runs on every exit path and marks this instance stopped, so
         // aborting here keeps a late launch from booting the game (and its BGM)
@@ -1152,26 +1157,6 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
         if (surfaceView != null) {
             surfaceView.prepareForNewGame();
         }
-        // Apply debug logging preference (default: disabled for performance).
-        try {
-            android.content.SharedPreferences logPrefs = getSharedPreferences(DisplayActivity.PREFS_NAME, MODE_PRIVATE);
-            boolean logEnabled = "enable".equals(logPrefs.getString(DisplayActivity.KEY_DEBUG, "disable"));
-            if (logEnabled) {
-                java.io.File logFile = new java.io.File(getExternalFilesDir(null), "pocketdoja-log.txt");
-                if (logFile.getParentFile() == null) {
-                    logFile = new java.io.File(getFilesDir(), "pocketdoja-log.txt");
-                }
-                OpenDoJaLog.setFileLoggingEnabled(true, logFile);
-                // Actually emit messages when the user enables Debugging (previously the level
-                // stayed OFF, so the log file was always empty).
-                OpenDoJaLog.configure(OpenDoJaLog.Level.DEBUG);
-            } else {
-                OpenDoJaLog.setFileLoggingEnabled(false, null);
-                OpenDoJaLog.configure(OpenDoJaLog.Level.OFF);
-            }
-        } catch (Throwable throwable) {
-            runOnUiThread(() -> android.widget.Toast.makeText(this, "Logging setup failed: " + throwable, android.widget.Toast.LENGTH_LONG).show());
-        }
         DoJaRuntime.setPlatformPresenter((frame, sessionId) -> {
             if (frame == null) {
                 runOnUiThread(this::exitGame);
@@ -1241,7 +1226,56 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
         } catch (Throwable throwable) {
             OpenDoJaLog.error(EntryActivity.class, "game launch failed", throwable);
             opendoja.host.OpenDoJaLog.error(EntryActivity.class, "game launch failed", throwable);
+            // Always visible in logcat, even when debug logging is disabled.
+            android.util.Log.e("OpenDoJa", "game launch failed", throwable);
+            runOnUiThread(() -> showLaunchFailure(throwable));
         }
+    }
+
+    /** Applies the debug-logging preference. Called as early as possible so launch
+     *  failures are never silent. */
+    private void configureDebugLogging() {
+        try {
+            android.content.SharedPreferences logPrefs = getSharedPreferences(DisplayActivity.PREFS_NAME, MODE_PRIVATE);
+            boolean logEnabled = "enable".equals(logPrefs.getString(DisplayActivity.KEY_DEBUG, "disable"));
+            if (logEnabled) {
+                java.io.File logFile = new java.io.File(getExternalFilesDir(null), "pocketdoja-log.txt");
+                if (logFile.getParentFile() == null) {
+                    logFile = new java.io.File(getFilesDir(), "pocketdoja-log.txt");
+                }
+                OpenDoJaLog.setFileLoggingEnabled(true, logFile);
+                OpenDoJaLog.configure(OpenDoJaLog.Level.DEBUG);
+            } else {
+                OpenDoJaLog.setFileLoggingEnabled(false, null);
+                OpenDoJaLog.configure(OpenDoJaLog.Level.OFF);
+            }
+        } catch (Throwable throwable) {
+            android.util.Log.e("OpenDoJa", "logging setup failed", throwable);
+        }
+    }
+
+    /** Replaces the endless "Booting..." overlay with a readable error and returns
+     *  to the game list instead of leaving a dead loading screen on top. */
+    private void showLaunchFailure(Throwable throwable) {
+        if (isFinishing() || isDestroyed()) {
+            return;
+        }
+        if (loadingHandler != null) {
+            loadingHandler.removeCallbacksAndMessages(null);
+        }
+        String detail = throwable == null ? "Unknown error" : throwable.getMessage();
+        if (detail == null || detail.isBlank()) {
+            detail = throwable == null ? "Unknown error" : throwable.toString();
+        }
+        if (surfaceView != null) {
+            surfaceView.showLoadingOverlay("Could not start game");
+        }
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Could not start game")
+                .setMessage(detail)
+                .setCancelable(false)
+                .setPositiveButton("Back", (dialog, which) -> exitGame())
+                .show();
     }
 
     private static void deleteRecursively(File file) {

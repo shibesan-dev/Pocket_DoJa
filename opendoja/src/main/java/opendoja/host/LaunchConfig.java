@@ -1,6 +1,7 @@
 package opendoja.host;
 
 import com.nttdocomo.ui.IApplication;
+import opendoja.host.compat.GameCompatibility;
 
 import java.nio.file.Path;
 import java.util.*;
@@ -25,6 +26,7 @@ public final class LaunchConfig {
     private final IAppliType iAppliType;
     private final boolean externalFrameEnabled;
     private final boolean exitOnShutdown;
+    private final GameCompatibility compatibility;
 
     private LaunchConfig(Builder builder) {
         this.applicationClass = builder.applicationClass;
@@ -42,6 +44,9 @@ public final class LaunchConfig {
         this.iAppliType = builder.iAppliType;
         this.externalFrameEnabled = builder.externalFrameEnabled;
         this.exitOnShutdown = builder.exitOnShutdown;
+        this.compatibility = builder.compatibility == null
+                ? GameCompatibility.NONE
+                : builder.compatibility;
     }
 
     public static Builder builder(Class<? extends IApplication> applicationClass) {
@@ -108,6 +113,11 @@ public final class LaunchConfig {
         return exitOnShutdown;
     }
 
+    /** Per-game overrides from the bundled compatibility profiles. */
+    public GameCompatibility compatibility() {
+        return compatibility;
+    }
+
     public static final class Builder {
         private final Class<? extends IApplication> applicationClass;
         private int width = DEFAULT_VIEWPORT_WIDTH;
@@ -124,6 +134,7 @@ public final class LaunchConfig {
         private IAppliType iAppliType = IAppliType.I_APPLI;
         private boolean externalFrameEnabled = true;
         private boolean exitOnShutdown;
+        private GameCompatibility compatibility = GameCompatibility.NONE;
 
         private Builder(Class<? extends IApplication> applicationClass) {
             this.applicationClass = applicationClass;
@@ -203,6 +214,11 @@ public final class LaunchConfig {
 
         public Builder exitOnShutdown(boolean exitOnShutdown) {
             this.exitOnShutdown = exitOnShutdown;
+            return this;
+        }
+
+        public Builder compatibility(GameCompatibility compatibility) {
+            this.compatibility = compatibility == null ? GameCompatibility.NONE : compatibility;
             return this;
         }
 

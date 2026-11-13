@@ -750,7 +750,8 @@ public final class MediaManager {
         }
     }
 
-    static final class BasicMediaSound extends AbstractMediaResource implements MediaSound {
+    static final class BasicMediaSound extends AbstractMediaResource
+            implements MediaSound, com.docomostar.media.MediaSound {
         private final byte[] data;
         private final String sourceName;
         private volatile PreparedSound prepared;

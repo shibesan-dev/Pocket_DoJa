@@ -41,7 +41,8 @@ public final class HostDirectBuffers {
         }
     }
 
-    public static class HostByteBuffer extends HostDirectBufferBase implements ByteBuffer {
+    public static class HostByteBuffer extends HostDirectBufferBase
+            implements ByteBuffer, com.docomostar.ui.ogl.ByteBuffer {
         private final byte[] values;
 
         public HostByteBuffer(byte[] values) {
@@ -103,7 +104,8 @@ public final class HostDirectBuffers {
         }
     }
 
-    public static class HostShortBuffer extends HostDirectBufferBase implements ShortBuffer {
+    public static class HostShortBuffer extends HostDirectBufferBase
+            implements ShortBuffer, com.docomostar.ui.ogl.ShortBuffer {
         private final short[] values;
         private boolean dynamic;
 
@@ -171,7 +173,8 @@ public final class HostDirectBuffers {
         }
     }
 
-    public static class HostIntBuffer extends HostDirectBufferBase implements IntBuffer {
+    public static class HostIntBuffer extends HostDirectBufferBase
+            implements IntBuffer, com.docomostar.ui.ogl.IntBuffer {
         private final int[] values;
 
         public HostIntBuffer(int[] values) {
@@ -233,7 +236,8 @@ public final class HostDirectBuffers {
         }
     }
 
-    public static class HostFloatBuffer extends HostDirectBufferBase implements FloatBuffer {
+    public static class HostFloatBuffer extends HostDirectBufferBase
+            implements FloatBuffer, com.docomostar.ui.ogl.FloatBuffer {
         private final float[] values;
 
         public HostFloatBuffer(float[] values) {

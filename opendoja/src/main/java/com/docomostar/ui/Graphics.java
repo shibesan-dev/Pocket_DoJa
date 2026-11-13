@@ -4,7 +4,8 @@ package com.docomostar.ui;
  * Static methods are re-exposed because Java does not inherit them; Star
  * titles call them as com.docomostar.ui.Graphics.getColorOfRGB(...).
  */
-public abstract class Graphics extends com.nttdocomo.ui.Graphics implements com.docomostar.opt.ui.j3d.Graphics3D {
+public abstract class Graphics extends com.nttdocomo.ui.Graphics
+        implements com.docomostar.opt.ui.j3d.Graphics3D, com.docomostar.ui.ogl.GraphicsOGL {
     protected Graphics() {
         super();
     }

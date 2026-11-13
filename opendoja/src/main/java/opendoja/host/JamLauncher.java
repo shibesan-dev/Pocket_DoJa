@@ -1,6 +1,9 @@
 package opendoja.host;
 
 import com.nttdocomo.ui.IApplication;
+import opendoja.host.compat.GameCompatibility;
+import opendoja.host.compat.GameIdentity;
+import opendoja.host.compat.GameProfiles;
 
 import java.io.IOException;
 import java.net.URI;
@@ -62,6 +65,11 @@ public final class JamLauncher {
         }
         Path gameJarPath = locateGameJarIfPresent(jamPath, properties);
         opendoja.host.OpenDoJaPaths.setGameJarPath(gameJarPath);
+        GameIdentity gameIdentity = GameIdentity.from(jamPath, properties, gameJarPath);
+        GameCompatibility compatibility = GameProfiles.resolve(gameIdentity);
+        OpenDoJaLog.debug(JamLauncher.class,
+                () -> "compat identity " + gameIdentity.summary()
+                        + " profile=" + (compatibility.profileId() == null ? "-" : compatibility.profileId()));
         seedGameStorage(gameJarPath);
         // Install the bridge before any app code runs so bootstrap-owned Class.getResource*
         // lookups can still fall back to the selected JAM jar.
@@ -84,7 +92,8 @@ public final class JamLauncher {
                 .scratchpadSizes(scratchpadSizes)
                 .launchType((launchType == null ? LaunchConfig.LaunchTypeOption.NORMAL : launchType).launchType)
                 .iAppliType(LaunchConfig.IAppliType.fromJamProperties(properties))
-                .exitOnShutdown(exitOnShutdown);
+                .exitOnShutdown(exitOnShutdown)
+                .compatibility(compatibility);
         ResolvedScratchpad scratchpad = null;
         if (scratchpadSizes.length > 0) {
             scratchpad = resolveScratchpad(jamPath);

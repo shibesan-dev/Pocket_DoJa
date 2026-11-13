@@ -53,7 +53,7 @@ public class Graphics2 extends com.docomostar.ui.Graphics {
         super();
     }
 
-    Graphics2(DesktopSurface surface) {
+    protected Graphics2(DesktopSurface surface) {
         super(surface);
     }
 

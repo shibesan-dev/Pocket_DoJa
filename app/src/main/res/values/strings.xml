@@ -99,6 +99,9 @@ Thank you for your interest in Pocket DoJa!
     <string name="landscape_reverse">Landscape (reverse)</string>
     <string name="original">Original</string>
     <string name="full_screen">Full Screen</string>
+    <string name="game_display">Game Display</string>
+    <string name="fill_screen">Fill Screen</string>
+    <string name="scale_to_fit">Scale to Fit</string>
     <string name="enable">Enable</string>
     <string name="disable">Disable</string>
     <string name="filter">Filter</string>

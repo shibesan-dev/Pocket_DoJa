@@ -4,6 +4,8 @@ import com.nttdocomo.lang.XString;
 
 import opendoja.compat.awt.*;
 import opendoja.compat.awt.image.BufferedImage;
+import opendoja.host.compat.CompatFeature;
+import opendoja.host.compat.GameCompatibility;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
@@ -40,6 +42,25 @@ class _BitmapFont extends Font {
     private static final int[] SUPPORTED_SIZES = {8, 10, 12, 16, 20, 24, 30};
     private static final int SPACE = 0x0020;
     private static final int IDEOGRAPHIC_SPACE = 0x3000;
+    // Optional text enlargement: taller cells, snapped to the nearest native strike so
+    // glyphs stay crisp. Small UI sizes get the biggest boost that still fits a 16px
+    // line; dialogue and title text only move a little so their boxes stay intact.
+    // Advances widen because the wide canvas is squeezed into the portrait opening.
+    private static final float ENLARGED_TEXT_BASE_WIDTH_SCALE = 1.2f;
+    private static final float ENLARGED_TEXT_WIDTH_PER_SQUEEZE = 0.95f;
+    private static final float ENLARGED_TEXT_MAX_WIDTH_SCALE = 1.45f;
+    private static final float ENLARGED_TEXT_SMALL_HEIGHT_SCALE = 1.0f;
+    private static final float ENLARGED_TEXT_MEDIUM_HEIGHT_SCALE = 1.25f;
+    private static final float ENLARGED_TEXT_DIALOGUE_HEIGHT_SCALE = 1.2f;
+    private static final float ENLARGED_TEXT_LARGE_HEIGHT_SCALE = 1.15f;
+    // The skin bezel overlaps the edge of the game aperture, so keep enlarged text a
+    // little further inside than the nominal game boundary.
+    private static final int ENLARGED_TEXT_RIGHT_MARGIN = 24;
+    private static final int ENLARGED_TEXT_MIN_X = 4;
+    // Space-padded centred lines imply their window from the padding; leave room for
+    // the outline so it stays inside the drawn frame.
+    private static final int ENLARGED_TEXT_BOX_PADDING = 4;
+    private static final int TEXT_OUTLINE_COLOR = 0xB0000000;
     private static final opendoja.compat.awt.Font PLACEHOLDER_FONT = new opendoja.compat.awt.Font(opendoja.compat.awt.Font.DIALOG, opendoja.compat.awt.Font.PLAIN, 12);
     private static final Map<Integer, Strike> STRIKES = loadStrikes();
     private static final int MAX_RENDER_CACHE_ENTRIES = opendoja.host.OpenDoJaLaunchArgs.getInt(opendoja.host.OpenDoJaLaunchArgs.BITMAP_FONT_CACHE_ENTRIES);
@@ -51,22 +72,46 @@ class _BitmapFont extends Font {
             return size() > MAX_RENDER_CACHE_ENTRIES;
         }
     };
+    // Some title screens build one line from several drawString calls positioned with the
+    // native advance. Track the previous run so the next one is appended after the widened
+    // glyphs instead of overlapping them. Reset every frame: later screens reuse the same
+    // coordinates for unrelated text.
+    private static final ThreadLocal<TextLineState> LAST_TEXT_LINE = new ThreadLocal<>();
 
     private final Strike strike;
+    private final float heightScale;
+    private final boolean enlarged;
+    private final boolean bold;
+    private final boolean outline;
+    private volatile float cachedWidthScale = ENLARGED_TEXT_BASE_WIDTH_SCALE;
+    private volatile int cachedHostWidth = -1;
+    private volatile int cachedHostHeight = -1;
 
-    private _BitmapFont(Strike strike) {
+    private _BitmapFont(Strike strike, float heightScale, boolean enlarged, boolean bold) {
         super(PLACEHOLDER_FONT);
         this.strike = strike;
+        this.heightScale = heightScale;
+        this.enlarged = enlarged;
+        this.bold = bold;
+        this.outline = bold;
     }
 
     static Font create(int face, int style, int size) {
-        Strike strike = STRIKES.get(selectSize(size));
+        boolean enlarge = GameCompatibility.isFeatureEnabled(CompatFeature.FONT_ENLARGE_AND_WIDEN);
+        // Bold does not have to come with enlargement. A title can thicken the native
+        // glyphs without changing their advance, keeping fixed-width dialogs intact.
+        boolean bold = GameCompatibility.isFeatureEnabled(CompatFeature.FONT_PIXEL_BOLD);
+        int targetHeight = enlarge
+                ? Math.max(1, Math.round(size * enlargedHeightScale(size)))
+                : size;
+        Strike strike = STRIKES.get(selectSize(targetHeight));
         if (strike == null) {
             return null;
         }
+        float heightScale = targetHeight / (float) strike.height;
         // The extracted dump is a single handset font face. Preserve the public API shape, but all
         // DoJa faces/styles resolve to the same source glyphs until additional handset dumps exist.
-        return new _BitmapFont(strike);
+        return new _BitmapFont(strike, heightScale, enlarge, bold);
     }
 
     public static int[] getSupportedFontSizes() {
@@ -80,9 +125,14 @@ class _BitmapFont extends Font {
         }
     }
 
+    /** Drops the multi-part line state at frame lock boundaries. */
+    static void resetTextLineState() {
+        LAST_TEXT_LINE.remove();
+    }
+
     @Override
     public int getAscent() {
-        return strike.height();
+        return scaledHeight();
     }
 
     @Override
@@ -92,7 +142,7 @@ class _BitmapFont extends Font {
 
     @Override
     public int getHeight() {
-        return strike.height();
+        return scaledHeight();
     }
 
     @Override
@@ -101,7 +151,7 @@ class _BitmapFont extends Font {
         if (value.isEmpty()) {
             return 0;
         }
-        return value.split("\\n", -1).length * strike.height();
+        return value.split("\\n", -1).length * scaledHeight();
     }
 
     @Override
@@ -112,9 +162,10 @@ class _BitmapFont extends Font {
     @Override
     public int getBBoxWidth(String text) {
         String value = Font.metricString(text);
+        float scale = widthScale();
         int width = 0;
         for (String line : value.split("\\r?\\n", -1)) {
-            width = Math.max(width, lineWidth(line));
+            width = Math.max(width, lineWidth(line, scale));
         }
         return width;
     }
@@ -145,23 +196,202 @@ class _BitmapFont extends Font {
     }
 
     @Override
-    void drawString(Graphics2D graphics, String text, int x, int y, int argbColor) {
-        BufferedImage image = rendered(text, argbColor);
-        if (image != null) {
-            graphics.drawImage(image, x, y - strike.height(), null);
+    public void drawString(Graphics2D graphics, String text, int x, int y, int argbColor) {
+        float scale = widthScale();
+        BufferedImage image = rendered(text, argbColor, scale);
+        if (image == null) {
+            return;
+        }
+        String value = Font.metricString(text);
+        int padding = outline ? 1 : 0;
+        int textWidth = Math.max(0, image.getWidth() - padding * 2);
+        int nativeWidth = lineWidth(value, 1.0f);
+        int targetWidth = graphics.getTargetWidth();
+        int maxRight = targetWidth - ENLARGED_TEXT_RIGHT_MARGIN;
+
+        // Some screens build a line from several drawString calls positioned with the native
+        // advance (x + 16 * length). Once glyphs are widened those positions overlap, so treat
+        // a call starting at the previous segment's native end as a continuation and append it.
+        TextLineState last = LAST_TEXT_LINE.get();
+        boolean continuation = enlarged
+                && last != null
+                && last.graphics == graphics
+                && last.y == y
+                && value.indexOf('\n') < 0
+                && x >= last.nativeX + last.nativeWidth - 1
+                && x <= last.nativeX + last.nativeWidth + 2;
+        int drawX;
+        if (continuation) {
+            int gap = Math.max(0, x - (last.nativeX + last.nativeWidth));
+            drawX = last.cursorX + gap;
+            if (maxRight > drawX && drawX + image.getWidth() > maxRight) {
+                // Ran into the bezel. Compress only this tail; the earlier runs are
+                // already drawn and must stay overlap-free.
+                int fitWidth = Math.max(1, maxRight - drawX - padding);
+                float fitScale = largestScaleThatFits(value, scale, fitWidth);
+                if (fitScale > 0f && fitScale < scale - 0.005f) {
+                    BufferedImage fitted = rendered(value, argbColor, fitScale);
+                    if (fitted != null) {
+                        image = fitted;
+                        textWidth = Math.max(0, image.getWidth() - padding * 2);
+                    }
+                }
+            }
+        } else {
+            drawX = Math.max(0, x);
+            if (enlarged && value.indexOf('\n') < 0) {
+                // Some centred lines are positioned as 427 - 16 * length / 2. If x implies a
+                // longer line, this is the first part of a multi-part line; reserve room for
+                // the rest so the completed line ends up centred.
+                int centreDx = 427 - x;
+                int chars = value.length();
+                if (centreDx > 0 && centreDx % 8 == 0) {
+                    int totalChars = centreDx / 8;
+                    if (totalChars == chars) {
+                        drawX = Math.max(ENLARGED_TEXT_MIN_X, 427 - textWidth / 2);
+                    } else if (totalChars > chars && x > 32 && totalChars <= 200) {
+                        int estimatedTotal = textWidth + Math.round((totalChars - chars) * 16f * scale);
+                        drawX = Math.max(ENLARGED_TEXT_MIN_X, 427 - estimatedTotal / 2);
+                    }
+                }
+            }
+            if (enlarged && targetWidth > 0 && image.getWidth() > 0) {
+                // Keep enlarged text inside the bezel. Space-padded lines also imply their
+                // right edge from the left padding; recover that edge so the text stays inside
+                // the window the game drew.
+                int boxRight = maxRight;
+                int leadingPadding = leadingWhitespaceWidth(value);
+                if (x >= 0 && leadingPadding > 0 && leadingPadding < nativeWidth) {
+                    int impliedRight = x + nativeWidth + leadingPadding * 2;
+                    if (impliedRight < boxRight) {
+                        boxRight = Math.max(x + 1, impliedRight - ENLARGED_TEXT_BOX_PADDING);
+                    }
+                }
+                if (drawX + image.getWidth() > boxRight) {
+                    // Text on the right half of the canvas (narration columns, status panels)
+                    // keeps its left edge; moving it left would collide with the left column.
+                    // Compress it in place instead.
+                    boolean rightAnchored = (long) x * 2 + nativeWidth > targetWidth;
+                    if (rightAnchored) {
+                        drawX = Math.max(0, x);
+                    } else if (drawX > ENLARGED_TEXT_MIN_X) {
+                        drawX = Math.max(ENLARGED_TEXT_MIN_X, maxRight - image.getWidth());
+                    }
+                    if (drawX + image.getWidth() > maxRight) {
+                        int fitWidth = maxRight - drawX;
+                        float fitScale = largestScaleThatFits(value, scale, fitWidth);
+                        if (fitScale > 0f && fitScale < scale - 0.005f) {
+                            BufferedImage fitted = rendered(value, argbColor, fitScale);
+                            if (fitted != null) {
+                                image = fitted;
+                                textWidth = Math.max(0, image.getWidth() - padding * 2);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        LAST_TEXT_LINE.set(new TextLineState(graphics, y, x, nativeWidth, drawX + textWidth));
+        graphics.drawImage(image, drawX - padding, y - scaledHeight() - padding, null);
+    }
+
+    private static final class TextLineState {
+        final Graphics2D graphics;
+        final int y;
+        final int nativeX;
+        final int nativeWidth;
+        final int cursorX;
+
+        TextLineState(Graphics2D graphics, int y, int nativeX, int nativeWidth, int cursorX) {
+            this.graphics = graphics;
+            this.y = y;
+            this.nativeX = nativeX;
+            this.nativeWidth = nativeWidth;
+            this.cursorX = cursorX;
         }
     }
 
+    private float widthScale() {
+        if (!enlarged) {
+            return 1.0f;
+        }
+        int hostWidth = opendoja.host.HostDisplayTarget.width();
+        int hostHeight = opendoja.host.HostDisplayTarget.height();
+        if (hostWidth == cachedHostWidth && hostHeight == cachedHostHeight) {
+            return cachedWidthScale;
+        }
+        cachedHostWidth = hostWidth;
+        cachedHostHeight = hostHeight;
+        cachedWidthScale = computeEnlargedWidthScale(hostWidth, hostHeight);
+        return cachedWidthScale;
+    }
+
+    private static float computeEnlargedWidthScale(int hostWidth, int hostHeight) {
+        int canvasWidth = Display.getWidth();
+        int canvasHeight = Display.getHeight();
+        if (hostWidth <= 0 || hostHeight <= 0 || canvasWidth <= 0 || canvasHeight <= 0) {
+            return ENLARGED_TEXT_BASE_WIDTH_SCALE;
+        }
+        float horizontalScale = hostWidth / (float) canvasWidth;
+        float verticalScale = hostHeight / (float) canvasHeight;
+        if (horizontalScale <= 0.01f || verticalScale <= 0.01f) {
+            return ENLARGED_TEXT_BASE_WIDTH_SCALE;
+        }
+        // The host squeezes the wide canvas into a narrower opening, which makes glyphs tall
+        // and thin. Widen advances based on the squeeze so text stays readable on any viewport.
+        float squeeze = verticalScale / horizontalScale;
+        float scale = ENLARGED_TEXT_BASE_WIDTH_SCALE
+                + Math.max(0f, squeeze - 1f) * ENLARGED_TEXT_WIDTH_PER_SQUEEZE;
+        return Math.min(ENLARGED_TEXT_MAX_WIDTH_SCALE, scale);
+    }
+
+    private float largestScaleThatFits(String text, float maxScale, int maxWidth) {
+        if (maxWidth <= 0) {
+            return 0f;
+        }
+        String value = Font.metricString(text);
+        if (maxLineWidth(value, maxScale) <= maxWidth) {
+            return maxScale;
+        }
+        float low = 0.05f;
+        float high = maxScale;
+        for (int i = 0; i < 20; i++) {
+            float mid = (low + high) * 0.5f;
+            if (maxLineWidth(value, mid) <= maxWidth) {
+                low = mid;
+            } else {
+                high = mid;
+            }
+        }
+        return low;
+    }
+
+    private int maxLineWidth(String text, float scale) {
+        int width = 0;
+        for (String line : text.split("\\r?\\n", -1)) {
+            width = Math.max(width, lineWidth(line, scale));
+        }
+        return width;
+    }
+
+    private int scaledHeight() {
+        return Math.max(1, Math.round(strike.height * heightScale));
+    }
+
     private BufferedImage rendered(String value, int argbColor) {
+        return rendered(value, argbColor, widthScale());
+    }
+
+    private BufferedImage rendered(String value, int argbColor, float scale) {
         String text = Font.metricString(value);
-        RenderKey key = new RenderKey(strike, argbColor, text);
+        RenderKey key = new RenderKey(strike, scale, heightScale, bold, argbColor, text);
         synchronized (RENDER_CACHE) {
             BufferedImage cached = RENDER_CACHE.get(key);
             if (cached != null) {
                 return cached;
             }
         }
-        BufferedImage image = draw(text, argbColor);
+        BufferedImage image = draw(text, argbColor, scale);
         if (image == null) {
             return null;
         }
@@ -172,78 +402,138 @@ class _BitmapFont extends Font {
     }
 
     private BufferedImage draw(String text, int argbColor) {
+        return draw(text, argbColor, widthScale());
+    }
+
+    private BufferedImage draw(String text, int argbColor, float scale) {
         String[] lines = text.split("\\r?\\n", -1);
+        int lineHeight = scaledHeight();
+        int padding = outline ? 1 : 0;
         int width = 0;
         for (String line : lines) {
-            width = Math.max(width, lineWidth(line));
+            width = Math.max(width, lineWidth(line, scale));
         }
-        int height = lines.length * strike.height();
+        int height = lines.length * lineHeight;
         if (width <= 0 || height <= 0) {
             return null;
         }
+        width += padding * 2;
+        height += padding * 2;
 
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
         int[] pixels = image.getRGB(0, 0, width, height, null, 0, width);
         for (int lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-            int cursorX = 0;
-            int cursorY = lineIndex * strike.height();
+            int cursorX = padding;
+            int cursorY = padding + lineIndex * lineHeight;
             int[] codePoints = lines[lineIndex].codePoints().toArray();
             for (int codePoint : codePoints) {
-                int advance = advanceFor(codePoint);
+                int advance = advanceFor(codePoint, scale);
                 int glyphIndex = glyphIndexFor(codePoint);
                 if (glyphIndex >= 0) {
-                    blitGlyph(pixels, width, height, cursorX, cursorY, glyphIndex, argbColor, advance);
+                    blitGlyph(pixels, width, height, cursorX, cursorY, glyphIndex, argbColor,
+                            nativeAdvanceFor(codePoint), advance, lineHeight);
                 }
                 cursorX += advance;
             }
+        }
+        if (outline) {
+            applyOutline(pixels, width, height);
         }
         image.setRGB(0, 0, width, height, pixels, 0, width);
         return image;
     }
 
-    private void blitGlyph(int[] target, int targetWidth, int targetHeight, int dx, int dy, int glyphIndex, int argbColor) {
-        blitGlyph(target, targetWidth, targetHeight, dx, dy, glyphIndex, argbColor, strike.fullAdvance());
-    }
-
-    private void blitGlyph(int[] target, int targetWidth, int targetHeight, int dx, int dy, int glyphIndex, int argbColor, int visibleWidth) {
+    private void blitGlyph(int[] target, int targetWidth, int targetHeight, int dx, int dy,
+                           int glyphIndex, int argbColor, int sourceVisibleWidth,
+                           int destWidth, int destHeight) {
         int glyphOffset = glyphIndex * strike.bytesPerGlyph;
-        for (int row = 0; row < strike.height; row++) {
+        for (int row = 0; row < destHeight; row++) {
             int targetY = dy + row;
             if (targetY < 0 || targetY >= targetHeight) {
                 continue;
             }
-            int rowOffset = glyphOffset + row * strike.bytesPerRow;
-            for (int byteIndex = 0; byteIndex < strike.bytesPerRow; byteIndex++) {
-                int bits = strike.glyphData[rowOffset + byteIndex] & 0xFF;
-                if (bits == 0) {
+            int sourceRow = Math.min(strike.height - 1, row * strike.height / destHeight);
+            int rowOffset = glyphOffset + sourceRow * strike.bytesPerRow;
+            for (int column = 0; column < destWidth; column++) {
+                int sourceColumn = column * sourceVisibleWidth / destWidth;
+                if (sourceColumn >= sourceVisibleWidth) {
                     continue;
                 }
-                for (int bit = 0; bit < 8; bit++) {
-                    if ((bits & (0x80 >>> bit)) == 0) {
-                        continue;
-                    }
-                    int targetX = dx + byteIndex * 8 + bit;
-                    if (targetX - dx >= visibleWidth) {
-                        continue;
-                    }
-                    if (targetX < 0 || targetX >= targetWidth) {
-                        continue;
-                    }
-                    target[targetY * targetWidth + targetX] = argbColor;
+                int bits = strike.glyphData[rowOffset + (sourceColumn >> 3)] & 0xFF;
+                if ((bits & (0x80 >>> (sourceColumn & 7))) == 0) {
+                    continue;
+                }
+                int targetX = dx + column;
+                if (targetX < 0 || targetX >= targetWidth) {
+                    continue;
+                }
+                target[targetY * targetWidth + targetX] = argbColor;
+                // Add a pixel to the stem, but stay inside the glyph's own advance.
+                if (bold && column + 1 < destWidth && targetX + 1 < targetWidth) {
+                    target[targetY * targetWidth + targetX + 1] = argbColor;
+                }
+            }
+        }
+    }
+
+    private static void applyOutline(int[] pixels, int width, int height) {
+        int[] glyphPixels = pixels.clone();
+        for (int y = 0; y < height; y++) {
+            int row = y * width;
+            for (int x = 0; x < width; x++) {
+                int index = row + x;
+                if (glyphPixels[index] != 0) {
+                    continue;
+                }
+                boolean besideGlyph = (x > 0 && glyphPixels[index - 1] != 0)
+                        || (x + 1 < width && glyphPixels[index + 1] != 0)
+                        || (y > 0 && glyphPixels[index - width] != 0)
+                        || (y + 1 < height && glyphPixels[index + width] != 0);
+                if (besideGlyph) {
+                    pixels[index] = TEXT_OUTLINE_COLOR;
                 }
             }
         }
     }
 
     private int lineWidth(String line) {
+        return lineWidth(line, widthScale());
+    }
+
+    private int lineWidth(String line, float scale) {
         int width = 0;
         for (int codePoint : line.codePoints().toArray()) {
-            width += advanceFor(codePoint);
+            width += advanceFor(codePoint, scale);
+        }
+        return width;
+    }
+
+    /**
+     * Native advance of the leading spaces in {@code value}. Space-padded centred
+     * lines use that padding to imply the window width.
+     */
+    private int leadingWhitespaceWidth(String value) {
+        int width = 0;
+        for (int index = 0; index < value.length(); ) {
+            int codePoint = value.codePointAt(index);
+            if (codePoint != SPACE && codePoint != IDEOGRAPHIC_SPACE) {
+                break;
+            }
+            width += nativeAdvanceFor(codePoint);
+            index += Character.charCount(codePoint);
         }
         return width;
     }
 
     private int advanceFor(int codePoint) {
+        return advanceFor(codePoint, widthScale());
+    }
+
+    private int advanceFor(int codePoint, float scale) {
+        return Math.max(1, Math.round(nativeAdvanceFor(codePoint) * scale));
+    }
+
+    private int nativeAdvanceFor(int codePoint) {
         int effectiveCodePoint = effectiveCodePoint(codePoint);
         if (effectiveCodePoint == SPACE) {
             return strike.halfAdvance();
@@ -274,6 +564,19 @@ class _BitmapFont extends Font {
 
     private static boolean isHalfWidth(int codePoint) {
         return codePoint <= 0x00FF || (codePoint >= 0xFF61 && codePoint <= 0xFFDC);
+    }
+
+    private static float enlargedHeightScale(int size) {
+        if (size <= 16) {
+            return ENLARGED_TEXT_SMALL_HEIGHT_SCALE;
+        }
+        if (size <= 20) {
+            return ENLARGED_TEXT_MEDIUM_HEIGHT_SCALE;
+        }
+        if (size <= 24) {
+            return ENLARGED_TEXT_DIALOGUE_HEIGHT_SCALE;
+        }
+        return ENLARGED_TEXT_LARGE_HEIGHT_SCALE;
     }
 
     private static int selectSize(int requestedSize) {
@@ -379,6 +682,13 @@ class _BitmapFont extends Font {
         }
     }
 
-    private record RenderKey(Strike strike, int argbColor, String text) {
+    private record RenderKey(
+            Strike strike,
+            float widthScale,
+            float heightScale,
+            boolean bold,
+            int argbColor,
+            String text
+    ) {
     }
 }

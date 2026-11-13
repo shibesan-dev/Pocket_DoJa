@@ -6,6 +6,8 @@ import com.nttdocomo.ui.ogl.DirectBuffer;
 import opendoja.g3d.DojaGraphics3DRenderer;
 import opendoja.g3d.OptJ3DRenderer;
 import opendoja.host.*;
+import opendoja.host.compat.CompatFeature;
+import opendoja.host.compat.GameCompatibility;
 import opendoja.host.ogl.AcrodeaOglRenderer;
 import opendoja.host.ogl.OglRenderer;
 
@@ -140,6 +142,12 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
     private Runnable disposeHook;
     private Consumer<Graphics> copyHook;
     private int lockDepth;
+    // True when this draw slice included an image. Clear-after-flush only applies to
+    // text-only frames so titles that keep a static background from the previous frame survive.
+    private boolean frameDrewImage;
+    /** Reused scratch for {@link #blendOptRenderLayer}. */
+    private int[] optDestinationPixels;
+    private int[] optSourcePixels;
     private static volatile java.lang.reflect.Constructor<?> platformGraphicsConstructor;
 
     /**
@@ -182,7 +190,7 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
         try {
             java.lang.reflect.Constructor<?> constructor = platformGraphicsConstructor;
             if (constructor == null) {
-                Class<?> clazz = Class.forName("com.nttdocomo.opt.ui.Graphics2");
+                Class<?> clazz = Class.forName("com.docomostar.opt.ui.Graphics2");
                 constructor = clazz.getDeclaredConstructor(DesktopSurface.class);
                 constructor.setAccessible(true);
                 platformGraphicsConstructor = constructor;
@@ -468,8 +476,28 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
     }
 
     @Override
+    public void glActiveTexture(int texture) {
+        oglRenderer.glActiveTexture(texture);
+    }
+
+    @Override
     public void glClientActiveTexture(int texture) {
         oglRenderer.glClientActiveTexture(texture);
+    }
+
+    @Override
+    public void glMultiTexCoord4f(int target, float s, float t, float r, float q) {
+        oglRenderer.glMultiTexCoord4f(target, s, t, r, q);
+    }
+
+    @Override
+    public void glTexEnvf(int target, int pname, float param) {
+        oglRenderer.glTexEnvf(target, pname, param);
+    }
+
+    @Override
+    public void glTexEnviv(int target, int pname, int[] params) {
+        oglRenderer.glTexEnviv(target, pname, params);
     }
 
     @Override
@@ -1034,8 +1062,15 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
             runtime.drainApplicationCallbacks();
         }
         lockDepth++;
+        // Each lock starts a fresh drawing slice. Tracking images per slice rather than
+        // per frame lets a text-only screen clear even when the game already holds an
+        // outer lock from drawing the previous scene.
+        frameDrewImage = false;
         if (lockDepth == 1) {
             surface.beginGraphicsLock();
+            // Multi-part line tracking only makes sense within one flush. Carrying it
+            // across frames would shift unrelated text that reuses the same coordinates.
+            _BitmapFont.resetTextLineState();
         }
         if (surface.hasRepaintHook() && lockDepth == 1) {
             setOrigin(0, 0);
@@ -1141,6 +1176,21 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
             // Snapshot after the pacing decision so frames that will not be shown
             // do not rotate the presentation buffers at all.
             surface.flushSnapshot(pacedPresentation, true);
+        }
+        if (flush
+                && !frameDrewImage
+                && surface.hasRepaintHook()
+                && GameCompatibility.isFeatureEnabled(CompatFeature.CLEAR_CANVAS_AFTER_FLUSH)) {
+            // Some handsets hand the app a blank back buffer after a flush, and the warning
+            // screen depends on that. The snapshot above is already taken, so this only
+            // affects the next frame. Text-only frames only: the menu redraws images over
+            // its old background, and clearing those would erase it.
+            surface.clearCanvasFrame(surface.backgroundColor());
+        }
+        if (flush) {
+            // The flush ends this slice. Some titles keep drawing after unlock without
+            // taking a new lock, so start the next slice with a clean flag.
+            frameDrewImage = false;
         }
     }
 
@@ -1389,6 +1439,7 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
         if (source == null) {
             return;
         }
+        frameDrewImage = true;
 
         int srcX1 = sx;
         int srcY1 = sy;
@@ -1539,6 +1590,7 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
         if (source == null || sw <= 0 || sh <= 0 || dw == 0 || dh == 0) {
             return;
         }
+        frameDrewImage = true;
         int srcX1 = sx;
         int srcY1 = sy;
         int srcX2 = sx + sw;
@@ -1769,6 +1821,7 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
         }
         BufferedImage layer = new BufferedImage(targetBounds.width, targetBounds.height, BufferedImage.TYPE_INT_ARGB);
         Graphics2D graphics = layer.createGraphics();
+        graphics.setLogicalSize(surface.width(), surface.height());
         try {
             configureDelegate(graphics);
             graphics.setColor(new Color(color, true));
@@ -1857,77 +1910,100 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
                         + imageInfo + boundsInfo);
     }
 
+    /**
+     * Blends a rendered opt-mode layer into the surface.
+     *
+     * <p>This runs for every blended text/primitive a title draws, so it must stay
+     * allocation-free and avoid per-pixel virtual calls. Earlier code re-read the
+     * full surface width for every layer row and resolved the render operator and
+     * ratios again for each channel of each pixel, which dominated frame time in
+     * text-heavy and HUD-heavy titles.</p>
+     */
     private void blendOptRenderLayer(BufferedImage layer, int destX, int destY) {
         android.graphics.Bitmap destinationBmp = surface.image().getBitmap();
         android.graphics.Bitmap sourceBmp = layer.getBitmap();
-        int surfaceWidth = surface.width();
         int layerWidth = layer.getWidth();
         int layerHeight = layer.getHeight();
-        int[] destination = new int[surfaceWidth * layerHeight];
-        destinationBmp.getPixels(destination, 0, surfaceWidth, 0, destY, surfaceWidth, layerHeight);
-        int[] source = new int[layerWidth * layerHeight];
+        if (layerWidth <= 0 || layerHeight <= 0) {
+            return;
+        }
+        int pixelCount = layerWidth * layerHeight;
+        int[] destination = optDestinationPixels;
+        if (destination == null || destination.length < pixelCount) {
+            destination = new int[pixelCount];
+            optDestinationPixels = destination;
+        }
+        int[] source = optSourcePixels;
+        if (source == null || source.length < pixelCount) {
+            source = new int[pixelCount];
+            optSourcePixels = source;
+        }
+        // Only fetch/write the layer rectangle. The previous full-width strip copied
+        // (and converted) roughly four times more pixels than the layer covered.
+        destinationBmp.getPixels(destination, 0, layerWidth, destX, destY, layerWidth, layerHeight);
         sourceBmp.getPixels(source, 0, layerWidth, 0, 0, layerWidth, layerHeight);
-        for (int y = 0; y < layerHeight; y++) {
-            int destIndex = y * surfaceWidth + destX;
-            int sourceIndex = y * layerWidth;
-            for (int x = 0; x < layerWidth; x++, destIndex++, sourceIndex++) {
-                int srcArgb = source[sourceIndex];
-                int srcAlpha = (srcArgb >>> 24) & 0xFF;
-                if (srcAlpha == 0) {
-                    continue;
-                }
-                destination[destIndex] = blendOptRenderPixel(destination[destIndex], srcArgb);
-            }
-        }
-        destinationBmp.setPixels(destination, 0, surfaceWidth, 0, destY, surfaceWidth, layerHeight);
-    }
 
-    private int blendOptRenderPixel(int dstArgb, int srcArgb) {
-        int srcAlpha = (srcArgb >>> 24) & 0xFF;
-        if (srcAlpha == 0) {
-            return dstArgb;
-        }
+        int operator = currentOptRenderOperator();
         int srcRatio = currentOptRenderSourceRatio();
         int dstRatio = currentOptRenderDestinationRatio();
-        int uncoveredNumerator = (255 - srcAlpha) * 255;
-        int coveredDstNumerator = srcAlpha * dstRatio;
-        int srcNumerator = srcAlpha * srcRatio;
+        boolean opaqueReplace = operator == OPT_RENDER_OP_REPL && srcRatio == 255 && dstRatio == 255;
 
-        int dstRed = (dstArgb >>> 16) & 0xFF;
-        int dstGreen = (dstArgb >>> 8) & 0xFF;
-        int dstBlue = dstArgb & 0xFF;
-        int srcRed = (srcArgb >>> 16) & 0xFF;
-        int srcGreen = (srcArgb >>> 8) & 0xFF;
-        int srcBlue = srcArgb & 0xFF;
+        for (int i = 0; i < pixelCount; i++) {
+            int srcArgb = source[i];
+            int srcAlpha = srcArgb >>> 24;
+            if (srcAlpha == 0) {
+                continue;
+            }
+            if (opaqueReplace && srcAlpha == 255) {
+                destination[i] = srcArgb;
+                continue;
+            }
+            int dstArgb = destination[i];
+            int uncoveredNumerator = (255 - srcAlpha) * 255;
+            int srcNumerator = srcAlpha * srcRatio;
+            int dstNumerator = uncoveredNumerator + (operator == OPT_RENDER_OP_REPL ? 0 : srcAlpha * dstRatio);
 
-        int outRed = blendOptRenderChannel(dstRed, srcRed, uncoveredNumerator, coveredDstNumerator, srcNumerator);
-        int outGreen = blendOptRenderChannel(dstGreen, srcGreen, uncoveredNumerator, coveredDstNumerator, srcNumerator);
-        int outBlue = blendOptRenderChannel(dstBlue, srcBlue, uncoveredNumerator, coveredDstNumerator, srcNumerator);
+            int dstRed = (dstArgb >>> 16) & 0xFF;
+            int dstGreen = (dstArgb >>> 8) & 0xFF;
+            int dstBlue = dstArgb & 0xFF;
+            int srcRed = (srcArgb >>> 16) & 0xFF;
+            int srcGreen = (srcArgb >>> 8) & 0xFF;
+            int srcBlue = srcArgb & 0xFF;
 
-        int dstAlpha = (dstArgb >>> 24) & 0xFF;
-        int outAlpha = switch (currentOptRenderOperator()) {
-            case OPT_RENDER_OP_REPL -> clamp(((dstAlpha * (255 - srcAlpha)) + (255 * srcAlpha) + 127) / 255, 0, 255);
-            case OPT_RENDER_OP_ADD, OPT_RENDER_OP_SUB -> Math.max(dstAlpha, srcAlpha);
-            default -> Math.max(dstAlpha, srcAlpha);
-        };
-        return (outAlpha << 24) | (outRed << 16) | (outGreen << 8) | outBlue;
+            int outRed;
+            int outGreen;
+            int outBlue;
+            if (operator == OPT_RENDER_OP_SUB) {
+                outRed = blendOptRenderChannel(dstRed * dstNumerator - srcRed * srcNumerator);
+                outGreen = blendOptRenderChannel(dstGreen * dstNumerator - srcGreen * srcNumerator);
+                outBlue = blendOptRenderChannel(dstBlue * dstNumerator - srcBlue * srcNumerator);
+            } else {
+                outRed = blendOptRenderChannel(dstRed * dstNumerator + srcRed * srcNumerator);
+                outGreen = blendOptRenderChannel(dstGreen * dstNumerator + srcGreen * srcNumerator);
+                outBlue = blendOptRenderChannel(dstBlue * dstNumerator + srcBlue * srcNumerator);
+            }
+
+            int dstAlpha = dstArgb >>> 24;
+            int outAlpha;
+            if (operator == OPT_RENDER_OP_REPL) {
+                outAlpha = (dstAlpha * (255 - srcAlpha) + 255 * srcAlpha + 127) / 255;
+            } else {
+                outAlpha = Math.max(dstAlpha, srcAlpha);
+            }
+            destination[i] = (outAlpha << 24) | (outRed << 16) | (outGreen << 8) | outBlue;
+        }
+        destinationBmp.setPixels(destination, 0, layerWidth, destX, destY, layerWidth, layerHeight);
     }
 
-    private int blendOptRenderChannel(int dst, int src, int uncoveredNumerator, int coveredDstNumerator, int srcNumerator) {
-        long numerator = switch (currentOptRenderOperator()) {
-            case OPT_RENDER_OP_REPL -> (long) dst * uncoveredNumerator + (long) src * srcNumerator;
-            case OPT_RENDER_OP_ADD -> (long) dst * (uncoveredNumerator + coveredDstNumerator) + (long) src * srcNumerator;
-            case OPT_RENDER_OP_SUB -> (long) dst * (uncoveredNumerator + coveredDstNumerator) - (long) src * srcNumerator;
-            default -> (long) src * 65025L;
-        };
-        if (numerator <= 0L) {
+    private static int blendOptRenderChannel(int numerator) {
+        if (numerator <= 0) {
             return 0;
         }
-        long maxNumerator = 255L * 65025L;
-        if (numerator >= maxNumerator) {
+        // 255 * 255 * 255. All intermediate values fit in a signed int.
+        if (numerator >= 16_581_375) {
             return 255;
         }
-        return (int) ((numerator + 32512L) / 65025L);
+        return (numerator + 32_512) / 65_025;
     }
 
     private static int clamp(int value, int min, int max) {
@@ -1957,7 +2033,13 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
         // does not make the surface "software dirty"; only later Java2D writes should trigger a
         // re-upload on the next GL pass, especially when the hardware path uses supersampling.
         oglRenderer.flushHardwarePresentation();
-        if (lockDepth > 0) {
+        // The lock belongs to the surface, not to this Graphics object. Titles such as
+        // Dragon Quest More Mystery Dungeon obtain a separate Graphics3D from
+        // Canvas.getGraphics() and render the map while the application holds the frame lock
+        // on another Graphics instance. Checking only this instance's lockDepth presented a
+        // half-composed frame (3D map without the 2D sprites/dialogue drawn later in the same
+        // lock scope), which flickered against the completed frame.
+        if (surface.hasActiveGraphicsLock()) {
             // DoJa documents `Graphics3D.flush()` as applying pending 3D results, not as a
             // display-sync boundary. Some titles split one Canvas frame into several opt passes,
             // so syncing every flush would multiply the frame time. Keep the pass boundary

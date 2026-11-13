@@ -17,6 +17,11 @@ public class Graphics2D extends opendoja.compat.awt.Graphics {
     private boolean antiAlias;
     private boolean textAntiAlias = true;
     private boolean filterBitmap;
+    // Logical size of the surface this context belongs to. Opt-render layers are sized to the
+    // painted primitive, but text fitting must reason about the whole game canvas so a fixed-x
+    // line can be compressed against the real right edge instead of its own bounding box.
+    private int logicalWidth;
+    private int logicalHeight;
     // Reused per-instance scratch rects so sprite blits do not allocate Rect/RectF each call
     // (canvas.drawBitmap copies the values synchronously, and each Graphics2D is used by a
     // single drawing thread).
@@ -47,6 +52,8 @@ public class Graphics2D extends opendoja.compat.awt.Graphics {
         this.color = opendoja.compat.awt.Color.BLACK;
         this.font = new opendoja.compat.awt.Font();
         this.composite = opendoja.compat.awt.AlphaComposite.SrcOver;
+        this.logicalWidth = target.getWidth();
+        this.logicalHeight = target.getHeight();
         paint.setStyle(android.graphics.Paint.Style.FILL);
         paint.setStrokeWidth(1f);
         paint.setTextSize(font.getSize2D());
@@ -56,6 +63,31 @@ public class Graphics2D extends opendoja.compat.awt.Graphics {
 
     private boolean ready() {
         return !disposed && canvas != null && target != null;
+    }
+
+    /**
+     * Marks the logical surface size used for edge-aware text fitting. Temporary compositing
+     * layers are smaller than the game canvas, so they inherit the surface size from their parent.
+     */
+    public void setLogicalSize(int width, int height) {
+        this.logicalWidth = width;
+        this.logicalHeight = height;
+    }
+
+    /** Width of the game surface this graphics context belongs to, or 0 when there is none. */
+    public int getTargetWidth() {
+        if (logicalWidth > 0) {
+            return logicalWidth;
+        }
+        return target == null ? 0 : target.getWidth();
+    }
+
+    /** Height of the game surface this graphics context belongs to, or 0 when there is none. */
+    public int getTargetHeight() {
+        if (logicalHeight > 0) {
+            return logicalHeight;
+        }
+        return target == null ? 0 : target.getHeight();
     }
 
     private void syncState() {

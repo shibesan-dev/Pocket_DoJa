@@ -448,7 +448,7 @@ public class Font {
         return awtFont;
     }
 
-    void drawString(Graphics2D graphics, String text, int x, int y, int argbColor) {
+    public void drawString(Graphics2D graphics, String text, int x, int y, int argbColor) {
         String value = metricString(text);
         if (value.isEmpty()) {
             return;

@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Host-owned software OpenGL ES 1.1 renderer boundary.
  */
 public class OglRenderer {
-    private static final int OGL_TEXTURE_UNIT_COUNT = 1;
+    private static final int OGL_TEXTURE_UNIT_COUNT = 2;
     private static final int OGL_MAX_VERTEX_UNITS = 8;
     private static final int OGL_MAX_PALETTE_MATRICES = 32;
     private static final SharedGlObjectStore SHARED_GL_OBJECT_STORE = new SharedGlObjectStore();
@@ -173,6 +173,9 @@ public final void glClear(int mask) {
     host.delegate().fillRect(x, y, width, height);
     host.delegate().setColor(old);
     host.flushSurfacePresentation();
+    // Done after the presentation flush: the render target can start this GL pass already
+    // cleared, without a full-resolution bitmap downsample.
+    host.surface().onOglColorClear(x, y, width, height, oglClearColor);
 }
 
 public final void beginDrawing() {
@@ -531,26 +534,53 @@ public final void glTexEnvi(int target, int pname, int param) {
         ogl.lastError = GraphicsOGL.GL_INVALID_ENUM;
         return;
     }
+    OglTextureUnit unit = ogl.activeTextureUnit();
     switch (pname) {
-        case GraphicsOGL.GL_TEXTURE_ENV_MODE -> ogl.textureEnvMode = param;
-        case GraphicsOGL.GL_COMBINE_RGB -> ogl.combineRgb = param;
-        case GraphicsOGL.GL_COMBINE_ALPHA -> ogl.combineAlpha = param;
-        case GraphicsOGL.GL_SRC0_RGB -> ogl.srcRgb[0] = param;
-        case GraphicsOGL.GL_SRC1_RGB -> ogl.srcRgb[1] = param;
-        case GraphicsOGL.GL_SRC2_RGB -> ogl.srcRgb[2] = param;
-        case GraphicsOGL.GL_SRC0_ALPHA -> ogl.srcAlpha[0] = param;
-        case GraphicsOGL.GL_SRC1_ALPHA -> ogl.srcAlpha[1] = param;
-        case GraphicsOGL.GL_SRC2_ALPHA -> ogl.srcAlpha[2] = param;
-        case GraphicsOGL.GL_OPERAND0_RGB -> ogl.operandRgb[0] = param;
-        case GraphicsOGL.GL_OPERAND1_RGB -> ogl.operandRgb[1] = param;
-        case GraphicsOGL.GL_OPERAND2_RGB -> ogl.operandRgb[2] = param;
-        case GraphicsOGL.GL_OPERAND0_ALPHA -> ogl.operandAlpha[0] = param;
-        case GraphicsOGL.GL_OPERAND1_ALPHA -> ogl.operandAlpha[1] = param;
-        case GraphicsOGL.GL_OPERAND2_ALPHA -> ogl.operandAlpha[2] = param;
-        case GraphicsOGL.GL_RGB_SCALE -> ogl.rgbScale = sanitizeTextureScale(param);
-        case GraphicsOGL.GL_ALPHA_SCALE -> ogl.alphaScale = sanitizeTextureScale(param);
+        case GraphicsOGL.GL_TEXTURE_ENV_MODE -> unit.textureEnvMode = param;
+        case GraphicsOGL.GL_COMBINE_RGB -> unit.combineRgb = param;
+        case GraphicsOGL.GL_COMBINE_ALPHA -> unit.combineAlpha = param;
+        case GraphicsOGL.GL_SRC0_RGB -> unit.srcRgb[0] = param;
+        case GraphicsOGL.GL_SRC1_RGB -> unit.srcRgb[1] = param;
+        case GraphicsOGL.GL_SRC2_RGB -> unit.srcRgb[2] = param;
+        case GraphicsOGL.GL_SRC0_ALPHA -> unit.srcAlpha[0] = param;
+        case GraphicsOGL.GL_SRC1_ALPHA -> unit.srcAlpha[1] = param;
+        case GraphicsOGL.GL_SRC2_ALPHA -> unit.srcAlpha[2] = param;
+        case GraphicsOGL.GL_OPERAND0_RGB -> unit.operandRgb[0] = param;
+        case GraphicsOGL.GL_OPERAND1_RGB -> unit.operandRgb[1] = param;
+        case GraphicsOGL.GL_OPERAND2_RGB -> unit.operandRgb[2] = param;
+        case GraphicsOGL.GL_OPERAND0_ALPHA -> unit.operandAlpha[0] = param;
+        case GraphicsOGL.GL_OPERAND1_ALPHA -> unit.operandAlpha[1] = param;
+        case GraphicsOGL.GL_OPERAND2_ALPHA -> unit.operandAlpha[2] = param;
+        case GraphicsOGL.GL_RGB_SCALE -> unit.rgbScale = sanitizeTextureScale(param);
+        case GraphicsOGL.GL_ALPHA_SCALE -> unit.alphaScale = sanitizeTextureScale(param);
         default -> ogl.lastError = GraphicsOGL.GL_INVALID_ENUM;
     }
+}
+
+public final void glTexEnviv(int target, int pname, int[] params) {
+    if (params == null) {
+        throw new NullPointerException("params");
+    }
+    if (params.length < 1) {
+        throw new IllegalArgumentException("params");
+    }
+    glTexEnvi(target, pname, params[0]);
+}
+
+public final void glTexEnvf(int target, int pname, float param) {
+    if (target != GraphicsOGL.GL_TEXTURE_ENV) {
+        ogl.lastError = GraphicsOGL.GL_INVALID_ENUM;
+        return;
+    }
+    if (pname == GraphicsOGL.GL_RGB_SCALE) {
+        ogl.activeTextureUnit().rgbScale = sanitizeTextureScale(Math.round(param));
+        return;
+    }
+    if (pname == GraphicsOGL.GL_ALPHA_SCALE) {
+        ogl.activeTextureUnit().alphaScale = sanitizeTextureScale(Math.round(param));
+        return;
+    }
+    glTexEnvi(target, pname, Math.round(param));
 }
 
 public final void glTexEnvfv(int target, int pname, float[] params) {
@@ -561,22 +591,23 @@ public final void glTexEnvfv(int target, int pname, float[] params) {
     if (params == null) {
         throw new NullPointerException("params");
     }
+    OglTextureUnit unit = ogl.activeTextureUnit();
     if (pname == GraphicsOGL.GL_TEXTURE_ENV_COLOR) {
         if (params.length < 4) {
             throw new IllegalArgumentException("params");
         }
-        ogl.textureEnvColor = packColor(params[0], params[1], params[2], params[3]);
+        unit.textureEnvColor = packColor(params[0], params[1], params[2], params[3]);
         return;
     }
     if (params.length < 1) {
         throw new IllegalArgumentException("params");
     }
     if (pname == GraphicsOGL.GL_RGB_SCALE) {
-        ogl.rgbScale = sanitizeTextureScale(Math.round(params[0]));
+        unit.rgbScale = sanitizeTextureScale(Math.round(params[0]));
         return;
     }
     if (pname == GraphicsOGL.GL_ALPHA_SCALE) {
-        ogl.alphaScale = sanitizeTextureScale(Math.round(params[0]));
+        unit.alphaScale = sanitizeTextureScale(Math.round(params[0]));
         return;
     }
     glTexEnvi(target, pname, Math.round(params[0]));
@@ -586,8 +617,33 @@ public final void glShadeModel(int mode) {
     ogl.shadeModel = mode;
 }
 
+public final void glActiveTexture(int texture) {
+    if (texture < GraphicsOGL.GL_TEXTURE0 || texture >= GraphicsOGL.GL_TEXTURE0 + OGL_TEXTURE_UNIT_COUNT) {
+        ogl.lastError = GraphicsOGL.GL_INVALID_ENUM;
+        return;
+    }
+    ogl.activeTexture = texture;
+}
+
 public final void glClientActiveTexture(int texture) {
+    if (texture < GraphicsOGL.GL_TEXTURE0 || texture >= GraphicsOGL.GL_TEXTURE0 + OGL_TEXTURE_UNIT_COUNT) {
+        ogl.lastError = GraphicsOGL.GL_INVALID_ENUM;
+        return;
+    }
     ogl.clientActiveTexture = texture;
+}
+
+public final void glMultiTexCoord4f(int target, float s, float t, float r, float q) {
+    int index = target - GraphicsOGL.GL_TEXTURE0;
+    if (index < 0 || index >= OGL_TEXTURE_UNIT_COUNT) {
+        ogl.lastError = GraphicsOGL.GL_INVALID_ENUM;
+        return;
+    }
+    OglTextureUnit unit = ogl.textureUnits[index];
+    unit.currentS = s;
+    unit.currentT = t;
+    unit.currentR = r;
+    unit.currentQ = q;
 }
 
 public final void glPixelStorei(int pname, int param) {
@@ -635,7 +691,7 @@ public final void glBindTexture(int target, int texture) {
         ogl.lastError = GraphicsOGL.GL_INVALID_ENUM;
         return;
     }
-    ogl.boundTextureId = texture;
+    ogl.activeTextureUnit().boundTextureId = texture;
 }
 
 public final void glGenTextures(int n, int[] textures) {
@@ -661,8 +717,10 @@ public final void glDeleteTextures(int n, int[] textures) {
         int textureId = textures[i];
         ogl.textures.remove(textureId);
         hardware.onTextureDeleted(textureId);
-        if (ogl.boundTextureId == textureId) {
-            ogl.boundTextureId = 0;
+        for (OglTextureUnit unit : ogl.textureUnits) {
+            if (unit.boundTextureId == textureId) {
+                unit.boundTextureId = 0;
+            }
         }
     }
 }
@@ -702,7 +760,8 @@ public final void glCompressedTexImage2D(int target, int level, int internalform
     if (pixels == null) {
         throw new NullPointerException("pixels");
     }
-    glCompressedTexImage2D(target, level, internalformat, width, height, border, pixels.length(), pixels);
+    glCompressedTexImage2D(target, level, internalformat, width, height, border,
+            DirectBufferFactory.getSegmentLength(pixels), pixels);
 }
 
 public final void glTexImage2D(int target, int level, int internalformat, int width, int height, int border,
@@ -803,11 +862,11 @@ public final void glVertexPointer(int size, int type, int stride, int pointer) {
 }
 
 public final void glTexCoordPointer(int size, int type, int stride, DirectBuffer pointer) {
-    ogl.texCoordPointer = OglPointer.direct(size, type, stride, pointer);
+    ogl.clientTextureUnit().texCoordPointer = OglPointer.direct(size, type, stride, pointer);
 }
 
 public final void glTexCoordPointer(int size, int type, int stride, int pointer) {
-    ogl.texCoordPointer = OglPointer.bufferObject(size, type, stride, requireArrayBuffer(), pointer);
+    ogl.clientTextureUnit().texCoordPointer = OglPointer.bufferObject(size, type, stride, requireArrayBuffer(), pointer);
 }
 
 public final void glNormalPointer(int type, int stride, DirectBuffer pointer) {
@@ -915,8 +974,16 @@ public final void glGetIntegerv(int pname, int[] params) {
         case GraphicsOGL.GL_MAX_LIGHTS -> params[0] = 8;
         case GraphicsOGL.GL_MAX_TEXTURE_SIZE -> params[0] = 2048;
         case GraphicsOGL.GL_MAX_TEXTURE_UNITS -> params[0] = OGL_TEXTURE_UNIT_COUNT;
+        case GraphicsOGL.GL_ACTIVE_TEXTURE -> params[0] = ogl.activeTexture;
+        case GraphicsOGL.GL_CLIENT_ACTIVE_TEXTURE -> params[0] = ogl.clientActiveTexture;
         case GraphicsOGL.GL_MAX_PALETTE_MATRICES_OES -> params[0] = OGL_MAX_PALETTE_MATRICES;
         case GraphicsOGL.GL_MAX_VERTEX_UNITS_OES -> params[0] = OGL_MAX_VERTEX_UNITS;
+        case GraphicsOGL.GL_MAX_VIEWPORT_DIMS -> {
+            params[0] = 2048;
+            if (params.length > 1) {
+                params[1] = 2048;
+            }
+        }
         case 0xD56 -> params[0] = 1;
         default -> ogl.lastError = GraphicsOGL.GL_INVALID_ENUM;
     }
@@ -929,7 +996,7 @@ public final void glGetFloatv(int pname, float[] params) {
     switch (pname) {
         case GraphicsOGL.GL_MODELVIEW_MATRIX -> copyFloatState(ogl.modelViewMatrix, params, 16);
         case GraphicsOGL.GL_PROJECTION_MATRIX -> copyFloatState(ogl.projectionMatrix, params, 16);
-        case GraphicsOGL.GL_TEXTURE_MATRIX -> copyFloatState(ogl.textureMatrix, params, 16);
+        case GraphicsOGL.GL_TEXTURE_MATRIX -> copyFloatState(ogl.activeTextureUnit().textureMatrix, params, 16);
         case GraphicsOGL.GL_VIEWPORT -> {
             requireLength(params, 4);
             params[0] = ogl.viewportX;
@@ -946,11 +1013,15 @@ public final void glGetFloatv(int pname, float[] params) {
     }
 }
 private static int clampOglChannel(float value) {
-    if (Float.isNaN(value)) {
+    if (Float.isNaN(value) || value <= 0.0f) {
         return 0;
     }
-    float clamped = Math.max(0.0f, Math.min(1.0f, value));
-    return Math.round(clamped * 255.0f);
+    if (value >= 1.0f) {
+        return 255;
+    }
+    // Math.round() routes through a JNI Float.floatToRawIntBits call on this ART
+    // build; the value is already clamped, so a direct rounded cast is equivalent.
+    return (int) (value * 255.0f + 0.5f);
 }
 
 private static int packColor(float red, float green, float blue, float alpha) {
@@ -1016,7 +1087,7 @@ private void loadMatrix(int mode, float[] matrix) {
             ogl.projectionMatrix = matrix;
             ogl.standardProjectionConfigured = true;
         }
-        case GraphicsOGL.GL_TEXTURE -> ogl.textureMatrix = matrix;
+        case GraphicsOGL.GL_TEXTURE -> ogl.activeTextureUnit().setTextureMatrix(matrix);
         case GraphicsOGL.GL_MATRIX_PALETTE_OES -> {
                 ogl.paletteMatrices[ogl.currentPaletteMatrix] = matrix;
                 ogl.markPaletteMatrixChanged(ogl.currentPaletteMatrix);
@@ -1043,7 +1114,8 @@ private void multiplyCurrentMatrix(float[] matrix) {
             ogl.standardProjectionConfigured = true;
         }
         case GraphicsOGL.GL_TEXTURE ->
-                ogl.textureMatrix = multiplyMatrices(ogl.textureMatrix, matrix);
+                ogl.activeTextureUnit().setTextureMatrix(
+                        multiplyMatrices(ogl.activeTextureUnit().textureMatrix, matrix));
         case GraphicsOGL.GL_MATRIX_PALETTE_OES -> {
                 ogl.paletteMatrices[ogl.currentPaletteMatrix] = multiplyMatrices(
                         ogl.paletteMatrices[ogl.currentPaletteMatrix],
@@ -1079,7 +1151,7 @@ private void pushCurrentMatrix(int mode) {
     switch (mode) {
         case GraphicsOGL.GL_MODELVIEW -> ogl.modelViewStack.push(ogl.modelViewMatrix.clone());
         case GraphicsOGL.GL_PROJECTION -> ogl.projectionStack.push(ogl.projectionMatrix.clone());
-        case GraphicsOGL.GL_TEXTURE -> ogl.textureStack.push(ogl.textureMatrix.clone());
+        case GraphicsOGL.GL_TEXTURE -> ogl.activeTextureUnit().textureStack.push(ogl.activeTextureUnit().textureMatrix.clone());
         case GraphicsOGL.GL_MATRIX_PALETTE_OES ->
                 ogl.paletteMatrixStacks[ogl.currentPaletteMatrix].push(ogl.paletteMatrices[ogl.currentPaletteMatrix].clone());
         default -> {
@@ -1112,11 +1184,12 @@ private void popCurrentMatrix(int mode) {
             ogl.standardProjectionConfigured = true;
         }
         case GraphicsOGL.GL_TEXTURE -> {
-            if (ogl.textureStack.isEmpty()) {
+            OglTextureUnit unit = ogl.activeTextureUnit();
+            if (unit.textureStack.isEmpty()) {
                 ogl.lastError = GraphicsOGL.GL_STACK_UNDERFLOW;
                 return;
             }
-            ogl.textureMatrix = ogl.textureStack.pop();
+            unit.setTextureMatrix(unit.textureStack.pop());
         }
         case GraphicsOGL.GL_MATRIX_PALETTE_OES -> {
             if (ogl.paletteMatrixStacks[ogl.currentPaletteMatrix].isEmpty()) {
@@ -1335,14 +1408,14 @@ private static final class SceneTrace {
         builder.append(" max=");
         appendBounds(builder, values, offset, available, true);
         OglTexture texture = state.boundTexture();
-        builder.append(" tex=").append(state.boundTextureId);
+        builder.append(" tex=").append(state.activeTextureUnit().boundTextureId);
         if (texture != null) {
             builder.append(' ').append(texture.width).append('x').append(texture.height)
                     .append(" fmt=").append(texture.baseFormat());
             appendTextureAlphaStats(builder, texture);
         }
         builder.append(" color=").append(Integer.toHexString(state.color));
-        builder.append(" env=").append(state.textureEnvMode)
+        builder.append(" env=").append(state.activeTextureUnit().textureEnvMode)
                 .append(" texOn=").append(state.textureEnabled())
                 .append(" depthTest=").append(state.depthTestEnabled)
                 .append(" depthMask=").append(state.depthMask)
@@ -1358,7 +1431,7 @@ private static final class SceneTrace {
                 .append(" light=").append(state.lightingCapEnabled)
                 .append(" colorArray=").append(state.colorArrayEnabled)
                 .append(" normalArray=").append(state.normalArrayEnabled)
-                .append(" texCoordArray=").append(state.texCoordArrayEnabled)
+                .append(" texCoordArray=").append(state.clientTextureUnit().texCoordArrayEnabled)
                 .append(" shade=").append(state.shadeModel);
         float[] mv = state.modelViewMatrix;
         if (mv != null) {
@@ -1996,12 +2069,16 @@ private RasterVertex projectClipVertex(RasterVertex projected, RasterVertex clip
             clipVertex.clipY,
             clipVertex.clipZ,
             clipVertex.clipW,
-            viewportX(ndcX),
-            viewportY(ndcY),
+            rasterViewportX(ndcX),
+            rasterViewportY(ndcY),
             depth,
             reciprocalW,
-            clipVertex.u,
-            clipVertex.v,
+            clipVertex.u0,
+            clipVertex.v0,
+            clipVertex.q0,
+            clipVertex.u1,
+            clipVertex.v1,
+            clipVertex.q1,
             clipVertex.color,
             clipVertex.backColor
     );
@@ -2023,6 +2100,15 @@ float viewportX(float ndcX) {
 float viewportY(float ndcY) {
     float bottomLeftY = ogl.viewportY + (((ndcY + 1f) * 0.5f) * ogl.viewportHeight);
     return host.surface().height() - bottomLeftY;
+}
+
+float rasterViewportX(float ndcX) {
+    return viewportX(ndcX) * host.surface().oglRenderScaleX();
+}
+
+float rasterViewportY(float ndcY) {
+    float bottomLeftY = ogl.viewportY + (((ndcY + 1f) * 0.5f) * ogl.viewportHeight);
+    return host.surface().oglRenderHeight() - (bottomLeftY * host.surface().oglRenderScaleY());
 }
 
 private void rasterizeProjectedTriangle(RasterVertex v0, RasterVertex v1, RasterVertex v2, int[] pixels, float[] depthBuffer,
@@ -2065,11 +2151,27 @@ private void rasterizeProjectedTriangle(RasterVertex v0, RasterVertex v1, Raster
     float reciprocalW0 = v0.reciprocalW;
     float reciprocalW1 = v1.reciprocalW;
     float reciprocalW2 = v2.reciprocalW;
-    boolean texturing = ogl.textureEnabled();
-    OglTexture texture = texturing ? ogl.boundTexture() : null;
     boolean depthEnabled = ogl.depthEnabled();
+    int depthFunc = ogl.depthFunc;
+    boolean alphaTestEnabled = ogl.alphaTestEnabled;
+    int alphaFunc = ogl.alphaFunc;
+    float alphaRef = ogl.alphaRef;
     boolean blendEnabled = ogl.blendCapEnabled;
     boolean depthWriteEnabled = ogl.depthMask && depthEnabled;
+    OglTextureUnit unit0 = ogl.textureUnit(0);
+    OglTextureUnit unit1 = ogl.textureUnit(1);
+    OglTexture texture0 = ogl.textureEnabled(0) ? ogl.boundTexture(0) : null;
+    OglTexture texture1 = ogl.textureEnabled(1) ? ogl.boundTexture(1) : null;
+    boolean texturing0 = texture0 != null;
+    boolean texturing1 = texture1 != null;
+    int envFastMode0 = texturing0 ? textureEnvFastMode(unit0) : ENV_FAST_NONE;
+    int envFastMode1 = texturing1 ? textureEnvFastMode(unit1) : ENV_FAST_NONE;
+    int envRgbScale0 = unit0.rgbScale;
+    int envRgbScale1 = unit1.rgbScale;
+    int envAlphaScale0 = unit0.alphaScale;
+    int envAlphaScale1 = unit1.alphaScale;
+    int baseFormat0 = texturing0 ? texture0.baseFormat() : 0;
+    int baseFormat1 = texturing1 ? texture1.baseFormat() : 0;
     float startX = minX + 0.5f;
     float startY = minY + 0.5f;
     float edge0Row = edge(v1.x, v1.y, v2.x, v2.y, startX, startY);
@@ -2081,6 +2183,7 @@ private void rasterizeProjectedTriangle(RasterVertex v0, RasterVertex v1, Raster
     float edge0StepY = v1.x - v2.x;
     float edge1StepY = v2.x - v0.x;
     float edge2StepY = v0.x - v1.x;
+    boolean wroteAny = false;
     for (int y = minY; y <= maxY; y++) {
         float edge0Value = edge0Row;
         float edge1Value = edge1Row;
@@ -2097,36 +2200,99 @@ private void rasterizeProjectedTriangle(RasterVertex v0, RasterVertex v1, Raster
             }
             float depth = (w0 * v0.depth) + (w1 * v1.depth) + (w2 * v2.depth);
             int offset = (y * width) + x;
-            if (!passesDepth(depth, depthBuffer[offset])) {
-                if (traceRaster) {
-                    SceneTrace.rasterDepthFailed++;
+            if (depthEnabled) {
+                float existingDepth = depthBuffer[offset];
+                boolean depthPass = switch (depthFunc) {
+                    case GraphicsOGL.GL_LESS -> depth > existingDepth + 0.00001f;
+                    case GraphicsOGL.GL_LEQUAL -> depth >= existingDepth - 0.00001f;
+                    case GraphicsOGL.GL_EQUAL -> Math.abs(depth - existingDepth) <= 0.00001f;
+                    case GraphicsOGL.GL_GREATER -> depth < existingDepth - 0.00001f;
+                    case GraphicsOGL.GL_GEQUAL -> depth <= existingDepth + 0.00001f;
+                    case GraphicsOGL.GL_NEVER -> false;
+                    default -> true;
+                };
+                if (!depthPass) {
+                    if (traceRaster) {
+                        SceneTrace.rasterDepthFailed++;
+                    }
+                    continue;
                 }
-                continue;
             }
-            float denominator = Math.max(0.000001f,
-                    (w0 * reciprocalW0) + (w1 * reciprocalW1) + (w2 * reciprocalW2));
-            float u;
-            float v;
-            if (texturing) {
-                u = ((w0 * v0.u * reciprocalW0) + (w1 * v1.u * reciprocalW1) + (w2 * v2.u * reciprocalW2)) / denominator;
-                v = ((w0 * v0.v * reciprocalW0) + (w1 * v1.v * reciprocalW1) + (w2 * v2.v * reciprocalW2)) / denominator;
-            } else {
-                u = 0f;
-                v = 0f;
+            float denominator = (w0 * reciprocalW0) + (w1 * reciprocalW1) + (w2 * reciprocalW2);
+            if (denominator < 0.000001f) {
+                denominator = 0.000001f;
             }
-            int primaryColor = interpolateColor(v0, v1, v2, w0, w1, w2, denominator, useBackColor);
-            int sampled = texturing ? texture.sample(u, v) : 0xFFFFFFFF;
-            int fragmentColor = applyTextureEnvironment(primaryColor, sampled, texture);
-            if (!passesAlphaTest(fragmentColor)) {
-                if (traceRaster) {
-                    SceneTrace.rasterAlphaFailed++;
+            float inverseDenominator = 1f / denominator;
+            int primaryColor = interpolateColor(v0, v1, v2, w0, w1, w2, inverseDenominator, useBackColor);
+            int fragmentColor = primaryColor;
+            if (texturing0) {
+                float u = ((w0 * v0.u0 * reciprocalW0) + (w1 * v1.u0 * reciprocalW1) + (w2 * v2.u0 * reciprocalW2)) * inverseDenominator;
+                float v = ((w0 * v0.v0 * reciprocalW0) + (w1 * v1.v0 * reciprocalW1) + (w2 * v2.v0 * reciprocalW2)) * inverseDenominator;
+                float q = ((w0 * v0.q0 * reciprocalW0) + (w1 * v1.q0 * reciprocalW1) + (w2 * v2.q0 * reciprocalW2)) * inverseDenominator;
+                if (q != 0f && q != 1f) {
+                    u /= q;
+                    v /= q;
                 }
-                continue;
+                int sampled = texture0.sample(u, v);
+                fragmentColor = switch (envFastMode0) {
+                    case ENV_FAST_MODULATE ->
+                            applyModulateTextureFunction(fragmentColor, sampled, baseFormat0);
+                    case ENV_FAST_SCALED_MODULATE ->
+                            applyScaledModulateTextureFunction(fragmentColor, sampled, baseFormat0, envRgbScale0, envAlphaScale0);
+                    default ->
+                            applyTextureEnvironment(fragmentColor, primaryColor, sampled, texture0, unit0);
+                };
+            }
+            if (texturing1) {
+                float u = ((w0 * v0.u1 * reciprocalW0) + (w1 * v1.u1 * reciprocalW1) + (w2 * v2.u1 * reciprocalW2)) * inverseDenominator;
+                float v = ((w0 * v0.v1 * reciprocalW0) + (w1 * v1.v1 * reciprocalW1) + (w2 * v2.v1 * reciprocalW2)) * inverseDenominator;
+                float q = ((w0 * v0.q1 * reciprocalW0) + (w1 * v1.q1 * reciprocalW1) + (w2 * v2.q1 * reciprocalW2)) * inverseDenominator;
+                if (q != 0f && q != 1f) {
+                    u /= q;
+                    v /= q;
+                }
+                int sampled = texture1.sample(u, v);
+                fragmentColor = switch (envFastMode1) {
+                    case ENV_FAST_MODULATE ->
+                            applyModulateTextureFunction(fragmentColor, sampled, baseFormat1);
+                    case ENV_FAST_SCALED_MODULATE ->
+                            applyScaledModulateTextureFunction(fragmentColor, sampled, baseFormat1, envRgbScale1, envAlphaScale1);
+                    default ->
+                            applyTextureEnvironment(fragmentColor, primaryColor, sampled, texture1, unit1);
+                };
+            }
+            if (alphaTestEnabled) {
+                int alphaByte = fragmentColor >>> 24;
+                boolean alphaPass;
+                if (alphaFunc == GraphicsOGL.GL_GREATER) {
+                    alphaPass = (alphaByte / 255f) > alphaRef;
+                } else if (alphaFunc == GraphicsOGL.GL_GEQUAL) {
+                    alphaPass = (alphaByte / 255f) >= alphaRef;
+                } else if (alphaFunc == GraphicsOGL.GL_LESS) {
+                    alphaPass = (alphaByte / 255f) < alphaRef;
+                } else if (alphaFunc == GraphicsOGL.GL_LEQUAL) {
+                    alphaPass = (alphaByte / 255f) <= alphaRef;
+                } else if (alphaFunc == GraphicsOGL.GL_NEVER) {
+                    alphaPass = false;
+                } else if (alphaFunc == GraphicsOGL.GL_EQUAL) {
+                    alphaPass = Math.abs((alphaByte / 255f) - alphaRef) <= 0.0001f;
+                } else if (alphaFunc == GraphicsOGL.GL_NOTEQUAL) {
+                    alphaPass = Math.abs((alphaByte / 255f) - alphaRef) > 0.0001f;
+                } else {
+                    alphaPass = true;
+                }
+                if (!alphaPass) {
+                    if (traceRaster) {
+                        SceneTrace.rasterAlphaFailed++;
+                    }
+                    continue;
+                }
             }
             int blended = blendEnabled
                     ? blend(fragmentColor, pixels[offset], ogl.blendSrcFactor, ogl.blendDstFactor)
                     : fragmentColor;
             pixels[offset] = blended;
+            wroteAny = true;
             if (traceRaster) {
                 SceneTrace.rasterPixelsWritten++;
             }
@@ -2137,6 +2303,9 @@ private void rasterizeProjectedTriangle(RasterVertex v0, RasterVertex v1, Raster
         edge0Row += edge0StepY;
         edge1Row += edge1StepY;
         edge2Row += edge2StepY;
+    }
+    if (wroteAny) {
+        host.surface().expandOglDirtyRect(minX, minY, maxX, maxY);
     }
 }
 
@@ -2248,7 +2417,7 @@ private static void multiply(ClipVector out, float[] matrix, float x, float y, f
 }
 
 private int interpolateColor(RasterVertex v0, RasterVertex v1, RasterVertex v2,
-                             float w0, float w1, float w2, float denominator, boolean useBackColor) {
+                             float w0, float w1, float w2, float inverseDenominator, boolean useBackColor) {
     int c0 = useBackColor ? v0.backColor : v0.color;
     int c1 = useBackColor ? v1.backColor : v1.color;
     int c2 = useBackColor ? v2.backColor : v2.color;
@@ -2259,59 +2428,71 @@ private int interpolateColor(RasterVertex v0, RasterVertex v1, RasterVertex v2,
         return c0;
     }
     float red = interpolateChannel((c0 >>> 16) & 0xFF, (c1 >>> 16) & 0xFF, (c2 >>> 16) & 0xFF,
-            w0, w1, w2, v0.reciprocalW, v1.reciprocalW, v2.reciprocalW, denominator);
+            w0, w1, w2, v0.reciprocalW, v1.reciprocalW, v2.reciprocalW, inverseDenominator);
     float green = interpolateChannel((c0 >>> 8) & 0xFF, (c1 >>> 8) & 0xFF, (c2 >>> 8) & 0xFF,
-            w0, w1, w2, v0.reciprocalW, v1.reciprocalW, v2.reciprocalW, denominator);
+            w0, w1, w2, v0.reciprocalW, v1.reciprocalW, v2.reciprocalW, inverseDenominator);
     float blue = interpolateChannel(c0 & 0xFF, c1 & 0xFF, c2 & 0xFF,
-            w0, w1, w2, v0.reciprocalW, v1.reciprocalW, v2.reciprocalW, denominator);
+            w0, w1, w2, v0.reciprocalW, v1.reciprocalW, v2.reciprocalW, inverseDenominator);
     float alpha = interpolateChannel((c0 >>> 24) & 0xFF, (c1 >>> 24) & 0xFF, (c2 >>> 24) & 0xFF,
-            w0, w1, w2, v0.reciprocalW, v1.reciprocalW, v2.reciprocalW, denominator);
-    return (clamp(Math.round(alpha), 0, 255) << 24)
-            | (clamp(Math.round(red), 0, 255) << 16)
-            | (clamp(Math.round(green), 0, 255) << 8)
-            | clamp(Math.round(blue), 0, 255);
+            w0, w1, w2, v0.reciprocalW, v1.reciprocalW, v2.reciprocalW, inverseDenominator);
+    return (roundedChannel(alpha) << 24)
+            | (roundedChannel(red) << 16)
+            | (roundedChannel(green) << 8)
+            | roundedChannel(blue);
+}
+
+private static int roundedChannel(float value) {
+    if (value <= 0f) {
+        return 0;
+    }
+    if (value >= 255f) {
+        return 255;
+    }
+    // Math.round() becomes a JNI Float.floatToRawIntBits call here; a rounded cast
+    // is equivalent for this clamped, non-negative range.
+    return (int) (value + 0.5f);
 }
 
 private float interpolateChannel(float c0, float c1, float c2,
                                  float w0, float w1, float w2,
                                  float reciprocalW0, float reciprocalW1, float reciprocalW2,
-                                 float denominator) {
-    return ((w0 * c0 * reciprocalW0) + (w1 * c1 * reciprocalW1) + (w2 * c2 * reciprocalW2)) / denominator;
+                                 float inverseDenominator) {
+    return ((w0 * c0 * reciprocalW0) + (w1 * c1 * reciprocalW1) + (w2 * c2 * reciprocalW2)) * inverseDenominator;
 }
 
-private int applyTextureEnvironment(int primaryColor, int sampledColor, OglTexture texture) {
+private int applyTextureEnvironment(int previousColor, int primaryColor, int sampledColor,
+                                    OglTexture texture, OglTextureUnit unit) {
     if (texture == null) {
-        return primaryColor;
+        return previousColor;
     }
     int baseFormat = texture.baseFormat();
-    if (ogl.textureEnvMode == GraphicsOGL.GL_MODULATE) {
-        return applyModulateTextureFunction(primaryColor, sampledColor, baseFormat);
+    if (unit.textureEnvMode == GraphicsOGL.GL_MODULATE) {
+        return applyModulateTextureFunction(previousColor, sampledColor, baseFormat);
     }
-    float pr = packedComponent(primaryColor, 0);
-    float pg = packedComponent(primaryColor, 1);
-    float pb = packedComponent(primaryColor, 2);
-    float pa = packedComponent(primaryColor, 3);
+    if (unit.textureEnvMode == GraphicsOGL.GL_COMBINE) {
+        return applyCombineTextureEnvironment(previousColor, primaryColor, sampledColor, baseFormat, unit);
+    }
+    float pr = packedComponent(previousColor, 0);
+    float pg = packedComponent(previousColor, 1);
+    float pb = packedComponent(previousColor, 2);
+    float pa = packedComponent(previousColor, 3);
     float tr = textureComponent(sampledColor, 0, baseFormat);
     float tg = textureComponent(sampledColor, 1, baseFormat);
     float tb = textureComponent(sampledColor, 2, baseFormat);
     float ta = textureComponent(sampledColor, 3, baseFormat);
-    float er = packedComponent(ogl.textureEnvColor, 0);
-    float eg = packedComponent(ogl.textureEnvColor, 1);
-    float eb = packedComponent(ogl.textureEnvColor, 2);
-    return switch (ogl.textureEnvMode) {
+    float er = packedComponent(unit.textureEnvColor, 0);
+    float eg = packedComponent(unit.textureEnvColor, 1);
+    float eb = packedComponent(unit.textureEnvColor, 2);
+    return switch (unit.textureEnvMode) {
         case GraphicsOGL.GL_REPLACE ->
                 applyReplaceTextureFunction(pr, pg, pb, pa, tr, tg, tb, ta, baseFormat);
-        case GraphicsOGL.GL_MODULATE ->
-                applyModulateTextureFunction(primaryColor, sampledColor, baseFormat);
         case GraphicsOGL.GL_DECAL ->
                 applyDecalTextureFunction(pr, pg, pb, pa, tr, tg, tb, ta, baseFormat);
         case GraphicsOGL.GL_BLEND ->
                 applyBlendTextureFunction(pr, pg, pb, pa, tr, tg, tb, ta, er, eg, eb, baseFormat);
         case GraphicsOGL.GL_ADD ->
                 applyAddTextureFunction(pr, pg, pb, pa, tr, tg, tb, ta, baseFormat);
-        case GraphicsOGL.GL_COMBINE ->
-                applyCombineTextureEnvironment(primaryColor, sampledColor, baseFormat);
-        default -> primaryColor;
+        default -> previousColor;
     };
 }
 
@@ -2409,14 +2590,42 @@ private int applyAddTextureFunction(float pr, float pg, float pb, float pa,
     };
 }
 
-private int applyCombineTextureEnvironment(int primaryColor, int sampledColor, int baseFormat) {
-    float r = combineRgbComponent(0, primaryColor, sampledColor, baseFormat);
-    float g = combineRgbComponent(1, primaryColor, sampledColor, baseFormat);
-    float b = combineRgbComponent(2, primaryColor, sampledColor, baseFormat);
-    float alpha0 = textureAlphaArgument(0, primaryColor, sampledColor, baseFormat);
-    float alpha1 = textureAlphaArgument(1, primaryColor, sampledColor, baseFormat);
-    float alpha2 = textureAlphaArgument(2, primaryColor, sampledColor, baseFormat);
-    float a = switch (ogl.combineAlpha) {
+private static final int ENV_FAST_NONE = 0;
+private static final int ENV_FAST_MODULATE = 1;
+private static final int ENV_FAST_SCALED_MODULATE = 2;
+
+/**
+ * Classifies the per-unit texture environment once per triangle so the inner
+ * raster loop does not have to re-inspect the combine state for every pixel.
+ */
+private static int textureEnvFastMode(OglTextureUnit unit) {
+    if (unit.textureEnvMode == GraphicsOGL.GL_MODULATE) {
+        return ENV_FAST_MODULATE;
+    }
+    if (unit.textureEnvMode != GraphicsOGL.GL_COMBINE || !isModulateCombineConfig(unit)) {
+        return ENV_FAST_NONE;
+    }
+    if (unit.rgbScale == 1 && unit.alphaScale == 1) {
+        return ENV_FAST_MODULATE;
+    }
+    if ((unit.rgbScale == 2 || unit.rgbScale == 4) && unit.alphaScale == 1) {
+        return ENV_FAST_SCALED_MODULATE;
+    }
+    return ENV_FAST_NONE;
+}
+
+private int applyCombineTextureEnvironment(int previousColor, int primaryColor, int sampledColor,
+                                           int baseFormat, OglTextureUnit unit) {
+    if (isModulateCombine(unit)) {
+        return applyModulateTextureFunction(previousColor, sampledColor, baseFormat);
+    }
+    float r = combineRgbComponent(0, previousColor, primaryColor, sampledColor, baseFormat, unit);
+    float g = combineRgbComponent(1, previousColor, primaryColor, sampledColor, baseFormat, unit);
+    float b = combineRgbComponent(2, previousColor, primaryColor, sampledColor, baseFormat, unit);
+    float alpha0 = textureAlphaArgument(0, previousColor, primaryColor, sampledColor, baseFormat, unit);
+    float alpha1 = textureAlphaArgument(1, previousColor, primaryColor, sampledColor, baseFormat, unit);
+    float alpha2 = textureAlphaArgument(2, previousColor, primaryColor, sampledColor, baseFormat, unit);
+    float a = switch (unit.combineAlpha) {
         case GraphicsOGL.GL_REPLACE -> alpha0;
         case GraphicsOGL.GL_MODULATE -> alpha0 * alpha1;
         case GraphicsOGL.GL_ADD -> alpha0 + alpha1;
@@ -2425,15 +2634,90 @@ private int applyCombineTextureEnvironment(int primaryColor, int sampledColor, i
         case GraphicsOGL.GL_SUBTRACT -> alpha0 - alpha1;
         default -> textureComponent(sampledColor, 3, baseFormat);
     };
-    return packColor(clampUnit(r * ogl.rgbScale), clampUnit(g * ogl.rgbScale),
-            clampUnit(b * ogl.rgbScale), clampUnit(a * ogl.alphaScale));
+    return packColor(clampUnit(r * unit.rgbScale), clampUnit(g * unit.rgbScale),
+            clampUnit(b * unit.rgbScale), clampUnit(a * unit.alphaScale));
 }
 
-private float combineRgbComponent(int channel, int primaryColor, int sampledColor, int baseFormat) {
-    float arg0 = textureRgbArgument(0, channel, primaryColor, sampledColor, baseFormat);
-    float arg1 = textureRgbArgument(1, channel, primaryColor, sampledColor, baseFormat);
-    float arg2 = textureRgbArgument(2, channel, primaryColor, sampledColor, baseFormat);
-    return switch (ogl.combineRgb) {
+private static boolean isModulateCombine(OglTextureUnit unit) {
+    // Equivalent to the default GL_COMBINE setup: MODULATE(TEXTURE, PREVIOUS)
+    // with unit-scale 1. This is by far the most common multi-texture state and
+    // avoiding the generic argument evaluator removes dozens of calls per pixel.
+    return unit.rgbScale == 1
+            && unit.alphaScale == 1
+            && isModulateCombineConfig(unit);
+}
+
+private static boolean isModulateCombineConfig(OglTextureUnit unit) {
+    return unit.combineRgb == GraphicsOGL.GL_MODULATE
+            && unit.combineAlpha == GraphicsOGL.GL_MODULATE
+            && unit.srcRgb[0] == GraphicsOGL.GL_TEXTURE
+            && unit.srcRgb[1] == GraphicsOGL.GL_PREVIOUS
+            && unit.operandRgb[0] == GraphicsOGL.GL_SRC_COLOR
+            && unit.operandRgb[1] == GraphicsOGL.GL_SRC_COLOR
+            && unit.srcAlpha[0] == GraphicsOGL.GL_TEXTURE
+            && unit.srcAlpha[1] == GraphicsOGL.GL_PREVIOUS
+            && unit.operandAlpha[0] == GraphicsOGL.GL_SRC_ALPHA
+            && unit.operandAlpha[1] == GraphicsOGL.GL_SRC_ALPHA;
+}
+
+/**
+ * Integer fast path for MODULATE(TEXTURE, PREVIOUS) with a 1, 2 or 4 RGB
+ * unit-scale. KH coded uses rgbScale=2 for its 3D geometry, which previously
+ * fell through to the generic float combine evaluator for every pixel.
+ */
+private static int applyScaledModulateTextureFunction(int primaryColor, int sampledColor,
+                                                      int baseFormat, int rgbScale, int alphaScale) {
+    int primaryAlpha = (primaryColor >>> 24) & 0xFF;
+    int primaryRed = (primaryColor >>> 16) & 0xFF;
+    int primaryGreen = (primaryColor >>> 8) & 0xFF;
+    int primaryBlue = primaryColor & 0xFF;
+    int sampledAlpha = (sampledColor >>> 24) & 0xFF;
+    int sampledRed = (sampledColor >>> 16) & 0xFF;
+    int sampledGreen = (sampledColor >>> 8) & 0xFF;
+    int sampledBlue = sampledColor & 0xFF;
+    return switch (baseFormat) {
+        case GraphicsOGL.GL_ALPHA ->
+                (modulateScaledChannel(primaryAlpha, sampledAlpha, alphaScale) << 24) | (primaryColor & 0x00FFFFFF);
+        case GraphicsOGL.GL_LUMINANCE ->
+                (primaryAlpha << 24)
+                        | (modulateScaledChannel(primaryRed, sampledRed, rgbScale) << 16)
+                        | (modulateScaledChannel(primaryGreen, sampledRed, rgbScale) << 8)
+                        | modulateScaledChannel(primaryBlue, sampledRed, rgbScale);
+        case GraphicsOGL.GL_LUMINANCE_ALPHA ->
+                (modulateScaledChannel(primaryAlpha, sampledAlpha, alphaScale) << 24)
+                        | (modulateScaledChannel(primaryRed, sampledRed, rgbScale) << 16)
+                        | (modulateScaledChannel(primaryGreen, sampledRed, rgbScale) << 8)
+                        | modulateScaledChannel(primaryBlue, sampledRed, rgbScale);
+        case GraphicsOGL.GL_RGB ->
+                (primaryAlpha << 24)
+                        | (modulateScaledChannel(primaryRed, sampledRed, rgbScale) << 16)
+                        | (modulateScaledChannel(primaryGreen, sampledGreen, rgbScale) << 8)
+                        | modulateScaledChannel(primaryBlue, sampledBlue, rgbScale);
+        default ->
+                (modulateScaledChannel(primaryAlpha, sampledAlpha, alphaScale) << 24)
+                        | (modulateScaledChannel(primaryRed, sampledRed, rgbScale) << 16)
+                        | (modulateScaledChannel(primaryGreen, sampledGreen, rgbScale) << 8)
+                        | modulateScaledChannel(primaryBlue, sampledBlue, rgbScale);
+    };
+}
+
+private static int modulateScaledChannel(int primary, int sampled, int scale) {
+    int product = primary * sampled * scale;
+    if (product >= 65_025) {
+        return 255;
+    }
+    // Exact integer division by 255 without emitting a hardware divide:
+    // for 0 <= product < 65025, (product + 127) / 255 == (product + 128 + ((product + 127) >> 8)) >> 8.
+    int numerator = product + 127;
+    return (numerator + 1 + (numerator >> 8)) >> 8;
+}
+
+private float combineRgbComponent(int channel, int previousColor, int primaryColor,
+                                  int sampledColor, int baseFormat, OglTextureUnit unit) {
+    float arg0 = textureRgbArgument(0, channel, previousColor, primaryColor, sampledColor, baseFormat, unit);
+    float arg1 = textureRgbArgument(1, channel, previousColor, primaryColor, sampledColor, baseFormat, unit);
+    float arg2 = textureRgbArgument(2, channel, previousColor, primaryColor, sampledColor, baseFormat, unit);
+    return switch (unit.combineRgb) {
         case GraphicsOGL.GL_REPLACE -> arg0;
         case GraphicsOGL.GL_MODULATE -> arg0 * arg1;
         case GraphicsOGL.GL_ADD -> arg0 + arg1;
@@ -2444,31 +2728,36 @@ private float combineRgbComponent(int channel, int primaryColor, int sampledColo
     };
 }
 
-private float textureRgbArgument(int index, int channel, int primaryColor, int sampledColor, int baseFormat) {
-    int source = ogl.srcRgb[index];
-    int operand = ogl.operandRgb[index];
-    float component = textureSourceComponent(source, channel, primaryColor, sampledColor, baseFormat);
-    float alpha = textureSourceComponent(source, 3, primaryColor, sampledColor, baseFormat);
+private float textureRgbArgument(int index, int channel, int previousColor, int primaryColor,
+                                 int sampledColor, int baseFormat, OglTextureUnit unit) {
+    int source = unit.srcRgb[index];
+    int operand = unit.operandRgb[index];
+    float component = textureSourceComponent(source, channel, previousColor, primaryColor, sampledColor, baseFormat, unit);
     return switch (operand) {
-        case GraphicsOGL.GL_SRC_ALPHA -> alpha;
-        case GraphicsOGL.GL_ONE_MINUS_SRC_ALPHA -> 1f - alpha;
+        case GraphicsOGL.GL_SRC_ALPHA ->
+                textureSourceComponent(source, 3, previousColor, primaryColor, sampledColor, baseFormat, unit);
+        case GraphicsOGL.GL_ONE_MINUS_SRC_ALPHA ->
+                1f - textureSourceComponent(source, 3, previousColor, primaryColor, sampledColor, baseFormat, unit);
         case GraphicsOGL.GL_ONE_MINUS_SRC_COLOR -> 1f - component;
         default -> component;
     };
 }
 
-private float textureAlphaArgument(int index, int primaryColor, int sampledColor, int baseFormat) {
-    float alpha = textureSourceComponent(ogl.srcAlpha[index], 3, primaryColor, sampledColor, baseFormat);
-    return ogl.operandAlpha[index] == GraphicsOGL.GL_ONE_MINUS_SRC_ALPHA ? 1f - alpha : alpha;
+private float textureAlphaArgument(int index, int previousColor, int primaryColor,
+                                   int sampledColor, int baseFormat, OglTextureUnit unit) {
+    float alpha = textureSourceComponent(unit.srcAlpha[index], 3, previousColor, primaryColor,
+            sampledColor, baseFormat, unit);
+    return unit.operandAlpha[index] == GraphicsOGL.GL_ONE_MINUS_SRC_ALPHA ? 1f - alpha : alpha;
 }
 
-private float textureSourceComponent(int source, int channel, int primaryColor, int sampledColor, int baseFormat) {
+private float textureSourceComponent(int source, int channel, int previousColor, int primaryColor,
+                                     int sampledColor, int baseFormat, OglTextureUnit unit) {
     return switch (source) {
         case GraphicsOGL.GL_TEXTURE -> textureComponent(sampledColor, channel, baseFormat);
-        case GraphicsOGL.GL_CONSTANT -> packedComponent(ogl.textureEnvColor, channel);
-        case GraphicsOGL.GL_PRIMARY_COLOR,
-                GraphicsOGL.GL_PREVIOUS -> packedComponent(primaryColor, channel);
-        default -> packedComponent(primaryColor, channel);
+        case GraphicsOGL.GL_CONSTANT -> packedComponent(unit.textureEnvColor, channel);
+        case GraphicsOGL.GL_PRIMARY_COLOR -> packedComponent(primaryColor, channel);
+        case GraphicsOGL.GL_PREVIOUS -> packedComponent(previousColor, channel);
+        default -> packedComponent(previousColor, channel);
     };
 }
 
@@ -2691,13 +2980,19 @@ static final class RasterVertex {
     float y;
     float depth;
     float reciprocalW;
-    float u;
-    float v;
+    float u0;
+    float v0;
+    float q0 = 1f;
+    float u1;
+    float v1;
+    float q1 = 1f;
     int color;
     int backColor;
 
     void set(float clipX, float clipY, float clipZ, float clipW,
-             float x, float y, float depth, float reciprocalW, float u, float v, int color, int backColor) {
+             float x, float y, float depth, float reciprocalW,
+             float u0, float v0, float q0, float u1, float v1, float q1,
+             int color, int backColor) {
         this.clipX = clipX;
         this.clipY = clipY;
         this.clipZ = clipZ;
@@ -2706,15 +3001,21 @@ static final class RasterVertex {
         this.y = y;
         this.depth = depth;
         this.reciprocalW = reciprocalW;
-        this.u = u;
-        this.v = v;
+        this.u0 = u0;
+        this.v0 = v0;
+        this.q0 = q0;
+        this.u1 = u1;
+        this.v1 = v1;
+        this.q1 = q1;
         this.color = color;
         this.backColor = backColor;
     }
 
     void copyFrom(RasterVertex other) {
         set(other.clipX, other.clipY, other.clipZ, other.clipW,
-                other.x, other.y, other.depth, other.reciprocalW, other.u, other.v, other.color, other.backColor);
+                other.x, other.y, other.depth, other.reciprocalW,
+                other.u0, other.v0, other.q0, other.u1, other.v1, other.q1,
+                other.color, other.backColor);
     }
 
     RasterVertex copyOf(RasterVertex other) {
@@ -2732,8 +3033,12 @@ static final class RasterVertex {
                 0f,
                 0f,
                 0f,
-                lerp(from.u, to.u, t),
-                lerp(from.v, to.v, t),
+                lerp(from.u0, to.u0, t),
+                lerp(from.v0, to.v0, t),
+                lerp(from.q0, to.q0, t),
+                lerp(from.u1, to.u1, t),
+                lerp(from.v1, to.v1, t),
+                lerp(from.q1, to.q1, t),
                 lerpColor(from.color, to.color, t),
                 lerpColor(from.backColor, to.backColor, t)
         );
@@ -2915,13 +3220,13 @@ static final class OglTexture {
             for (int i = 0; i < this.pixels.length; i++) {
                 this.pixels[i] = palette[raw[paletteBytes + i] & 0xFF];
             }
-            return true;
-        }
-        for (int i = 0; i < this.pixels.length; i += 2) {
-            int packed = raw[paletteBytes + (i >> 1)] & 0xFF;
-            this.pixels[i] = palette[(packed >>> 4) & 0x0F];
-            if (i + 1 < this.pixels.length) {
-                this.pixels[i + 1] = palette[packed & 0x0F];
+        } else {
+            for (int i = 0; i < this.pixels.length; i += 2) {
+                int packed = raw[paletteBytes + (i >> 1)] & 0xFF;
+                this.pixels[i] = palette[(packed >>> 4) & 0x0F];
+                if (i + 1 < this.pixels.length) {
+                    this.pixels[i + 1] = palette[packed & 0x0F];
+                }
             }
         }
         uploadRevision++;
@@ -2995,8 +3300,8 @@ static final class OglTexture {
         if (minFilter == GraphicsOGL.GL_LINEAR || magFilter == GraphicsOGL.GL_LINEAR) {
             return bilinearSample(sampledU, sampledV);
         }
-        int x = clamp(Math.round(sampledU * (width - 1)), 0, width - 1);
-        int y = clamp(Math.round(sampledV * (height - 1)), 0, height - 1);
+        int x = (int) (sampledU * (width - 1) + 0.5f);
+        int y = (int) (sampledV * (height - 1) + 0.5f);
         return pixels[(y * width) + x];
     }
 
@@ -3007,42 +3312,53 @@ static final class OglTexture {
     private int bilinearSample(float u, float v) {
         float x = u * (width - 1);
         float y = v * (height - 1);
-        int x0 = clamp((int) x, 0, width - 1);
-        int y0 = clamp((int) y, 0, height - 1);
+        int x0 = (int) x;
+        int y0 = (int) y;
         int x1 = x0 + 1 < width ? x0 + 1 : x0;
         int y1 = y0 + 1 < height ? y0 + 1 : y0;
-        int tx = clamp(Math.round((x - x0) * 256f), 0, 256);
-        int ty = clamp(Math.round((y - y0) * 256f), 0, 256);
-        int c00 = pixels[(y0 * width) + x0];
-        int c10 = pixels[(y0 * width) + x1];
-        int c01 = pixels[(y1 * width) + x0];
-        int c11 = pixels[(y1 * width) + x1];
-        int alpha = bilinearChannel(c00, c10, c01, c11, 24, tx, ty);
-        int red = bilinearChannel(c00, c10, c01, c11, 16, tx, ty);
-        int green = bilinearChannel(c00, c10, c01, c11, 8, tx, ty);
-        int blue = bilinearChannel(c00, c10, c01, c11, 0, tx, ty);
-        return (alpha << 24) | (red << 16) | (green << 8) | blue;
-    }
-
-    private static int bilinearChannel(int c00, int c10, int c01, int c11, int shift, int tx, int ty) {
+        // wrapCoordinate() already guarantees [0, 1], so both the integer cell and
+        // the fractional weight stay in range. Math.round() compiles to a JNI call
+        // to Float.floatToRawIntBits on this ART build and dominated texture sampling.
+        int tx = (int) ((x - x0) * 256f + 0.5f);
+        int ty = (int) ((y - y0) * 256f + 0.5f);
         int invTx = 256 - tx;
         int invTy = 256 - ty;
         int w00 = invTx * invTy;
         int w10 = tx * invTy;
         int w01 = invTx * ty;
         int w11 = tx * ty;
-        int channel00 = (c00 >>> shift) & 0xFF;
-        int channel10 = (c10 >>> shift) & 0xFF;
-        int channel01 = (c01 >>> shift) & 0xFF;
-        int channel11 = (c11 >>> shift) & 0xFF;
-        return clamp(((channel00 * w00) + (channel10 * w10) + (channel01 * w01) + (channel11 * w11) + 32768) >> 16,
-                0,
-                255);
+        int c00 = pixels[(y0 * width) + x0];
+        int c10 = pixels[(y0 * width) + x1];
+        int c01 = pixels[(y1 * width) + x0];
+        int c11 = pixels[(y1 * width) + x1];
+        int alpha = bilinearChannel(c00, c10, c01, c11, 24, w00, w10, w01, w11);
+        int red = bilinearChannel(c00, c10, c01, c11, 16, w00, w10, w01, w11);
+        int green = bilinearChannel(c00, c10, c01, c11, 8, w00, w10, w01, w11);
+        int blue = bilinearChannel(c00, c10, c01, c11, 0, w00, w10, w01, w11);
+        return (alpha << 24) | (red << 16) | (green << 8) | blue;
+    }
+
+    private static int bilinearChannel(int c00, int c10, int c01, int c11, int shift,
+                                       int w00, int w10, int w01, int w11) {
+        int value = (((c00 >>> shift) & 0xFF) * w00
+                + ((c10 >>> shift) & 0xFF) * w10
+                + ((c01 >>> shift) & 0xFF) * w01
+                + ((c11 >>> shift) & 0xFF) * w11
+                + 32768) >> 16;
+        return value > 255 ? 255 : value;
     }
 
     private static float wrapCoordinate(float value, int wrapMode) {
         if (wrapMode == GraphicsOGL.GL_CLAMP_TO_EDGE) {
-            return Math.max(0f, Math.min(1f, value));
+            if (value < 0f) {
+                return 0f;
+            }
+            return value > 1f ? 1f : value;
+        }
+        // Fractions in [0, 1) are already wrapped; avoiding Math.floor() here
+        // removes a JNI call for every texture lookup in the common case.
+        if (value >= 0f && value < 1f) {
+            return value;
         }
         float wrapped = value - (float) Math.floor(value);
         return wrapped < 0f ? wrapped + 1f : wrapped;
@@ -3229,6 +3545,67 @@ static final class OglLight {
 }
 
     /**
+     * Per-texture-unit state, mirroring the GLES 1.x fixed-function pipeline.
+     */
+    static final class OglTextureUnit {
+        boolean texture2DEnabled;
+        boolean texCoordArrayEnabled;
+        int boundTextureId;
+        int textureEnvMode = GraphicsOGL.GL_MODULATE;
+        int combineRgb = GraphicsOGL.GL_MODULATE;
+        int combineAlpha = GraphicsOGL.GL_MODULATE;
+        final int[] srcRgb = {
+                GraphicsOGL.GL_TEXTURE,
+                GraphicsOGL.GL_PREVIOUS,
+                GraphicsOGL.GL_CONSTANT
+        };
+        final int[] srcAlpha = {
+                GraphicsOGL.GL_TEXTURE,
+                GraphicsOGL.GL_PREVIOUS,
+                GraphicsOGL.GL_CONSTANT
+        };
+        final int[] operandRgb = {
+                GraphicsOGL.GL_SRC_COLOR,
+                GraphicsOGL.GL_SRC_COLOR,
+                GraphicsOGL.GL_SRC_ALPHA
+        };
+        final int[] operandAlpha = {
+                GraphicsOGL.GL_SRC_ALPHA,
+                GraphicsOGL.GL_SRC_ALPHA,
+                GraphicsOGL.GL_SRC_ALPHA
+        };
+        int textureEnvColor;
+        int rgbScale = 1;
+        int alphaScale = 1;
+        float[] textureMatrix = OglState.identityMatrix();
+        boolean textureMatrixIdentity = true;
+        final Deque<float[]> textureStack = new ArrayDeque<>();
+        OglPointer texCoordPointer;
+        float currentS;
+        float currentT;
+        float currentR;
+        float currentQ = 1f;
+
+        void setTextureMatrix(float[] matrix) {
+            textureMatrix = matrix;
+            textureMatrixIdentity = isIdentityMatrix(matrix);
+        }
+
+        private static boolean isIdentityMatrix(float[] matrix) {
+            if (matrix == null) {
+                return true;
+            }
+            for (int i = 0; i < 16; i++) {
+                float expected = (i % 5) == 0 ? 1f : 0f;
+                if (Math.abs(matrix[i] - expected) > 0.000001f) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
+    /**
      * Shared GLES state machine and object lifetime tracked across backends.
      */
 static final class OglState {
@@ -3236,7 +3613,6 @@ static final class OglState {
     final Map<Integer, OglTexture> textures;
     final Map<Integer, OglBufferObject> buffers;
     final boolean[] lightEnabled = new boolean[8];
-    boolean texture2DEnabled;
     boolean blendCapEnabled;
     boolean depthTestEnabled;
     boolean lightingCapEnabled;
@@ -3246,41 +3622,16 @@ static final class OglState {
     boolean rescaleNormalEnabled;
     boolean cullFaceEnabled;
     boolean alphaTestEnabled;
-    boolean texCoordArrayEnabled;
     boolean colorArrayEnabled;
     boolean normalArrayEnabled;
     boolean matrixIndexArrayEnabled;
     boolean weightArrayEnabled;
     int lastError = GraphicsOGL.GL_NO_ERROR;
     int matrixMode = GraphicsOGL.GL_MODELVIEW;
-    int textureEnvMode = GraphicsOGL.GL_MODULATE;
-    int combineRgb = GraphicsOGL.GL_MODULATE;
-    int combineAlpha = GraphicsOGL.GL_MODULATE;
-    final int[] srcRgb = {
-            GraphicsOGL.GL_TEXTURE,
-            GraphicsOGL.GL_PREVIOUS,
-            GraphicsOGL.GL_CONSTANT
-    };
-    final int[] srcAlpha = {
-            GraphicsOGL.GL_TEXTURE,
-            GraphicsOGL.GL_PREVIOUS,
-            GraphicsOGL.GL_CONSTANT
-    };
-    final int[] operandRgb = {
-            GraphicsOGL.GL_SRC_COLOR,
-            GraphicsOGL.GL_SRC_COLOR,
-            GraphicsOGL.GL_SRC_ALPHA
-    };
-    final int[] operandAlpha = {
-            GraphicsOGL.GL_SRC_ALPHA,
-            GraphicsOGL.GL_SRC_ALPHA,
-            GraphicsOGL.GL_SRC_ALPHA
-    };
-    int textureEnvColor;
-    int rgbScale = 1;
-    int alphaScale = 1;
     int shadeModel = GraphicsOGL.GL_SMOOTH;
+    int activeTexture = GraphicsOGL.GL_TEXTURE0;
     int clientActiveTexture = GraphicsOGL.GL_TEXTURE0;
+    final OglTextureUnit[] textureUnits = createTextureUnits();
     int alphaFunc = GraphicsOGL.GL_ALWAYS;
     float alphaRef;
     boolean depthMask = true;
@@ -3296,7 +3647,6 @@ static final class OglState {
     int viewportWidth = 1;
     int viewportHeight = 1;
     int unpackAlignment = 1;
-    int boundTextureId;
     int boundArrayBufferId;
     int boundElementArrayBufferId;
     int color = 0xFFFFFFFF;
@@ -3311,7 +3661,6 @@ static final class OglState {
     final OglLight[] lights = createLights();
     float[] modelViewMatrix = identityMatrix();
     float[] projectionMatrix = identityMatrix();
-    float[] textureMatrix = identityMatrix();
     final float[] modelViewNormalMatrix = new float[9];
     boolean modelViewNormalMatrixDirty = true;
     boolean modelViewNormalMatrixValid;
@@ -3324,10 +3673,8 @@ static final class OglState {
     int currentPaletteMatrix;
     final Deque<float[]> modelViewStack = new ArrayDeque<>();
     final Deque<float[]> projectionStack = new ArrayDeque<>();
-    final Deque<float[]> textureStack = new ArrayDeque<>();
     final Deque<float[]>[] paletteMatrixStacks = createPaletteMatrixStacks();
     OglPointer vertexPointer;
-    OglPointer texCoordPointer;
     OglPointer normalPointer;
     OglPointer colorPointer;
     OglPointer matrixIndexPointer;
@@ -3345,7 +3692,7 @@ static final class OglState {
 
     void enableCap(int cap) {
         switch (cap) {
-            case GraphicsOGL.GL_TEXTURE_2D -> texture2DEnabled = true;
+            case GraphicsOGL.GL_TEXTURE_2D -> activeTextureUnit().texture2DEnabled = true;
             case GraphicsOGL.GL_BLEND -> blendCapEnabled = true;
             case GraphicsOGL.GL_DEPTH_TEST -> depthTestEnabled = true;
             case GraphicsOGL.GL_LIGHTING -> lightingCapEnabled = true;
@@ -3366,7 +3713,7 @@ static final class OglState {
 
     void disableCap(int cap) {
         switch (cap) {
-            case GraphicsOGL.GL_TEXTURE_2D -> texture2DEnabled = false;
+            case GraphicsOGL.GL_TEXTURE_2D -> activeTextureUnit().texture2DEnabled = false;
             case GraphicsOGL.GL_BLEND -> blendCapEnabled = false;
             case GraphicsOGL.GL_DEPTH_TEST -> depthTestEnabled = false;
             case GraphicsOGL.GL_LIGHTING -> lightingCapEnabled = false;
@@ -3387,7 +3734,7 @@ static final class OglState {
 
     void enableClientState(int array) {
         switch (array) {
-            case GraphicsOGL.GL_TEXTURE_COORD_ARRAY -> texCoordArrayEnabled = true;
+            case GraphicsOGL.GL_TEXTURE_COORD_ARRAY -> clientTextureUnit().texCoordArrayEnabled = true;
             case GraphicsOGL.GL_COLOR_ARRAY -> colorArrayEnabled = true;
             case GraphicsOGL.GL_NORMAL_ARRAY -> normalArrayEnabled = true;
             case GraphicsOGL.GL_MATRIX_INDEX_ARRAY_OES -> matrixIndexArrayEnabled = true;
@@ -3399,7 +3746,7 @@ static final class OglState {
 
     void disableClientState(int array) {
         switch (array) {
-            case GraphicsOGL.GL_TEXTURE_COORD_ARRAY -> texCoordArrayEnabled = false;
+            case GraphicsOGL.GL_TEXTURE_COORD_ARRAY -> clientTextureUnit().texCoordArrayEnabled = false;
             case GraphicsOGL.GL_COLOR_ARRAY -> colorArrayEnabled = false;
             case GraphicsOGL.GL_NORMAL_ARRAY -> normalArrayEnabled = false;
             case GraphicsOGL.GL_MATRIX_INDEX_ARRAY_OES -> matrixIndexArrayEnabled = false;
@@ -3418,8 +3765,33 @@ static final class OglState {
     void endDrawing() {
     }
 
+    int activeTextureIndex() {
+        return clamp(activeTexture - GraphicsOGL.GL_TEXTURE0, 0, textureUnits.length - 1);
+    }
+
+    int clientTextureIndex() {
+        return clamp(clientActiveTexture - GraphicsOGL.GL_TEXTURE0, 0, textureUnits.length - 1);
+    }
+
+    OglTextureUnit activeTextureUnit() {
+        return textureUnits[activeTextureIndex()];
+    }
+
+    OglTextureUnit clientTextureUnit() {
+        return textureUnits[clientTextureIndex()];
+    }
+
+    OglTextureUnit textureUnit(int index) {
+        return index >= 0 && index < textureUnits.length ? textureUnits[index] : null;
+    }
+
     boolean textureEnabled() {
-        return texture2DEnabled && texCoordArrayEnabled && boundTexture() != null;
+        return textureEnabled(activeTextureIndex());
+    }
+
+    boolean textureEnabled(int index) {
+        OglTextureUnit unit = textureUnit(index);
+        return unit != null && unit.texture2DEnabled && boundTexture(index) != null;
     }
 
     boolean blendEnabled() {
@@ -3451,7 +3823,12 @@ static final class OglState {
     }
 
     OglTexture boundTexture() {
-        return boundTextureId == 0 ? null : textures.get(boundTextureId);
+        return boundTexture(activeTextureIndex());
+    }
+
+    OglTexture boundTexture(int index) {
+        OglTextureUnit unit = textureUnit(index);
+        return unit == null || unit.boundTextureId == 0 ? null : textures.get(unit.boundTextureId);
     }
 
     OglBufferObject boundArrayBuffer() {
@@ -3526,6 +3903,14 @@ static final class OglState {
                 paletteMatrices[matrixIndex],
                 paletteNormalMatrices[matrixIndex]);
         paletteNormalMatrixDirty[matrixIndex] = false;
+    }
+
+    private static OglTextureUnit[] createTextureUnits() {
+        OglTextureUnit[] units = new OglTextureUnit[OGL_TEXTURE_UNIT_COUNT];
+        for (int i = 0; i < units.length; i++) {
+            units[i] = new OglTextureUnit();
+        }
+        return units;
     }
 
     @SuppressWarnings("unchecked")

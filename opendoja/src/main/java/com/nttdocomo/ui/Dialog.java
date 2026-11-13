@@ -19,7 +19,8 @@ import opendoja.compat.swing.*;
  * @see Canvas
  * @see Panel
  */
-public final class Dialog extends Frame {
+// Not final: com.docomostar.ui.Dialog is a thin alias used by Star titles.
+public class Dialog extends Frame {
     /**
      * A dialog type that represents an information dialog ({@code =0}).
      * It has an OK button.

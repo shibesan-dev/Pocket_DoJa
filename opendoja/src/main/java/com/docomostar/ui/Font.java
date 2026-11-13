@@ -76,6 +76,15 @@ public class Font extends com.nttdocomo.ui.Font {
         }
 
         @Override
+        public void drawString(opendoja.compat.awt.Graphics2D graphics, String text, int x, int y, int argbColor) {
+            // com.nttdocomo.ui.Font.drawString is not public in the DoJa API, but the Star shim
+            // wraps a DoJa font object. Without this delegation the wrapper would fall back to
+            // its placeholder desktop font and bypass bitmap strikes, metrics and compatibility
+            // scaling.
+            delegate.drawString(graphics, text, x, y, argbColor);
+        }
+
+        @Override
         public int getLineBreak(String text, int offset, int length, int width) {
             return delegate.getLineBreak(text, offset, length, width);
         }

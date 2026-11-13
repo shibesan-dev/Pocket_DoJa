@@ -4,6 +4,8 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
 import android.graphics.RectF;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
@@ -85,14 +87,16 @@ public class JamSurfaceView extends View {
     private final Paint keyFillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint keyStrokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint keyTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint letterboxPaint = new Paint();
 
     private Bitmap upscaleBitmap;
     private Canvas upscaleCanvas;
     private Paint upscalePaint;
     private static final int DISPLAY_SNAPSHOT_COUNT = 3;
     private final Bitmap[] displaySnapshots = new Bitmap[DISPLAY_SNAPSHOT_COUNT];
+    private final Canvas[] displaySnapshotCanvases = new Canvas[DISPLAY_SNAPSHOT_COUNT];
+    private final Paint displaySnapshotPaint = new Paint();
     private int displaySnapshotIndex;
-    private int[] displaySnapshotPixels;
     private Bitmap stableDisplayFrame;
     private int stableDisplayVersion = Integer.MIN_VALUE;
 
@@ -118,6 +122,8 @@ public class JamSurfaceView extends View {
     private GameFilter filterInstance;
 
     private final RectF gameRect = new RectF();
+    /** Screen opening that the game is letterboxed inside (skin/fullscreen). */
+    private final RectF apertureRect = new RectF();
     private final RectF padRect = new RectF();
     private int gamePixelW;
     private int gamePixelH;
@@ -143,6 +149,8 @@ public class JamSurfaceView extends View {
     private String cachedSettingsGameId;
     private String cachedOrientation;
     private String cachedDisplayMode;
+    private String cachedGameDisplay;
+    private String cachedGameDisplayId;
     private String cachedFilter;
 
     private int lastPointerX;
@@ -227,6 +235,7 @@ public class JamSurfaceView extends View {
         keyTextPaint.setColor(0xFFFFFFFF);
         keyTextPaint.setTextAlign(Paint.Align.CENTER);
         keyTextPaint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        displaySnapshotPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC));
 try {
             android.content.SharedPreferences prefs = getContext().getSharedPreferences(ThemeActivity.PREFS_NAME, android.content.Context.MODE_PRIVATE);
             cachedSkin = prefs.getString(ThemeActivity.KEY_SKIN, "silver");
@@ -397,8 +406,8 @@ try {
         pixels = null;
         stableDisplayFrame = null;
         stableDisplayVersion = Integer.MIN_VALUE;
-        displaySnapshotPixels = null;
         java.util.Arrays.fill(displaySnapshots, null);
+        java.util.Arrays.fill(displaySnapshotCanvases, null);
         upscaleBitmap = null;
         upscaleCanvas = null;
         upSrcWidth = 0;
@@ -605,6 +614,43 @@ try {
         } else {
             computeZonesPortrait();
         }
+        if (gameRect.width() > 0f && gameRect.height() > 0f) {
+            // Let the software OpenGLES rasterizer match its internal 3D buffer to the
+            // physical size of the skin opening. Rendering the title's full native
+            // framebuffer into a much smaller LCD area wastes CPU and looks over-sharp.
+            opendoja.host.HostDisplayTarget.set(
+                    Math.round(gameRect.width()), Math.round(gameRect.height()));
+        }
+    }
+
+    /**
+     * Centres the game inside {@code aperture} at its native aspect ratio so
+     * widescreen titles are not stretched into a nearly square skin opening.
+     * The uncovered area is painted black by {@link #drawGameUpscaled}.
+     */
+    private void fitGameInto(RectF aperture, int gameW, int gameH) {
+        float scale = Math.min(aperture.width() / gameW, aperture.height() / gameH);
+        float dstW = gameW * scale;
+        float dstH = gameH * scale;
+        float left = aperture.left + (aperture.width() - dstW) / 2f;
+        float top = aperture.top + (aperture.height() - dstH) / 2f;
+        gameRect.set(left, top, left + dstW, top + dstH);
+        gamePixelW = gameW;
+        gamePixelH = gameH;
+    }
+
+    private void fillGameInto(RectF aperture, int gameW, int gameH) {
+        gameRect.set(aperture);
+        gamePixelW = gameW;
+        gamePixelH = gameH;
+    }
+
+    private void applyGameDisplay(RectF aperture, int gameW, int gameH, boolean fit) {
+        if (fit) {
+            fitGameInto(aperture, gameW, gameH);
+        } else {
+            fillGameInto(aperture, gameW, gameH);
+        }
     }
 
     private void computeZonesPortrait() {
@@ -619,24 +665,21 @@ try {
             gameH = screenHeight > 0 ? screenHeight : 240;
         }
         boolean fullScreen = isFullScreenMode();
+        boolean fit = useAspectFit();
         boolean svgSkin = isSvgSkin(cachedSkin, false);
         if (svgSkin) {
             float vbW = 400f, vbH = 800f;
             float sx = viewWidth / vbW;
             float sy = viewHeight / vbH;
-            // Fill the skin's screen aperture exactly so the game image reaches
-            // the bezel on every device. The aperture is scaled non-uniformly
-            // when the screen aspect differs from the skin viewBox, so
-            // aspect-fitting would leave visible pillarbox gaps on the sides.
             float apertureLeft = 42f * sx;
             float apertureTop = 112f * sy;
             float apertureW = 316f * sx;
             float apertureH = 422f * sy;
-            gameRect.set(apertureLeft, apertureTop, apertureLeft + apertureW, apertureTop + apertureH);
-            gamePixelW = gameW;
-            gamePixelH = gameH;
+            apertureRect.set(apertureLeft, apertureTop, apertureLeft + apertureW, apertureTop + apertureH);
+            applyGameDisplay(apertureRect, gameW, gameH, fit);
             if (fullScreen) {
-                gameRect.set(0f, 0f, viewWidth, viewHeight);
+                apertureRect.set(0f, 0f, viewWidth, viewHeight);
+                applyGameDisplay(apertureRect, gameW, gameH, fit);
             } else {
                 gameCornerRadiusX = 11f * sx;
                 gameCornerRadiusY = 11f * sy;
@@ -663,15 +706,8 @@ try {
             gameAreaW = viewWidth;
             gameAreaH = viewHeight - padHeight;
         }
-        float scale = Math.min(gameAreaW / gameW, gameAreaH / gameH);
-        float dstW = gameW * scale;
-        float dstH = gameH * scale;
-        float gameLeft = (viewWidth - dstW) / 2f;
-        float gameTop = (gameAreaH - dstH) / 2f;
-        gameRect.set(gameLeft, gameTop, gameLeft + dstW, gameTop + dstH);
-        gamePixelW = gameW;
-        gamePixelH = gameH;
-        if (fullScreen) gameRect.set(0f, 0f, viewWidth, viewHeight);
+        apertureRect.set(0f, 0f, gameAreaW, gameAreaH);
+        applyGameDisplay(apertureRect, gameW, gameH, fit);
 
         if (!keypadVisible) {
             padRect.set(0f, 0f, 0f, 0f);
@@ -753,21 +789,21 @@ try {
             gameH = screenHeight > 0 ? screenHeight : 240;
         }
         boolean fullScreen = isFullScreenMode();
+        boolean fit = useAspectFit();
         boolean svgSkin = isSvgSkin(cachedSkin, true);
         if (svgSkin) {
             float vbW = 800f, vbH = 400f;
             float sx = viewWidth / vbW;
             float sy = viewHeight / vbH;
-            // Fill the aperture exactly (same reasoning as portrait).
             float apertureLeft = 48f * sx;
             float apertureTop = 42f * sy;
             float apertureW = 422f * sx;
             float apertureH = 316f * sy;
-            gameRect.set(apertureLeft, apertureTop, apertureLeft + apertureW, apertureTop + apertureH);
-            gamePixelW = gameW;
-            gamePixelH = gameH;
+            apertureRect.set(apertureLeft, apertureTop, apertureLeft + apertureW, apertureTop + apertureH);
+            applyGameDisplay(apertureRect, gameW, gameH, fit);
             if (fullScreen) {
-                gameRect.set(0f, 0f, viewWidth, viewHeight);
+                apertureRect.set(0f, 0f, viewWidth, viewHeight);
+                applyGameDisplay(apertureRect, gameW, gameH, fit);
             } else {
                 gameCornerRadiusX = 11f * sx;
                 gameCornerRadiusY = 11f * sy;
@@ -786,15 +822,8 @@ try {
             gameAreaW = viewWidth;
             gameAreaH = viewHeight;
         }
-        float scale = Math.min(gameAreaW / gameW, gameAreaH / gameH);
-        float dstW = gameW * scale;
-        float dstH = gameH * scale;
-        float gameLeft = fullScreen ? 0f : (!keypadVisible ? (viewWidth - dstW) / 2f : Math.max(0f, (viewWidth - rightW - dstW) / 2f));
-        float gameTop = (viewHeight - dstH) / 2f;
-        gameRect.set(gameLeft, gameTop, gameLeft + dstW, gameTop + dstH);
-        gamePixelW = gameW;
-        gamePixelH = gameH;
-        if (fullScreen) gameRect.set(0f, 0f, viewWidth, viewHeight);
+        apertureRect.set(0f, 0f, gameAreaW, gameAreaH);
+        applyGameDisplay(apertureRect, gameW, gameH, fit);
 
         if (!keypadVisible) {
             padRect.set(0f, 0f, 0f, 0f);
@@ -943,6 +972,41 @@ try {
         return DisplayActivity.MODE_FULLSCREEN.equals(mode);
     }
 
+    /**
+     * Whether the game keeps its native aspect ratio (Scale to Fit) instead of
+     * stretching to the screen opening (Fill Screen).
+     */
+    private boolean useAspectFit() {
+        String gameId = EntryActivity.gameId;
+        String value;
+        if (gameId != null && !gameId.isEmpty()) {
+            if (!gameId.equals(cachedGameDisplayId) || cachedGameDisplay == null) {
+                android.content.SharedPreferences prefs = getContext().getSharedPreferences(
+                        DisplayActivity.PREFS_NAME, android.content.Context.MODE_PRIVATE);
+                String override = prefs.getString(gameId + "_" + DisplayActivity.KEY_GAME_DISPLAY,
+                        DisplayActivity.INHERIT);
+                if (!override.equals(DisplayActivity.INHERIT)) {
+                    cachedGameDisplay = override;
+                } else {
+                    cachedGameDisplay = prefs.getString(DisplayActivity.KEY_GAME_DISPLAY,
+                            DisplayActivity.GAME_DISPLAY_FILL);
+                }
+                cachedGameDisplayId = gameId;
+            }
+            value = cachedGameDisplay;
+        } else {
+            if (cachedGameDisplayId != null || cachedGameDisplay == null) {
+                android.content.SharedPreferences prefs = getContext().getSharedPreferences(
+                        DisplayActivity.PREFS_NAME, android.content.Context.MODE_PRIVATE);
+                cachedGameDisplay = prefs.getString(DisplayActivity.KEY_GAME_DISPLAY,
+                        DisplayActivity.GAME_DISPLAY_FILL);
+                cachedGameDisplayId = null;
+            }
+            value = cachedGameDisplay;
+        }
+        return DisplayActivity.GAME_DISPLAY_FIT.equals(value);
+    }
+
     private String currentFilterId() {
         String gameId = EntryActivity.gameId;
         String filter;
@@ -1026,26 +1090,23 @@ try {
                 && stableDisplayFrame.getWidth() == width && stableDisplayFrame.getHeight() == height) {
             return stableDisplayFrame;
         }
-        int length = width * height;
-        int[] px = displaySnapshotPixels;
-        if (px == null || px.length != length) {
-            px = new int[length];
-            displaySnapshotPixels = px;
-        }
-        synchronized (opendoja.host.DesktopSurface.PRESENTATION_COPY_LOCK) {
-            source.getPixels(px, 0, width, 0, 0, width, height);
-        }
-        for (int i = 0; i < length; i++) {
-            px[i] |= 0xFF000000;
-        }
         displaySnapshotIndex = (displaySnapshotIndex + 1) % DISPLAY_SNAPSHOT_COUNT;
         Bitmap snapshot = displaySnapshots[displaySnapshotIndex];
+        Canvas snapshotCanvas = displaySnapshotCanvases[displaySnapshotIndex];
         if (snapshot == null || snapshot.getWidth() != width || snapshot.getHeight() != height) {
             snapshot = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
             displaySnapshots[displaySnapshotIndex] = snapshot;
+            snapshotCanvas = new Canvas(snapshot);
+            displaySnapshotCanvases[displaySnapshotIndex] = snapshotCanvas;
         }
+        // Both the source and the snapshot are ARGB_8888 Android bitmaps. Copying
+        // through a Canvas is a native blit; the previous getPixels/OR-alpha/setPixels
+        // path round-tripped the whole frame through the JNI and hwui color converters.
+        synchronized (opendoja.host.DesktopSurface.PRESENTATION_COPY_LOCK) {
+            snapshotCanvas.drawBitmap(source, 0f, 0f, displaySnapshotPaint);
+        }
+        // The handset LCD has no alpha channel: RGB is displayed as-is.
         snapshot.setHasAlpha(false);
-        snapshot.setPixels(px, 0, width, 0, 0, width, height);
         stableDisplayFrame = snapshot;
         stableDisplayVersion = sourceVersion;
         return snapshot;
@@ -1064,15 +1125,24 @@ try {
             upscalePaint = new Paint(Paint.FILTER_BITMAP_FLAG);
             upscalePaint.setDither(true);
         }
+        RectF clipRect = apertureRect.width() > 0f && apertureRect.height() > 0f ? apertureRect : gameRect;
         boolean clipRounded = gameCornerRadiusX > 0f && gameCornerRadiusY > 0f;
         if (clipRounded) {
             // Match the skin's screen opening so the game image shows rounded
             // corners where the skin's bezel curves (Original mode only).
             canvas.save();
             gameClipPath.rewind();
-            gameClipPath.addRoundRect(gameRect, gameCornerRadiusX, gameCornerRadiusY,
+            gameClipPath.addRoundRect(clipRect, gameCornerRadiusX, gameCornerRadiusY,
                     android.graphics.Path.Direction.CW);
             canvas.clipPath(gameClipPath);
+        }
+        // Aspect fitting leaves bars on the long axis of a widescreen game.
+        // Paint them black so the skin opening looks like a proper letterbox
+        // instead of showing whatever the skin artwork has underneath.
+        if (gameRect.left > clipRect.left + 0.5f || gameRect.top > clipRect.top + 0.5f
+                || gameRect.right < clipRect.right - 0.5f || gameRect.bottom < clipRect.bottom - 0.5f) {
+            letterboxPaint.setColor(0xFF000000);
+            canvas.drawRect(clipRect, letterboxPaint);
         }
         // Scale straight onto the (hardware-accelerated) view canvas so the GPU does the
         // bilinear filtered upscale. The previous code first scaled the whole frame into an

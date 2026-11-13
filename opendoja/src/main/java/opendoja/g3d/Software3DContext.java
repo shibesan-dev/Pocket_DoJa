@@ -2,6 +2,8 @@ package opendoja.g3d;
 
 import com.nttdocomo.opt.ui.j3d.PrimitiveArray;
 import opendoja.host.OpenDoJaLog;
+import opendoja.host.compat.CompatFeature;
+import opendoja.host.compat.GameCompatibility;
 
 import opendoja.compat.awt.*;
 import opendoja.compat.awt.geom.Path2D;
@@ -1362,6 +1364,7 @@ public final class Software3DContext {
                                              float x0, float y0, float u0, float v0, float d0,
                                              float x1, float y1, float u1, float v1, float d1,
                                              float x2, float y2, float u2, float v2, float d2) {
+        boolean clampUvToPrimitiveRect = GameCompatibility.isFeatureEnabled(CompatFeature.G3D_UV_CLAMP_TO_PRIMITIVE_RECT);
         float area = edge(x0, y0, x1, y1, x2, y2);
         if (java.lang.Math.abs(area) < 0.0001f) {
             return;
@@ -1432,13 +1435,15 @@ public final class Software3DContext {
                 }
                 // Never read past this primitive's atlas sub-rectangle. Nearest-neighbour
                 // sampling uses floor(), so clamp just inside the last owned texel as well.
-                if (quadUMax - quadUMin > 1e-4f) {
-                    float uMax = quadUMax - 1e-3f;
-                    u = u < quadUMin ? quadUMin : (u > uMax ? uMax : u);
-                }
-                if (quadVMax - quadVMin > 1e-4f) {
-                    float vMax = quadVMax - 1e-3f;
-                    v = v < quadVMin ? quadVMin : (v > vMax ? vMax : v);
+                if (clampUvToPrimitiveRect) {
+                    if (quadUMax - quadUMin > 1e-4f) {
+                        float uMax = quadUMax - 1e-3f;
+                        u = u < quadUMin ? quadUMin : (u > uMax ? uMax : u);
+                    }
+                    if (quadVMax - quadVMin > 1e-4f) {
+                        float vMax = quadVMax - 1e-3f;
+                        v = v < quadVMin ? quadVMin : (v > vMax ? vMax : v);
+                    }
                 }
                 int sample = multiplyColor(texture.sampleColor(u, v, transparentPaletteZero), modulationColor);
                 if (vertexModulationColors != null) {
