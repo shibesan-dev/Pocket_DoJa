@@ -2,8 +2,15 @@ package com.docomostar.ui;
 
 /**
  * Star compatibility shim delegating to com.nttdocomo.ui.AudioPresenter.
+ *
+ * <p>Implements the Star {@link com.docomostar.ui.MediaPresenter} marker so the
+ * {@link com.docomostar.ui.MediaListener} bridge dispatches audio events to
+ * titles such as Dragon Quest 3. Without this marker the bridge's
+ * {@code instanceof com.docomostar.ui.MediaPresenter} check fails and every
+ * AUDIO_COMPLETE event is silently dropped on the floor.</p>
  */
-public class AudioPresenter extends com.nttdocomo.ui.AudioPresenter {
+public class AudioPresenter extends com.nttdocomo.ui.AudioPresenter
+        implements com.docomostar.ui.MediaPresenter {
     public AudioPresenter() {
         super();
     }

@@ -1,0 +1,136 @@
+<resources>
+    <string name="app_name">Pocket DoJa</string>
+    <string name="title_pocket_doja">Pocket DoJa</string>
+    <string name="no_installed_games">Нет установленных игр\nИспользуйте меню в правом верхнем углу, чтобы импортировать .JAM</string>
+    <string name="search">Поиск</string>
+    <string name="about_body">Pocket DoJa — это проект эмулятора для Android на основе OpenDoJa, посвящённый изучению и сохранению опыта классических Java-игр i-mode от NTT DoCoMo.</string>
+    <string name="paypal_label">"PayPal: "</string>
+    <string name="wallet_label">"Адрес кошелька: "</string>
+    <string name="footer_donations">Пожертвования полностью необязательны и помогают поддерживать дальнейшую разработку и сохранение.\n\nСпасибо за ваш интерес к Pocket DoJa!\n\n</string>
+    <string name="copied">Скопировано</string>
+    <string name="about">О программе</string>
+    <string name="invalid_image">Недопустимое изображение</string>
+    <string name="menu_import_jam">Импорт .JAM</string>
+    <string name="menu_key_mapping">Назначение клавиш</string>
+    <string name="menu_settings">Настройки</string>
+    <string name="menu_theme">Тема</string>
+    <string name="menu_about">О программе</string>
+    <string name="menu_exit">Выход</string>
+
+    <string-array name="home_menu_items">
+        <item>@string/menu_import_jam</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/menu_settings</item>
+        <item>@string/menu_theme</item>
+        <item>@string/menu_about</item>
+        <item>@string/menu_exit</item>
+        <item>@string/menu_diagnostics</item>
+    </string-array>
+
+    <string name="language">Язык</string>
+    <string name="use_system_language">Использовать системный язык</string>
+    <string name="menu_diagnostics">Сохранить диагностику</string>
+    <string name="opt_change_icon">Сменить значок</string>
+    <string name="opt_reset_icon">Сбросить значок</string>
+    <string name="opt_rename">Переименовать</string>
+    <string name="opt_display">Экран</string>
+    <string name="opt_export_save">Экспорт сохранения</string>
+    <string name="opt_import_save">Импорт сохранения</string>
+    <string name="opt_remove">Удалить из библиотеки</string>
+
+    <string-array name="game_options">
+        <item>@string/opt_change_icon</item>
+        <item>@string/opt_reset_icon</item>
+        <item>@string/opt_rename</item>
+        <item>@string/opt_display</item>
+        <item>@string/opt_export_save</item>
+        <item>@string/opt_import_save</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/opt_reset_data</item>
+        <item>@string/opt_import_sd</item>
+        <item>@string/opt_remove</item>
+    </string-array>
+
+    <string name="opt_reset_data">Сбросить данные игры</string>
+    <string name="opt_import_sd">Импорт данных с SD</string>
+    <string name="reset_data_title">Сбросить данные игры?</string>
+    <string name="reset_data_message">Восстановить исходные данные игры (scratchpad). Весь прогресс и настройки, сохранённые после импорта игры, будут потеряны.</string>
+    <string name="reset_data_done">Данные игры восстановлены до исходных</string>
+    <string name="reset_data_failed">Не удалось сбросить:</string>
+    <string name="reset_data_unavailable">Нет доступной копии исходных данных</string>
+    <string name="corrupt_data_title">Повреждённые данные игры</string>
+    <string name="corrupt_data_message">Сохранённые данные этой игры повреждены, и она может не запуститься (например, появится «ошибка подключения»). Сбросить их до исходных данных игры? Весь сохранённый прогресс будет потерян. Это также можно сделать позже из списка игр: удерживайте игру и нажмите «Сбросить данные игры».</string>
+    <string name="corrupt_data_reset">Сбросить данные</string>
+    <string name="corrupt_data_cancel">Не сейчас</string>
+    <string name="rename_title">Переименовать</string>
+    <string name="ok">ОК</string>
+    <string name="cancel">Отмена</string>
+    <string name="delete">Удалить</string>
+    <string name="load_jam">Загрузить JAM</string>
+    <string name="invalid_image_msg">Недопустимое изображение: %1$s</string>
+    <string name="save_exported">Сохранение экспортировано</string>
+    <string name="export_failed">Ошибка экспорта: %1$s</string>
+    <string name="save_imported">Сохранение успешно импортировано</string>
+    <string name="import_failed">Ошибка импорта: %1$s</string>
+    <string name="no_valid_games">Допустимые игры не найдены</string>
+    <string name="key_mapping_title">Назначение клавиш</string>
+    <string name="binding_hint">Нажмите на строку, затем нажмите аппаратную клавишу для назначения; долгое нажатие очищает. Назад — выход.</string>
+    <string name="binding_capturing">Назначение: %1$s — нажмите аппаратную клавишу (Назад — отмена)</string>
+    <string name="unbound">Не назначено</string>
+    <string name="reset">Сбросить</string>
+    <string name="doja_key">Клавиша DoJa %1$d</string>
+    <string name="exit_game_action">Выйти из игры</string>
+    <string name="display_title">Экран</string>
+    <string name="display_title_game">Экран: %1$s</string>
+    <string name="orientation">Ориентация</string>
+    <string name="game_screen">Экран игры</string>
+    <string name="debugging">Отладка</string>
+    <string name="inherit_global">Наследовать глобальные</string>
+    <string name="portrait">Портретная</string>
+    <string name="landscape">Альбомная</string>
+    <string name="portrait_reverse">Портретная (перевёрнутая)</string>
+    <string name="landscape_reverse">Альбомная (перевёрнутая)</string>
+    <string name="original">Оригинал</string>
+    <string name="full_screen">Полный экран</string>
+    <string name="game_display">Отображение игры</string>
+    <string name="fill_screen">Заполнить экран</string>
+    <string name="scale_to_fit">Вписать в экран</string>
+    <string name="enable">Включить</string>
+    <string name="disable">Выключить</string>
+    <string name="filter">Фильтр</string>
+    <string name="filter_none">Нет</string>
+    <string name="filter_scanlines">Строки развёртки</string>
+    <string name="filter_lcd_grid">Сетка ЖК</string>
+    <string name="filter_crt">CRT</string>
+    <string name="filter_dot_matrix">Точечная матрица</string>
+    <string name="filter_gameboy">Game Boy</string>
+    <string name="filter_sepia">Сепия</string>
+    <string name="filter_grayscale">Оттенки серого</string>
+    <string name="display_fps">Система</string>
+    <string name="show_fps">Показывать FPS</string>
+    <string name="use_hardware_rendering">Аппаратный рендеринг</string>
+    <string name="reset_to_global">Сбросить к глобальным настройкам</string>
+    <string name="theme_title">Тема и музыка</string>
+    <string name="theme">Тема</string>
+    <string name="no_track_selected">Трек не выбран</string>
+    <string name="default_builtin">По умолчанию (встроенная)</string>
+    <string name="select_audio">Выбрать аудиофайл (.mp3/.ogg/.mld)</string>
+    <string name="invalid_mld">Недопустимый или неподдерживаемый файл MLD</string>
+    <string name="bgm_import_failed">Не удалось прочитать выбранный файл</string>
+    <string name="unsupported_audio">Неподдерживаемый формат аудио</string>
+    <string name="paused_press_any_key">-Пауза- Нажмите любую клавишу, чтобы продолжить</string>
+    <string name="no_bgm">Без музыки</string>
+    <string name="bgm">Музыка</string>
+    <string name="default_bgm">Музыка по умолчанию</string>
+    <string name="game_menu">Меню игры</string>
+    <string name="edit_buttons">Редактировать кнопки</string>
+    <string name="edit_buttons_move">Переместить</string>
+    <string name="edit_buttons_resize">Размер</string>
+    <string name="edit_buttons_hide">Скрыть</string>
+    <string name="edit_buttons_reset">Сбросить</string>
+    <string name="edit_buttons_ok">ОК</string>
+    <string name="edit_buttons_cancel">Отмена</string>
+    <string name="edit_buttons_scale">Масштаб %1$d%%</string>
+    <string name="hide_keypad">Скрыть клавиатуру</string>
+    <string name="exit_game">Выйти из игры</string>
+</resources>

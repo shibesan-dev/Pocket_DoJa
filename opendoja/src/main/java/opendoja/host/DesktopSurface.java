@@ -7,9 +7,9 @@ import java.util.concurrent.locks.LockSupport;
 import java.util.function.BiConsumer;
 
 public final class DesktopSurface {
-    // DoJa/i-appli titles are handset-bound (~10-30 fps); capping the software present path
-    // at ~30 fps prevents fast loops from burning CPU/heat without hurting the games.
-    private static final long PRESENT_SYNC_INTERVAL_NANOS = 33_000_000L;
+    // capped at 30fps to avoid abnormal speed. Native game is 30fps.
+    private static final double PRESENT_SYNC_TOKENS_PER_NANOSECOND = 30.5 / 1_000_000_000.0;
+    private static final double PRESENT_SYNC_MAX_TOKENS = 2.0;
     private static final int PRESENTATION_BUFFER_COUNT = 3;
     /**
      * Serializes snapshot writers (copyForPresentation) against readers
@@ -32,6 +32,11 @@ public final class DesktopSurface {
     private float[] depthBuffer;
     private boolean depthFrameActive;
     private long nextRenderSyncNanos;
+    private long presentTokenNanos;
+    private double presentTokens = PRESENT_SYNC_MAX_TOKENS;
+    private long presentWindowStartNanos;
+    private int presentAccepted;
+    private int presentDropped;
     private boolean openGlesSeen;
     private int activeGraphicsLocks;
     /**
@@ -89,6 +94,11 @@ public final class DesktopSurface {
         this.depthBuffer = null;
         this.depthFrameActive = false;
         this.nextRenderSyncNanos = 0L;
+        this.presentTokenNanos = 0L;
+        this.presentTokens = PRESENT_SYNC_MAX_TOKENS;
+        this.presentWindowStartNanos = 0L;
+        this.presentAccepted = 0;
+        this.presentDropped = 0;
         this.openGlesSeen = false;
         this.activeGraphicsLocks = 0;
         this.oglFramePixels = null;
@@ -171,6 +181,30 @@ public final class DesktopSurface {
             return;
         }
         expandOglDirtyRect(0, 0, oglRenderWidth - 1, oglRenderHeight - 1);
+    }
+
+    /** Refreshes the OGL render-target size without seeding it from the bitmap. */
+    public synchronized void ensureOglRenderTarget() {
+        updateOglRenderTarget();
+    }
+
+    /**
+     * Returns the side framebuffer for a hardware full-frame readback. Unlike
+     * {@link #acquireOglFramePixels()} this does not copy the bitmap first: the
+     * caller overwrites every pixel with the GPU result.
+     */
+    public synchronized int[] acquireOglFramePixelsForOverwrite() {
+        updateOglRenderTarget();
+        return oglFramePixels;
+    }
+
+    /** Publishes a full-frame hardware readback so it can reach the bitmap. */
+    public synchronized void completeOglFrameReadback() {
+        if (oglFramePixels == null) {
+            return;
+        }
+        oglFrameInitialized = true;
+        markOglFrameDirty();
     }
 
     /** Records the render-target bounds touched by a rasterized triangle. */
@@ -591,20 +625,49 @@ public final class DesktopSurface {
     }
 
     private boolean shouldPresentNow(boolean paced) {
-        if (!paced) {
-            return true;
-        }
-        // Cap the on-screen present rate by COALESCING, never by sleeping the game
-        // thread. Blocking here made titles that present many times while building their
-        // startup display list take minutes to leave "Booting...". If a present arrives
-        // before the interval, drop it (the surface keeps the newest content and the next
-        // present after the interval shows it); the game itself runs at full speed.
         long now = System.nanoTime();
-        if (nextRenderSyncNanos != 0L && now < nextRenderSyncNanos) {
+        // Every present goes through the cap, including direct-canvas and
+        // per-pass flushes. Coalescing is instant (frames are dropped, never
+        // slept), so a burst of intermediate presents cannot stall the game;
+        // the next accepted present carries the latest surface content.
+        if (presentTokenNanos == 0L) {
+            presentTokenNanos = now;
+        }
+        double refill = (now - presentTokenNanos) * PRESENT_SYNC_TOKENS_PER_NANOSECOND;
+        presentTokenNanos = now;
+        if (refill > 0.0) {
+            presentTokens = Math.min(PRESENT_SYNC_MAX_TOKENS, presentTokens + refill);
+        }
+        if (presentTokens < 1.0) {
+            presentDropped++;
+            logPresentStatsIfDue(now);
             return false;
         }
-        nextRenderSyncNanos = now + PRESENT_SYNC_INTERVAL_NANOS;
+        presentTokens -= 1.0;
+        presentAccepted++;
+        logPresentStatsIfDue(now);
         return true;
+    }
+
+    private void logPresentStatsIfDue(long now) {
+        if (presentWindowStartNanos == 0L) {
+            presentWindowStartNanos = now;
+            return;
+        }
+        long windowNanos = now - presentWindowStartNanos;
+        if (windowNanos < 2_000_000_000L) {
+            return;
+        }
+        if (OpenDoJaLog.isDebugEnabled()) {
+            double seconds = windowNanos / 1_000_000_000.0;
+            OpenDoJaLog.debug(DesktopSurface.class, String.format(
+                    java.util.Locale.US,
+                    "PRESENT stats %.1fs fps=%.1f accepted=%d dropped=%d",
+                    seconds, presentAccepted / seconds, presentAccepted, presentDropped));
+        }
+        presentWindowStartNanos = now;
+        presentAccepted = 0;
+        presentDropped = 0;
     }
 
     private void present(BufferedImage presentedFrame, boolean frameBoundary) {

@@ -190,13 +190,13 @@ final class OglSoftwareRenderer {
         }
         boolean useExtensionMatrices = positionSize >= 3 && ogl.usesExtensionMatrices();
         owner.transformVertex(clipVector, owner.eyeVectorTemp(), x, y, z, vertexIndex, useExtensionMatrices);
-        float w = Math.abs(clipVector.w) < 0.000001f ? (clipVector.w < 0f ? -0.000001f : 0.000001f) : clipVector.w;
+        float w = OglRenderer.absFloat(clipVector.w) < 0.000001f ? (clipVector.w < 0f ? -0.000001f : 0.000001f) : clipVector.w;
         float ndcX = clipVector.x / w;
         float ndcY = clipVector.y / w;
         float ndcZ = clipVector.z / w;
         float windowDepth = ogl.depthRangeNear + (((ndcZ + 1f) * 0.5f) * (ogl.depthRangeFar - ogl.depthRangeNear));
         float depth = 1f - windowDepth;
-        float reciprocalW = 1f / Math.max(0.000001f, Math.abs(w));
+        float reciprocalW = 1f / Math.max(0.000001f, OglRenderer.absFloat(w));
         int primaryColor = resolvePrimaryColor(vertexIndex);
         if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
             return false;
@@ -338,8 +338,16 @@ final class OglSoftwareRenderer {
         if (!Float.isFinite(value)) {
             return 0;
         }
-        int scaled = Math.round(value * 255f);
-        return Math.max(0, Math.min(255, scaled));
+        float scaled = value * 255f;
+        if (scaled <= 0f) {
+            return 0;
+        }
+        if (scaled >= 255f) {
+            return 255;
+        }
+        // Math.round() routes through Float.floatToRawIntBits on this ART build;
+        // the value is already clamped, so a rounded cast is equivalent.
+        return (int) (scaled + 0.5f);
     }
 
     private int resolveLitColor(int vertexIndex, OglRenderer.ClipVector eyePosition, int sourceColor, boolean backFace) {

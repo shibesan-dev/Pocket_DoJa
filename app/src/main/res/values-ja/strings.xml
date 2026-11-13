@@ -1,11 +1,35 @@
 <resources>
+    <string name="app_name">Pocket DoJa</string>
+    <string name="title_pocket_doja">Pocket DoJa</string>
     <string name="no_installed_games">インストール済みゲームがありません\n右上のメニューから .JAM をインポート</string>
+    <string name="search">検索</string>
+    <string name="about_body">Pocket DoJa は OpenDoJa をベースにした Android 用エミュレータプロジェクトで、クラシックな NTT DoCoMo i-mode Java ゲームの体験を探求し保存することを目的としています。</string>
+    <string name="paypal_label">"PayPal: "</string>
+    <string name="wallet_label">"ウォレットアドレス: "</string>
+    <string name="footer_donations">寄付はすべて任意であり、継続的な開発と保存活動を支援します。\n\nPocket DoJa に関心をお寄せいただきありがとうございます！\n\n</string>
+    <string name="copied">コピーしました</string>
+    <string name="about">情報</string>
+    <string name="invalid_image">無効な画像</string>
     <string name="menu_import_jam">.JAM をインポート</string>
     <string name="menu_key_mapping">キー割り当て</string>
     <string name="menu_settings">設定</string>
     <string name="menu_theme">テーマ</string>
     <string name="menu_about">情報</string>
     <string name="menu_exit">終了</string>
+
+    <string-array name="home_menu_items">
+        <item>@string/menu_import_jam</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/menu_settings</item>
+        <item>@string/menu_theme</item>
+        <item>@string/menu_about</item>
+        <item>@string/menu_exit</item>
+        <item>@string/menu_diagnostics</item>
+    </string-array>
+
+    <string name="language">言語</string>
+    <string name="use_system_language">システムの言語を使用</string>
+    <string name="menu_diagnostics">診断情報を保存</string>
     <string name="opt_change_icon">アイコン変更</string>
     <string name="opt_reset_icon">アイコンリセット</string>
     <string name="opt_rename">名前変更</string>
@@ -13,33 +37,100 @@
     <string name="opt_export_save">セーブ書き出し</string>
     <string name="opt_import_save">セーブ読み込み</string>
     <string name="opt_remove">ライブラリから削除</string>
+
+    <string-array name="game_options">
+        <item>@string/opt_change_icon</item>
+        <item>@string/opt_reset_icon</item>
+        <item>@string/opt_rename</item>
+        <item>@string/opt_display</item>
+        <item>@string/opt_export_save</item>
+        <item>@string/opt_import_save</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/opt_reset_data</item>
+        <item>@string/opt_import_sd</item>
+        <item>@string/opt_remove</item>
+    </string-array>
+
+    <string name="opt_reset_data">ゲームデータをリセット</string>
+    <string name="opt_import_sd">SDデータをインポート</string>
+    <string name="reset_data_title">ゲームデータをリセットしますか？</string>
+    <string name="reset_data_message">ゲームの元のデータ（スクラッチパッド）を復元します。ゲームのインポート後に保存した進行状況や設定は失われます。</string>
+    <string name="reset_data_done">ゲームデータを元に戻しました</string>
+    <string name="reset_data_failed">リセットに失敗しました:</string>
+    <string name="reset_data_unavailable">元のデータのスナップショットがありません</string>
+    <string name="corrupt_data_title">破損したゲームデータ</string>
+    <string name="corrupt_data_message">このゲームの保存データが破損しており、起動に失敗する可能性があります（「接続エラー」など）。元のゲームデータにリセットしますか？保存した進行状況は失われます。ゲーム一覧でゲームを長押しし、「ゲームデータをリセット」から後で実行することもできます。</string>
+    <string name="corrupt_data_reset">データをリセット</string>
+    <string name="corrupt_data_cancel">今はしない</string>
     <string name="rename_title">名前変更</string>
     <string name="ok">OK</string>
     <string name="cancel">キャンセル</string>
+    <string name="delete">削除</string>
+    <string name="load_jam">JAMを読み込む</string>
+    <string name="invalid_image_msg">無効な画像: %1$s</string>
+    <string name="save_exported">セーブを書き出しました</string>
+    <string name="export_failed">書き出しに失敗しました: %1$s</string>
+    <string name="save_imported">セーブを読み込みました</string>
+    <string name="import_failed">読み込みに失敗しました: %1$s</string>
+    <string name="no_valid_games">有効なゲームが見つかりません</string>
     <string name="key_mapping_title">キー割り当て</string>
+    <string name="binding_hint">行をタップしてハードウェアキーを押すと割り当てます。長押しで解除。戻るで終了。</string>
+    <string name="binding_capturing">割り当て中: %1$s - ハードウェアキーを押してください（戻るでキャンセル）</string>
     <string name="unbound">未割り当て</string>
     <string name="reset">リセット</string>
+    <string name="doja_key">DoJaキー %1$d</string>
+    <string name="exit_game_action">ゲームを終了</string>
     <string name="display_title">表示</string>
+    <string name="display_title_game">表示: %1$s</string>
     <string name="orientation">画面の向き</string>
     <string name="game_screen">ゲーム画面</string>
     <string name="debugging">デバッグ</string>
+    <string name="inherit_global">グローバルを継承</string>
     <string name="portrait">縦</string>
     <string name="landscape">横</string>
+    <string name="portrait_reverse">縦（反転）</string>
+    <string name="landscape_reverse">横（反転）</string>
     <string name="original">オリジナル</string>
     <string name="full_screen">フルスクリーン</string>
+    <string name="game_display">ゲーム表示</string>
+    <string name="fill_screen">画面を埋める</string>
+    <string name="scale_to_fit">画面に合わせる</string>
     <string name="enable">有効</string>
     <string name="disable">無効</string>
-    <string name="game_menu">ゲームメニュー</string>
-    <string name="hide_keypad">キーパッドを隠す</string>
-    <string name="exit_game">ゲーム終了</string>
-    <string name="theme_title">テーマとBGM</string>
-    <string name="theme">テーマ</string>
-    <string name="no_bgm">BGMなし</string>
-    <string name="bgm">BGM</string>
-    <string name="about">情報</string>
     <string name="filter">フィルター</string>
     <string name="filter_none">なし</string>
+    <string name="filter_scanlines">走査線</string>
+    <string name="filter_lcd_grid">LCDグリッド</string>
+    <string name="filter_crt">CRT</string>
+    <string name="filter_dot_matrix">ドットマトリクス</string>
+    <string name="filter_gameboy">ゲームボーイ</string>
+    <string name="filter_sepia">セピア</string>
+    <string name="filter_grayscale">グレースケール</string>
+    <string name="display_fps">システム</string>
+    <string name="show_fps">FPSを表示</string>
+    <string name="use_hardware_rendering">ハードウェアレンダリングを使用</string>
+    <string name="reset_to_global">グローバル設定に戻す</string>
+    <string name="theme_title">テーマとBGM</string>
+    <string name="theme">テーマ</string>
+    <string name="no_track_selected">トラックが選択されていません</string>
+    <string name="default_builtin">デフォルト（内蔵）</string>
+    <string name="select_audio">音声ファイルを選択 (.mp3/.ogg/.mld)</string>
+    <string name="invalid_mld">無効または未対応のMLDファイル</string>
     <string name="bgm_import_failed">選択したファイルを読み込めませんでした</string>
     <string name="unsupported_audio">対応していない音声形式です</string>
     <string name="paused_press_any_key">-一時停止- 何かキーを押すと再開します</string>
+    <string name="no_bgm">BGMなし</string>
+    <string name="bgm">BGM</string>
+    <string name="default_bgm">デフォルトBGM</string>
+    <string name="game_menu">ゲームメニュー</string>
+    <string name="edit_buttons">ボタンを編集</string>
+    <string name="edit_buttons_move">移動</string>
+    <string name="edit_buttons_resize">サイズ変更</string>
+    <string name="edit_buttons_hide">非表示</string>
+    <string name="edit_buttons_reset">リセット</string>
+    <string name="edit_buttons_ok">OK</string>
+    <string name="edit_buttons_cancel">キャンセル</string>
+    <string name="edit_buttons_scale">スケール %1$d%%</string>
+    <string name="hide_keypad">キーパッドを隠す</string>
+    <string name="exit_game">ゲーム終了</string>
 </resources>

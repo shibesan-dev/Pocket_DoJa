@@ -1,11 +1,35 @@
 <resources>
+    <string name="app_name">Pocket DoJa</string>
+    <string name="title_pocket_doja">Pocket DoJa</string>
     <string name="no_installed_games">No hay juegos instalados\nUsa el menú superior derecho para importar .JAM</string>
+    <string name="search">Buscar</string>
+    <string name="about_body">Pocket DoJa es un proyecto de emulador para Android basado en OpenDoJa, dedicado a explorar y preservar la experiencia de los clásicos juegos Java de i-mode de NTT DoCoMo.</string>
+    <string name="paypal_label">"PayPal: "</string>
+    <string name="wallet_label">"Dirección de cartera: "</string>
+    <string name="footer_donations">Las donaciones son totalmente opcionales y ayudan a apoyar el desarrollo y la preservación continuos.\n\n¡Gracias por tu interés en Pocket DoJa!\n\n</string>
+    <string name="copied">Copiado</string>
+    <string name="about">Acerca de</string>
+    <string name="invalid_image">Imagen no válida</string>
     <string name="menu_import_jam">Importar .JAM</string>
     <string name="menu_key_mapping">Mapeo de teclas</string>
     <string name="menu_settings">Ajustes</string>
     <string name="menu_theme">Tema</string>
     <string name="menu_about">Acerca de</string>
     <string name="menu_exit">Salir</string>
+
+    <string-array name="home_menu_items">
+        <item>@string/menu_import_jam</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/menu_settings</item>
+        <item>@string/menu_theme</item>
+        <item>@string/menu_about</item>
+        <item>@string/menu_exit</item>
+        <item>@string/menu_diagnostics</item>
+    </string-array>
+
+    <string name="language">Idioma</string>
+    <string name="use_system_language">Usar idioma del sistema</string>
+    <string name="menu_diagnostics">Guardar diagnóstico</string>
     <string name="opt_change_icon">Cambiar icono</string>
     <string name="opt_reset_icon">Restablecer icono</string>
     <string name="opt_rename">Renombrar</string>
@@ -13,33 +37,100 @@
     <string name="opt_export_save">Exportar guardado</string>
     <string name="opt_import_save">Importar guardado</string>
     <string name="opt_remove">Quitar de la biblioteca</string>
+
+    <string-array name="game_options">
+        <item>@string/opt_change_icon</item>
+        <item>@string/opt_reset_icon</item>
+        <item>@string/opt_rename</item>
+        <item>@string/opt_display</item>
+        <item>@string/opt_export_save</item>
+        <item>@string/opt_import_save</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/opt_reset_data</item>
+        <item>@string/opt_import_sd</item>
+        <item>@string/opt_remove</item>
+    </string-array>
+
+    <string name="opt_reset_data">Restablecer datos del juego</string>
+    <string name="opt_import_sd">Importar datos SD</string>
+    <string name="reset_data_title">¿Restablecer datos del juego?</string>
+    <string name="reset_data_message">Restaura los datos originales del juego (scratchpad). Se perderá cualquier progreso o ajuste guardado después de importar el juego.</string>
+    <string name="reset_data_done">Datos del juego restablecidos a los originales</string>
+    <string name="reset_data_failed">Error al restablecer:</string>
+    <string name="reset_data_unavailable">No hay una copia de los datos originales disponible</string>
+    <string name="corrupt_data_title">Datos del juego dañados</string>
+    <string name="corrupt_data_message">Los datos guardados de este juego están dañados y es posible que no se inicie (por ejemplo, con un \"error de conexión\"). ¿Restablecerlos a los datos originales? Se perderá todo el progreso guardado. También puedes hacerlo más tarde desde la lista de juegos: mantén pulsado el juego y toca \"Restablecer datos del juego\".</string>
+    <string name="corrupt_data_reset">Restablecer datos</string>
+    <string name="corrupt_data_cancel">Ahora no</string>
     <string name="rename_title">Renombrar</string>
     <string name="ok">Aceptar</string>
     <string name="cancel">Cancelar</string>
+    <string name="delete">Eliminar</string>
+    <string name="load_jam">Cargar JAM</string>
+    <string name="invalid_image_msg">Imagen no válida: %1$s</string>
+    <string name="save_exported">Guardado exportado</string>
+    <string name="export_failed">Error al exportar: %1$s</string>
+    <string name="save_imported">Guardado importado correctamente</string>
+    <string name="import_failed">Error al importar: %1$s</string>
+    <string name="no_valid_games">No se encontraron juegos válidos</string>
     <string name="key_mapping_title">Mapeo de teclas</string>
+    <string name="binding_hint">Toca una fila y pulsa una tecla física para asignarla; mantén pulsado para borrar. Atrás sale.</string>
+    <string name="binding_capturing">Asignando: %1$s - pulsa una tecla física (Atrás cancela)</string>
     <string name="unbound">Sin asignar</string>
     <string name="reset">Restablecer</string>
+    <string name="doja_key">Tecla DoJa %1$d</string>
+    <string name="exit_game_action">Salir del juego</string>
     <string name="display_title">Pantalla</string>
+    <string name="display_title_game">Pantalla: %1$s</string>
     <string name="orientation">Orientación</string>
     <string name="game_screen">Pantalla del juego</string>
     <string name="debugging">Depuración</string>
+    <string name="inherit_global">Heredar global</string>
     <string name="portrait">Vertical</string>
     <string name="landscape">Horizontal</string>
+    <string name="portrait_reverse">Vertical (invertido)</string>
+    <string name="landscape_reverse">Horizontal (invertido)</string>
     <string name="original">Original</string>
     <string name="full_screen">Pantalla completa</string>
+    <string name="game_display">Visualización del juego</string>
+    <string name="fill_screen">Rellenar pantalla</string>
+    <string name="scale_to_fit">Ajustar a pantalla</string>
     <string name="enable">Activar</string>
     <string name="disable">Desactivar</string>
-    <string name="game_menu">Menú del juego</string>
-    <string name="hide_keypad">Ocultar teclado</string>
-    <string name="exit_game">Salir del juego</string>
-    <string name="theme_title">Tema y música</string>
-    <string name="theme">Tema</string>
-    <string name="no_bgm">Sin música</string>
-    <string name="bgm">Música</string>
-    <string name="about">Acerca de</string>
     <string name="filter">Filtro</string>
     <string name="filter_none">Ninguno</string>
+    <string name="filter_scanlines">Líneas de barrido</string>
+    <string name="filter_lcd_grid">Rejilla LCD</string>
+    <string name="filter_crt">CRT</string>
+    <string name="filter_dot_matrix">Matriz de puntos</string>
+    <string name="filter_gameboy">Game Boy</string>
+    <string name="filter_sepia">Sepia</string>
+    <string name="filter_grayscale">Escala de grises</string>
+    <string name="display_fps">Sistema</string>
+    <string name="show_fps">Mostrar FPS</string>
+    <string name="use_hardware_rendering">Usar renderización por hardware</string>
+    <string name="reset_to_global">Restablecer valores globales</string>
+    <string name="theme_title">Tema y música</string>
+    <string name="theme">Tema</string>
+    <string name="no_track_selected">Ninguna pista seleccionada</string>
+    <string name="default_builtin">Predeterminado (integrado)</string>
+    <string name="select_audio">Seleccionar archivo de audio (.mp3/.ogg/.mld)</string>
+    <string name="invalid_mld">Archivo MLD no válido o no compatible</string>
     <string name="bgm_import_failed">No se pudo leer el archivo seleccionado</string>
     <string name="unsupported_audio">Formato de audio no compatible</string>
-    <string name="paused_press_any_key">-En pausa- Pulse cualquier tecla para continuar</string>
+    <string name="paused_press_any_key">-En pausa- Pulsa cualquier tecla para continuar</string>
+    <string name="no_bgm">Sin música</string>
+    <string name="bgm">Música</string>
+    <string name="default_bgm">Música predeterminada</string>
+    <string name="game_menu">Menú del juego</string>
+    <string name="edit_buttons">Editar botones</string>
+    <string name="edit_buttons_move">Mover</string>
+    <string name="edit_buttons_resize">Redimensionar</string>
+    <string name="edit_buttons_hide">Ocultar</string>
+    <string name="edit_buttons_reset">Restablecer</string>
+    <string name="edit_buttons_ok">Aceptar</string>
+    <string name="edit_buttons_cancel">Cancelar</string>
+    <string name="edit_buttons_scale">Escala %1$d%%</string>
+    <string name="hide_keypad">Ocultar teclado</string>
+    <string name="exit_game">Salir del juego</string>
 </resources>

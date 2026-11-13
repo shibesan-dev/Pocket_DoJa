@@ -1,0 +1,136 @@
+<resources>
+    <string name="app_name">Pocket DoJa</string>
+    <string name="title_pocket_doja">Pocket DoJa</string>
+    <string name="no_installed_games">Nenhum jogo instalado\nUse o menu no canto superior direito para importar .JAM</string>
+    <string name="search">Pesquisar</string>
+    <string name="about_body">Pocket DoJa é um projeto de emulador para Android baseado no OpenDoJa, dedicado a explorar e preservar a experiência dos clássicos jogos Java i-mode da NTT DoCoMo.</string>
+    <string name="paypal_label">"PayPal: "</string>
+    <string name="wallet_label">"Endereço da carteira: "</string>
+    <string name="footer_donations">As doações são totalmente opcionais e ajudam a apoiar o desenvolvimento e os esforços de preservação contínuos.\n\nObrigado pelo seu interesse no Pocket DoJa!\n\n</string>
+    <string name="copied">Copiado</string>
+    <string name="about">Sobre</string>
+    <string name="invalid_image">Imagem inválida</string>
+    <string name="menu_import_jam">Importar .JAM</string>
+    <string name="menu_key_mapping">Mapeamento de teclas</string>
+    <string name="menu_settings">Configurações</string>
+    <string name="menu_theme">Tema</string>
+    <string name="menu_about">Sobre</string>
+    <string name="menu_exit">Sair</string>
+
+    <string-array name="home_menu_items">
+        <item>@string/menu_import_jam</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/menu_settings</item>
+        <item>@string/menu_theme</item>
+        <item>@string/menu_about</item>
+        <item>@string/menu_exit</item>
+        <item>@string/menu_diagnostics</item>
+    </string-array>
+
+    <string name="language">Idioma</string>
+    <string name="use_system_language">Usar idioma do sistema</string>
+    <string name="menu_diagnostics">Salvar diagnóstico</string>
+    <string name="opt_change_icon">Alterar ícone</string>
+    <string name="opt_reset_icon">Redefinir ícone</string>
+    <string name="opt_rename">Renomear</string>
+    <string name="opt_display">Exibição</string>
+    <string name="opt_export_save">Exportar save</string>
+    <string name="opt_import_save">Importar save</string>
+    <string name="opt_remove">Remover da biblioteca</string>
+
+    <string-array name="game_options">
+        <item>@string/opt_change_icon</item>
+        <item>@string/opt_reset_icon</item>
+        <item>@string/opt_rename</item>
+        <item>@string/opt_display</item>
+        <item>@string/opt_export_save</item>
+        <item>@string/opt_import_save</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/opt_reset_data</item>
+        <item>@string/opt_import_sd</item>
+        <item>@string/opt_remove</item>
+    </string-array>
+
+    <string name="opt_reset_data">Redefinir dados do jogo</string>
+    <string name="opt_import_sd">Importar dados do SD</string>
+    <string name="reset_data_title">Redefinir dados do jogo?</string>
+    <string name="reset_data_message">Restaura os dados originais do jogo (scratchpad). Qualquer progresso ou configuração salva após a importação do jogo será perdido.</string>
+    <string name="reset_data_done">Dados do jogo restaurados ao original</string>
+    <string name="reset_data_failed">Falha ao redefinir:</string>
+    <string name="reset_data_unavailable">Nenhum snapshot dos dados originais disponível</string>
+    <string name="corrupt_data_title">Dados do jogo danificados</string>
+    <string name="corrupt_data_message">Os dados salvos deste jogo estão danificados e ele pode não iniciar (por exemplo, \"erro de conexão\"). Redefinir para os dados originais do jogo? Todo o progresso salvo será perdido. Você também pode fazer isso depois na lista de jogos: mantenha o jogo pressionado e toque em \"Redefinir dados do jogo\".</string>
+    <string name="corrupt_data_reset">Redefinir dados</string>
+    <string name="corrupt_data_cancel">Agora não</string>
+    <string name="rename_title">Renomear</string>
+    <string name="ok">OK</string>
+    <string name="cancel">Cancelar</string>
+    <string name="delete">Excluir</string>
+    <string name="load_jam">Carregar JAM</string>
+    <string name="invalid_image_msg">Imagem inválida: %1$s</string>
+    <string name="save_exported">Save exportado</string>
+    <string name="export_failed">Falha na exportação: %1$s</string>
+    <string name="save_imported">Save importado com sucesso</string>
+    <string name="import_failed">Falha na importação: %1$s</string>
+    <string name="no_valid_games">Nenhum jogo válido encontrado</string>
+    <string name="key_mapping_title">Mapeamento de teclas</string>
+    <string name="binding_hint">Toque em uma linha e pressione uma tecla física para atribuir; pressione e segure para limpar. Voltar sai.</string>
+    <string name="binding_capturing">Atribuindo: %1$s - pressione uma tecla física (Voltar cancela)</string>
+    <string name="unbound">Não atribuído</string>
+    <string name="reset">Redefinir</string>
+    <string name="doja_key">Tecla DoJa %1$d</string>
+    <string name="exit_game_action">Sair do jogo</string>
+    <string name="display_title">Exibição</string>
+    <string name="display_title_game">Exibição: %1$s</string>
+    <string name="orientation">Orientação</string>
+    <string name="game_screen">Tela do jogo</string>
+    <string name="debugging">Depuração</string>
+    <string name="inherit_global">Herdar global</string>
+    <string name="portrait">Retrato</string>
+    <string name="landscape">Paisagem</string>
+    <string name="portrait_reverse">Retrato (invertido)</string>
+    <string name="landscape_reverse">Paisagem (invertido)</string>
+    <string name="original">Original</string>
+    <string name="full_screen">Tela cheia</string>
+    <string name="game_display">Exibição do jogo</string>
+    <string name="fill_screen">Preencher tela</string>
+    <string name="scale_to_fit">Ajustar à tela</string>
+    <string name="enable">Ativar</string>
+    <string name="disable">Desativar</string>
+    <string name="filter">Filtro</string>
+    <string name="filter_none">Nenhum</string>
+    <string name="filter_scanlines">Linhas de varredura</string>
+    <string name="filter_lcd_grid">Grade LCD</string>
+    <string name="filter_crt">CRT</string>
+    <string name="filter_dot_matrix">Matriz de pontos</string>
+    <string name="filter_gameboy">Game Boy</string>
+    <string name="filter_sepia">Sépia</string>
+    <string name="filter_grayscale">Escala de cinza</string>
+    <string name="display_fps">Sistema</string>
+    <string name="show_fps">Mostrar FPS</string>
+    <string name="use_hardware_rendering">Usar renderização por hardware</string>
+    <string name="reset_to_global">Redefinir para padrões globais</string>
+    <string name="theme_title">Tema e música</string>
+    <string name="theme">Tema</string>
+    <string name="no_track_selected">Nenhuma faixa selecionada</string>
+    <string name="default_builtin">Padrão (integrado)</string>
+    <string name="select_audio">Selecionar arquivo de áudio (.mp3/.ogg/.mld)</string>
+    <string name="invalid_mld">Arquivo MLD inválido ou não suportado</string>
+    <string name="bgm_import_failed">Não foi possível ler o arquivo selecionado</string>
+    <string name="unsupported_audio">Formato de áudio não suportado</string>
+    <string name="paused_press_any_key">-Pausado- Pressione qualquer tecla para continuar</string>
+    <string name="no_bgm">Sem música</string>
+    <string name="bgm">Música</string>
+    <string name="default_bgm">Música padrão</string>
+    <string name="game_menu">Menu do jogo</string>
+    <string name="edit_buttons">Editar botões</string>
+    <string name="edit_buttons_move">Mover</string>
+    <string name="edit_buttons_resize">Redimensionar</string>
+    <string name="edit_buttons_hide">Ocultar</string>
+    <string name="edit_buttons_reset">Redefinir</string>
+    <string name="edit_buttons_ok">OK</string>
+    <string name="edit_buttons_cancel">Cancelar</string>
+    <string name="edit_buttons_scale">Escala %1$d%%</string>
+    <string name="hide_keypad">Ocultar teclado</string>
+    <string name="exit_game">Sair do jogo</string>
+</resources>

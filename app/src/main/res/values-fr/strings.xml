@@ -1,0 +1,136 @@
+<resources>
+    <string name="app_name">Pocket DoJa</string>
+    <string name="title_pocket_doja">Pocket DoJa</string>
+    <string name="no_installed_games">Aucun jeu installé\nUtilisez le menu en haut à droite pour importer un .JAM</string>
+    <string name="search">Rechercher</string>
+    <string name="about_body">Pocket DoJa est un projet d\'émulateur Android basé sur OpenDoJa, dédié à l\'exploration et à la préservation de l\'expérience des jeux Java i-mode classiques de NTT DoCoMo.</string>
+    <string name="paypal_label">"PayPal : "</string>
+    <string name="wallet_label">"Adresse du portefeuille : "</string>
+    <string name="footer_donations">Les dons sont entièrement facultatifs et aident à soutenir le développement et les efforts de préservation.\n\nMerci de votre intérêt pour Pocket DoJa !\n\n</string>
+    <string name="copied">Copié</string>
+    <string name="about">À propos</string>
+    <string name="invalid_image">Image non valide</string>
+    <string name="menu_import_jam">Importer un .JAM</string>
+    <string name="menu_key_mapping">Mappage des touches</string>
+    <string name="menu_settings">Paramètres</string>
+    <string name="menu_theme">Thème</string>
+    <string name="menu_about">À propos</string>
+    <string name="menu_exit">Quitter</string>
+
+    <string-array name="home_menu_items">
+        <item>@string/menu_import_jam</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/menu_settings</item>
+        <item>@string/menu_theme</item>
+        <item>@string/menu_about</item>
+        <item>@string/menu_exit</item>
+        <item>@string/menu_diagnostics</item>
+    </string-array>
+
+    <string name="language">Langue</string>
+    <string name="use_system_language">Utiliser la langue du système</string>
+    <string name="menu_diagnostics">Enregistrer les diagnostics</string>
+    <string name="opt_change_icon">Changer l\'icône</string>
+    <string name="opt_reset_icon">Réinitialiser l\'icône</string>
+    <string name="opt_rename">Renommer</string>
+    <string name="opt_display">Affichage</string>
+    <string name="opt_export_save">Exporter la sauvegarde</string>
+    <string name="opt_import_save">Importer la sauvegarde</string>
+    <string name="opt_remove">Retirer de la bibliothèque</string>
+
+    <string-array name="game_options">
+        <item>@string/opt_change_icon</item>
+        <item>@string/opt_reset_icon</item>
+        <item>@string/opt_rename</item>
+        <item>@string/opt_display</item>
+        <item>@string/opt_export_save</item>
+        <item>@string/opt_import_save</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/opt_reset_data</item>
+        <item>@string/opt_import_sd</item>
+        <item>@string/opt_remove</item>
+    </string-array>
+
+    <string name="opt_reset_data">Réinitialiser les données du jeu</string>
+    <string name="opt_import_sd">Importer les données SD</string>
+    <string name="reset_data_title">Réinitialiser les données du jeu ?</string>
+    <string name="reset_data_message">Restaure les données d\'origine du jeu (scratchpad). Toute progression ou tout paramètre enregistré après l\'importation du jeu sera perdu.</string>
+    <string name="reset_data_done">Données du jeu restaurées à l\'original</string>
+    <string name="reset_data_failed">Échec de la réinitialisation :</string>
+    <string name="reset_data_unavailable">Aucun instantané des données d\'origine disponible</string>
+    <string name="corrupt_data_title">Données de jeu corrompues</string>
+    <string name="corrupt_data_message">Les données enregistrées de ce jeu sont corrompues et il peut ne pas démarrer (par exemple, une « erreur de connexion »). Réinitialiser les données d\'origine du jeu ? Toute progression enregistrée sera perdue. Vous pouvez aussi le faire plus tard depuis la liste des jeux : maintenez le jeu enfoncé, puis appuyez sur « Réinitialiser les données du jeu ».</string>
+    <string name="corrupt_data_reset">Réinitialiser les données</string>
+    <string name="corrupt_data_cancel">Pas maintenant</string>
+    <string name="rename_title">Renommer</string>
+    <string name="ok">OK</string>
+    <string name="cancel">Annuler</string>
+    <string name="delete">Supprimer</string>
+    <string name="load_jam">Charger le JAM</string>
+    <string name="invalid_image_msg">Image non valide : %1$s</string>
+    <string name="save_exported">Sauvegarde exportée</string>
+    <string name="export_failed">Échec de l\'exportation : %1$s</string>
+    <string name="save_imported">Sauvegarde importée avec succès</string>
+    <string name="import_failed">Échec de l\'importation : %1$s</string>
+    <string name="no_valid_games">Aucun jeu valide trouvé</string>
+    <string name="key_mapping_title">Mappage des touches</string>
+    <string name="binding_hint">Appuyez sur une ligne puis sur une touche physique pour l\'attribuer ; un appui long efface. Retour quitte.</string>
+    <string name="binding_capturing">Attribution : %1$s - appuyez sur une touche physique (Retour annule)</string>
+    <string name="unbound">Non attribué</string>
+    <string name="reset">Réinitialiser</string>
+    <string name="doja_key">Touche DoJa %1$d</string>
+    <string name="exit_game_action">Quitter le jeu</string>
+    <string name="display_title">Affichage</string>
+    <string name="display_title_game">Affichage : %1$s</string>
+    <string name="orientation">Orientation</string>
+    <string name="game_screen">Écran de jeu</string>
+    <string name="debugging">Débogage</string>
+    <string name="inherit_global">Hériter des paramètres globaux</string>
+    <string name="portrait">Portrait</string>
+    <string name="landscape">Paysage</string>
+    <string name="portrait_reverse">Portrait (inversé)</string>
+    <string name="landscape_reverse">Paysage (inversé)</string>
+    <string name="original">Original</string>
+    <string name="full_screen">Plein écran</string>
+    <string name="game_display">Affichage du jeu</string>
+    <string name="fill_screen">Remplir l\'écran</string>
+    <string name="scale_to_fit">Ajuster à l\'écran</string>
+    <string name="enable">Activer</string>
+    <string name="disable">Désactiver</string>
+    <string name="filter">Filtre</string>
+    <string name="filter_none">Aucun</string>
+    <string name="filter_scanlines">Lignes de balayage</string>
+    <string name="filter_lcd_grid">Grille LCD</string>
+    <string name="filter_crt">CRT</string>
+    <string name="filter_dot_matrix">Matrice de points</string>
+    <string name="filter_gameboy">Game Boy</string>
+    <string name="filter_sepia">Sépia</string>
+    <string name="filter_grayscale">Niveaux de gris</string>
+    <string name="display_fps">Système</string>
+    <string name="show_fps">Afficher les FPS</string>
+    <string name="use_hardware_rendering">Utiliser le rendu matériel</string>
+    <string name="reset_to_global">Réinitialiser aux valeurs globales</string>
+    <string name="theme_title">Thème et musique</string>
+    <string name="theme">Thème</string>
+    <string name="no_track_selected">Aucune piste sélectionnée</string>
+    <string name="default_builtin">Par défaut (intégré)</string>
+    <string name="select_audio">Sélectionner un fichier audio (.mp3/.ogg/.mld)</string>
+    <string name="invalid_mld">Fichier MLD non valide ou non pris en charge</string>
+    <string name="bgm_import_failed">Impossible de lire le fichier sélectionné</string>
+    <string name="unsupported_audio">Format audio non pris en charge</string>
+    <string name="paused_press_any_key">-En pause- Appuyez sur une touche pour continuer</string>
+    <string name="no_bgm">Pas de musique</string>
+    <string name="bgm">Musique</string>
+    <string name="default_bgm">Musique par défaut</string>
+    <string name="game_menu">Menu du jeu</string>
+    <string name="edit_buttons">Modifier les boutons</string>
+    <string name="edit_buttons_move">Déplacer</string>
+    <string name="edit_buttons_resize">Redimensionner</string>
+    <string name="edit_buttons_hide">Masquer</string>
+    <string name="edit_buttons_reset">Réinitialiser</string>
+    <string name="edit_buttons_ok">OK</string>
+    <string name="edit_buttons_cancel">Annuler</string>
+    <string name="edit_buttons_scale">Échelle %1$d%%</string>
+    <string name="hide_keypad">Masquer le clavier</string>
+    <string name="exit_game">Quitter le jeu</string>
+</resources>

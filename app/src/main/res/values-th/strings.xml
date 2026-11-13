@@ -4,14 +4,9 @@
     <string name="no_installed_games">ไม่มีเกมที่ติดตั้ง\nใช้เมนูด้านขวาบนเพื่อนำเข้า .JAM</string>
     <string name="search">ค้นหา</string>
     <string name="about_body">Pocket DoJa เป็นโปรเจกต์อีมูเลเตอร์บน Android ที่อิงจาก OpenDoJa เพื่อสำรวจและรักษาประสบการณ์ของเกม Java i-mode คลาสสิกของ NTT DoCoMo</string>
-    <string name="paypal_label">PayPal: </string>
-    <string name="wallet_label">ที่อยู่กระเป๋า: </string>
-    <string name="footer_donations">
-การบริจาคเป็นความสมัครใจและช่วยสนับสนุนการพัฒนาและการรักษาต่อไป
-
-ขอบคุณที่สนใจ Pocket DoJa!
-
-</string>
+    <string name="paypal_label">"PayPal: "</string>
+    <string name="wallet_label">"ที่อยู่กระเป๋า: "</string>
+    <string name="footer_donations">การบริจาคเป็นความสมัครใจและช่วยสนับสนุนการพัฒนาและการรักษาต่อไป\n\nขอบคุณที่สนใจ Pocket DoJa!\n\n</string>
     <string name="copied">คัดลอกแล้ว</string>
     <string name="about">เกี่ยวกับ</string>
     <string name="invalid_image">รูปภาพไม่ถูกต้อง</string>
@@ -32,6 +27,9 @@
         <item>@string/menu_diagnostics</item>
     </string-array>
 
+    <string name="language">ภาษา</string>
+    <string name="use_system_language">ใช้ภาษาของระบบ</string>
+    <string name="menu_diagnostics">บันทึกข้อมูลการวินิจฉัย</string>
     <string name="opt_change_icon">เปลี่ยนไอคอน</string>
     <string name="opt_reset_icon">รีเซ็ตไอคอน</string>
     <string name="opt_rename">เปลี่ยนชื่อ</string>
@@ -53,6 +51,17 @@
         <item>@string/opt_remove</item>
     </string-array>
 
+    <string name="opt_reset_data">รีเซ็ตข้อมูลเกม</string>
+    <string name="opt_import_sd">นำเข้าข้อมูล SD</string>
+    <string name="reset_data_title">รีเซ็ตข้อมูลเกมหรือไม่?</string>
+    <string name="reset_data_message">คืนค่าข้อมูลเกมดั้งเดิม (scratchpad) ความคืบหน้าหรือการตั้งค่าที่บันทึกไว้หลังจากนำเข้าเกมจะหายไป</string>
+    <string name="reset_data_done">รีเซ็ตข้อมูลเกมเป็นค่าเดิมแล้ว</string>
+    <string name="reset_data_failed">รีเซ็ตล้มเหลว:</string>
+    <string name="reset_data_unavailable">ไม่มีสแนปช็อตข้อมูลดั้งเดิม</string>
+    <string name="corrupt_data_title">ข้อมูลเกมเสียหาย</string>
+    <string name="corrupt_data_message">ข้อมูลที่บันทึกของเกมนี้เสียหายและอาจเริ่มเกมไม่สำเร็จ (เช่น \"ข้อผิดพลาดการเชื่อมต่อ\") ต้องการรีเซ็ตเป็นข้อมูลเกมดั้งเดิมหรือไม่? ความคืบหน้าที่บันทึกไว้จะหายไป คุณยังสามารถทำได้ภายหลังจากรายการเกม: กดค้างที่เกมแล้วแตะ \"รีเซ็ตข้อมูลเกม\"</string>
+    <string name="corrupt_data_reset">รีเซ็ตข้อมูล</string>
+    <string name="corrupt_data_cancel">ไม่ใช่ตอนนี้</string>
     <string name="rename_title">เปลี่ยนชื่อ</string>
     <string name="ok">ตกลง</string>
     <string name="cancel">ยกเลิก</string>
@@ -64,7 +73,6 @@
     <string name="save_imported">นำเข้าบันทึกสำเร็จ</string>
     <string name="import_failed">นำเข้าล้มเหลว: %1$s</string>
     <string name="no_valid_games">ไม่พบเกมที่ใช้ได้</string>
-
     <string name="key_mapping_title">แมปปิ้งปุ่ม</string>
     <string name="binding_hint">แตะแถวแล้วกดปุ่มฮาร์ดแวร์เพื่อผูก; กดค้างเพื่อล้าง ปุ่มย้อนกลับเพื่อออก</string>
     <string name="binding_capturing">กำลังผูก: %1$s - กดปุ่มฮาร์ดแวร์ (ย้อนกลับเพื่อยกเลิก)</string>
@@ -72,7 +80,6 @@
     <string name="reset">รีเซ็ต</string>
     <string name="doja_key">ปุ่ม DoJa %1$d</string>
     <string name="exit_game_action">ออกจากเกม</string>
-
     <string name="display_title">แสดงผล</string>
     <string name="display_title_game">แสดงผล: %1$s</string>
     <string name="orientation">แนวตั้ง/แนวนอน</string>
@@ -85,26 +92,45 @@
     <string name="landscape_reverse">แนวนอน (กลับด้าน)</string>
     <string name="original">ต้นฉบับ</string>
     <string name="full_screen">เต็มจอ</string>
+    <string name="game_display">การแสดงผลเกม</string>
+    <string name="fill_screen">เต็มหน้าจอ</string>
+    <string name="scale_to_fit">ปรับขนาดให้พอดี</string>
     <string name="enable">เปิด</string>
     <string name="disable">ปิด</string>
-    <string name="reset_to_global">รีเซ็ตเป็นค่าทั่วไป</string>
-
-    <string name="game_menu">เมนูเกม</string>
-    <string name="hide_keypad">ซ่อนแป้นพิมพ์</string>
-    <string name="exit_game">ออกจากเกม</string>
-
+    <string name="filter">ฟิลเตอร์</string>
+    <string name="filter_none">ไม่มี</string>
+    <string name="filter_scanlines">เส้นสแกน</string>
+    <string name="filter_lcd_grid">ตาราง LCD</string>
+    <string name="filter_crt">CRT</string>
+    <string name="filter_dot_matrix">ดอทเมทริกซ์</string>
+    <string name="filter_gameboy">Game Boy</string>
+    <string name="filter_sepia">ซีเปีย</string>
+    <string name="filter_grayscale">โทนสีเทา</string>
+    <string name="display_fps">ระบบ</string>
+    <string name="show_fps">แสดง FPS</string>
+    <string name="use_hardware_rendering">ใช้การเรนเดอร์ด้วยฮาร์ดแวร์</string>
+    <string name="reset_to_global">รีเซ็ตเป็นค่าเริ่มต้นทั่วไป</string>
     <string name="theme_title">ธีมและเพลงพื้นหลัง</string>
     <string name="theme">ธีม</string>
     <string name="no_track_selected">ไม่ได้เลือกเพลง</string>
     <string name="default_builtin">ค่าเริ่มต้น (ในตัว)</string>
     <string name="select_audio">เลือกไฟล์เสียง (.mp3/.ogg/.mld)</string>
     <string name="invalid_mld">ไฟล์ MLD ไม่ถูกต้องหรือไม่รองรับ</string>
-    <string name="no_bgm">ไม่มีเพลงพื้นหลัง</string>
-    <string name="bgm">เพลงพื้นหลัง</string>
-    <string name="default_bgm">เพลงพื้นหลังเริ่มต้น</string>
-    <string name="filter">ฟิลเตอร์</string>
-    <string name="filter_none">ไม่มี</string>
     <string name="bgm_import_failed">ไม่สามารถอ่านไฟล์ที่เลือกได้</string>
     <string name="unsupported_audio">รูปแบบเสียงไม่รองรับ</string>
     <string name="paused_press_any_key">-หยุดชั่วคราว- กดปุ่มใดก็ได้เพื่อเล่นต่อ</string>
+    <string name="no_bgm">ไม่มีเพลงพื้นหลัง</string>
+    <string name="bgm">เพลงพื้นหลัง</string>
+    <string name="default_bgm">เพลงพื้นหลังเริ่มต้น</string>
+    <string name="game_menu">เมนูเกม</string>
+    <string name="edit_buttons">แก้ไขปุ่ม</string>
+    <string name="edit_buttons_move">ย้าย</string>
+    <string name="edit_buttons_resize">ปรับขนาด</string>
+    <string name="edit_buttons_hide">ซ่อน</string>
+    <string name="edit_buttons_reset">รีเซ็ต</string>
+    <string name="edit_buttons_ok">ตกลง</string>
+    <string name="edit_buttons_cancel">ยกเลิก</string>
+    <string name="edit_buttons_scale">ขนาด %1$d%%</string>
+    <string name="hide_keypad">ซ่อนแป้นพิมพ์</string>
+    <string name="exit_game">ออกจากเกม</string>
 </resources>

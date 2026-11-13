@@ -24,6 +24,13 @@ public enum CompatFeature {
     DPAD_ROTATE_FOR_SIDEWAYS_KEY_STYLE("input.rotateDpadForSidewaysKeyStyle", false),
 
     /**
+     * Renders 3D scenes through the host GLES1 driver instead of the software
+     * rasterizer. Off by default because the hardware path is only validated
+     * per title; unsupported drivers fall back to software automatically.
+     */
+    OPENGLES_HARDWARE_RENDERER("renderer.openGlesHardware", false),
+
+    /**
      * Draws handset bitmap text larger with wider advances. Off by default
      * because fixed-position UIs were laid out for the original metrics.
      */

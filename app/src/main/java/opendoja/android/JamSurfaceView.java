@@ -7,6 +7,7 @@ import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.RectF;
+import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
@@ -14,10 +15,12 @@ import android.view.View;
 import com.nttdocomo.ui.Display;
 import com.nttdocomo.ui.Frame;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -36,6 +39,32 @@ public class JamSurfaceView extends View {
     private static final int CTRL_MENU = 8;
     private static final int CTRL_CLEAR = 9;
     private static final int CTRL_DIAL_BASE = 10;
+
+    private static final int GROUP_DPAD = 0;
+    private static final int GROUP_DIAL = 1;
+    private static final int GROUP_SOFT = 2;
+    private static final int GROUP_COUNT = 3;
+    private static final String[] GROUP_PREF_NAMES = {"dpad", "dial", "soft"};
+
+    private static final int EDIT_TOOL_MOVE = 0;
+    private static final int EDIT_TOOL_RESIZE = 1;
+    private static final int EDIT_TOOL_HIDE = 2;
+    private static final int EDIT_TOOL_RESET = 3;
+    private static final int EDIT_TOOL_OK = 4;
+    private static final int EDIT_TOOL_CANCEL = 5;
+    private static final int EDIT_TOOL_COUNT = 6;
+    private static final int[] EDIT_TOOL_ICONS = {
+            R.drawable.ic_button_edit_move,
+            R.drawable.ic_button_edit_resize,
+            R.drawable.ic_button_edit_hide,
+            R.drawable.ic_button_edit_reset,
+            R.drawable.ic_button_edit_ok,
+            R.drawable.ic_button_edit_cancel,
+    };
+
+    private static final float BUTTON_SCALE_MIN = 0.5f;
+    private static final float BUTTON_SCALE_MAX = 2.0f;
+    private static final String BUTTON_PREF_PREFIX = "buttons";
 
     private static final String[] DIAL_LABELS = {
             "1", "2", "3",
@@ -65,6 +94,29 @@ public class JamSurfaceView extends View {
         }
     }
 
+    /** Per-game transform for one on-screen control set. Offsets are fractions
+     *  of the logical view size so they survive resolution changes. */
+    static class ButtonLayout {
+        float dx;
+        float dy;
+        float scale = 1f;
+        boolean hidden;
+
+        void reset() {
+            dx = 0f;
+            dy = 0f;
+            scale = 1f;
+            hidden = false;
+        }
+
+        void copyFrom(ButtonLayout other) {
+            dx = other.dx;
+            dy = other.dy;
+            scale = other.scale;
+            hidden = other.hidden;
+        }
+    }
+
     private final Object lock = new Object();
     private Bitmap screen;
     private int screenWidth;
@@ -88,6 +140,19 @@ public class JamSurfaceView extends View {
     private final Paint keyStrokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint keyTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint letterboxPaint = new Paint();
+
+    // "Edit Buttons" overlay paints. The grid and group highlight are drawn on
+    // top of the normal keypad; the toolbar replaces nothing, so the game frame
+    // stays visible behind it while editing.
+    private final Paint editGridPaint = new Paint();
+    private final Paint editHighlightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint editSelectionFillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint editToolbarBgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint editToolFillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint editToolBorderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint editLabelPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint editSliderTrackPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint editSliderKnobPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private Bitmap upscaleBitmap;
     private Canvas upscaleCanvas;
@@ -153,6 +218,17 @@ public class JamSurfaceView extends View {
     private String cachedGameDisplayId;
     private String cachedFilter;
 
+    // FPS overlay (Settings -> Display -> Show FPS): measured from presented
+    // game frames, drawn in the top-right corner of the game screen.
+    private static final long FPS_SAMPLE_WINDOW_NANOS = 1_000_000_000L;
+    private static final long FPS_STALE_AFTER_NANOS = 1_500_000_000L;
+    private volatile boolean showFps;
+    private final Object fpsLock = new Object();
+    private final ArrayDeque<Long> fpsFrameTimes = new ArrayDeque<>();
+    private long fpsLastFrameNanos;
+    private final Paint fpsTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint fpsBackgroundPaint = new Paint();
+
     private int lastPointerX;
     private int lastPointerY;
 
@@ -177,6 +253,40 @@ public class JamSurfaceView extends View {
 
     private JamInputController input;
     private ControlsSkin controlsSkin;
+
+    // ---- Edit Buttons state (per game) ----
+    private final ButtonLayout[] savedButtonLayouts = {
+            new ButtonLayout(), new ButtonLayout(), new ButtonLayout(),
+    };
+    private final ButtonLayout[] editButtonLayouts = {
+            new ButtonLayout(), new ButtonLayout(), new ButtonLayout(),
+    };
+    private final RectF[] groupBaseBounds = {new RectF(), new RectF(), new RectF()};
+    private final RectF[] groupBounds = {new RectF(), new RectF(), new RectF()};
+    private final RectF[] editToolbarRects = {
+            new RectF(), new RectF(), new RectF(), new RectF(), new RectF(), new RectF(),
+    };
+    private final RectF editToolbarPanel = new RectF();
+    private final RectF editResizePanel = new RectF();
+    private final RectF editResizeTrack = new RectF();
+    private final RectF editResizeKnob = new RectF();
+    private Drawable[] editToolIcons;
+    private String buttonLayoutGameId;
+    private boolean buttonLayoutsLoaded;
+    private boolean buttonEditMode;
+    private boolean keypadVisibleBeforeButtonEdit;
+    private int editTool = EDIT_TOOL_MOVE;
+    private int editSelectedGroup = -1;
+    private int editPressGroup = -1;
+    private int editPointerId = -1;
+    private boolean editPressWasSelected;
+    private boolean editPressMoved;
+    private boolean editSliderDragging;
+    private float editPressStartX;
+    private float editPressStartY;
+    private float editDragStartDx;
+    private float editDragStartDy;
+    private float editIconSize;
 
     /** Set true after releaseAllControls() so present() from a stale game thread is ignored. */
     private boolean released = false;
@@ -207,6 +317,9 @@ public class JamSurfaceView extends View {
             bmp.setHasAlpha(false);
         }
         setScreen(bmp, bmp.getWidth(), bmp.getHeight(), screenVersion + 1);
+        if (showFps) {
+            recordPresentedFrame();
+        }
         android.content.Context ctx = getContext();
         if (ctx instanceof EntryActivity) {
             ((EntryActivity) ctx).hideLoadingOverlay();
@@ -223,6 +336,87 @@ public class JamSurfaceView extends View {
      *  clears the flag in releaseAllControls() when the activity pauses). */
     public void resumeRendering() {
         released = false;
+    }
+
+    /** Enables the lime-green FPS counter in the top-right corner of the game screen. */
+    public void setShowFps(boolean enabled) {
+        if (showFps == enabled) {
+            return;
+        }
+        showFps = enabled;
+        synchronized (fpsLock) {
+            fpsFrameTimes.clear();
+            fpsLastFrameNanos = 0L;
+        }
+        postInvalidate();
+    }
+
+    public boolean isShowFps() {
+        return showFps;
+    }
+
+    private void recordPresentedFrame() {
+        long now = System.nanoTime();
+        synchronized (fpsLock) {
+            fpsLastFrameNanos = now;
+            fpsFrameTimes.addLast(now);
+            trimFpsFrameTimes(now);
+        }
+    }
+
+    private void trimFpsFrameTimes(long now) {
+        while (!fpsFrameTimes.isEmpty()
+                && now - fpsFrameTimes.peekFirst() > FPS_SAMPLE_WINDOW_NANOS) {
+            fpsFrameTimes.removeFirst();
+        }
+    }
+
+    private double currentFps(long now) {
+        if (fpsLastFrameNanos == 0L || now - fpsLastFrameNanos > FPS_STALE_AFTER_NANOS) {
+            return 0.0;
+        }
+        if (fpsFrameTimes.size() >= 2) {
+            long first = fpsFrameTimes.peekFirst();
+            long last = fpsFrameTimes.peekLast();
+            if (last > first) {
+                return ((fpsFrameTimes.size() - 1) * 1_000_000_000.0) / (last - first);
+            }
+        }
+        if (fpsFrameTimes.size() == 1) {
+            return Math.min(999.0, 1_000_000_000.0 / Math.max(1L, now - fpsFrameTimes.peekFirst()));
+        }
+        return 0.0;
+    }
+
+    private void drawFpsOverlay(Canvas canvas) {
+        if (gameRect.width() <= 0f || gameRect.height() <= 0f) {
+            return;
+        }
+        String label;
+        synchronized (fpsLock) {
+            long now = System.nanoTime();
+            trimFpsFrameTimes(now);
+            label = String.format(Locale.ROOT, "%.1f FPS", currentFps(now));
+        }
+        float textSize = Math.max(10f, Math.min(20f, gameRect.height() * 0.065f));
+        fpsTextPaint.setTextSize(textSize);
+        float textWidth = fpsTextPaint.measureText(label);
+        float margin = Math.max(3f, textSize * 0.3f);
+        float padH = Math.max(3f, textSize * 0.28f);
+        float padV = Math.max(2f, textSize * 0.16f);
+        float x = gameRect.right - margin - textWidth;
+        if (x < gameRect.left + margin) {
+            x = gameRect.left + margin;
+        }
+        float baseline = gameRect.top + margin + textSize;
+        // Solid dark backdrop keeps the counter legible over bright game HUD
+        // text. 60% black is dark enough without hiding the scene completely.
+        float bgLeft = Math.max(gameRect.left, x - padH);
+        float bgTop = Math.max(gameRect.top, baseline - textSize - padV);
+        float bgRight = Math.min(gameRect.right, x + textWidth + padH);
+        float bgBottom = Math.min(gameRect.bottom, baseline + textSize * 0.25f + padV);
+        canvas.drawRect(bgLeft, bgTop, bgRight, bgBottom, fpsBackgroundPaint);
+        canvas.drawText(label, x, baseline, fpsTextPaint);
     }
 
     private void init() {
@@ -252,6 +446,36 @@ try {
             overlayTextPaint.setColor(0xFFFFFFFF);
             overlayTextPaint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
             overlayTextPaint.setAntiAlias(true);
+        }
+        fpsTextPaint.setColor(0xFFB6FF00);
+        fpsTextPaint.setTextAlign(Paint.Align.LEFT);
+        fpsTextPaint.setTypeface(android.graphics.Typeface.create(
+                android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD));
+        fpsBackgroundPaint.setColor(0x99000000);
+
+        editGridPaint.setColor(0x557DFF5A);
+        editGridPaint.setStyle(Paint.Style.STROKE);
+        editGridPaint.setStrokeWidth(1f);
+        editHighlightPaint.setStyle(Paint.Style.STROKE);
+        editHighlightPaint.setColor(0xFFFFD600);
+        editSelectionFillPaint.setStyle(Paint.Style.FILL);
+        editSelectionFillPaint.setColor(0x2EFFD600);
+        editToolbarBgPaint.setColor(0xB3121212);
+        editToolFillPaint.setStyle(Paint.Style.FILL);
+        editToolBorderPaint.setStyle(Paint.Style.STROKE);
+        editToolBorderPaint.setStrokeWidth(2f);
+        editLabelPaint.setColor(0xFFFFFFFF);
+        editLabelPaint.setTextAlign(Paint.Align.CENTER);
+        editLabelPaint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        editLabelPaint.setAntiAlias(true);
+        editSliderTrackPaint.setStyle(Paint.Style.FILL);
+        editSliderTrackPaint.setColor(0xFF444444);
+        editSliderKnobPaint.setStyle(Paint.Style.FILL);
+        editSliderKnobPaint.setColor(0xFFFFD600);
+        editToolIcons = new Drawable[EDIT_TOOL_COUNT];
+        for (int i = 0; i < EDIT_TOOL_ICONS.length; i++) {
+            Drawable drawable = getContext().getDrawable(EDIT_TOOL_ICONS[i]);
+            editToolIcons[i] = drawable == null ? null : drawable.mutate();
         }
     }
 
@@ -388,6 +612,53 @@ try {
         return keypadVisible;
     }
 
+    /** Opens the per-game on-screen button layout editor. The caller is
+     *  responsible for pausing the game while this mode is active. */
+    public void beginButtonEditMode() {
+        if (buttonEditMode) {
+            return;
+        }
+        ensureButtonLayoutsLoaded();
+        for (int i = 0; i < GROUP_COUNT; i++) {
+            editButtonLayouts[i].copyFrom(savedButtonLayouts[i]);
+        }
+        keypadVisibleBeforeButtonEdit = keypadVisible;
+        keypadVisible = true;
+        dpadVisible = true;
+        lastDpadActivityMs = android.os.SystemClock.elapsedRealtime();
+        buttonEditMode = true;
+        editTool = EDIT_TOOL_MOVE;
+        editSelectedGroup = -1;
+        editPressGroup = -1;
+        editPointerId = -1;
+        editSliderDragging = false;
+        releasePointers();
+        postInvalidate();
+    }
+
+    /** Leaves the editor, saving the current layout when {@code save} is true
+     *  and discarding it otherwise. */
+    public void endButtonEditMode(boolean save) {
+        if (!buttonEditMode) {
+            return;
+        }
+        if (save) {
+            saveButtonLayouts();
+        }
+        buttonEditMode = false;
+        keypadVisible = keypadVisibleBeforeButtonEdit;
+        editSelectedGroup = -1;
+        editPressGroup = -1;
+        editPointerId = -1;
+        editSliderDragging = false;
+        editPressMoved = false;
+        postInvalidate();
+    }
+
+    public boolean isButtonEditMode() {
+        return buttonEditMode;
+    }
+
     public void releaseAllControls() {
         released = true;
         activeControls.clear();
@@ -452,7 +723,9 @@ try {
             return;
         }
         computeZones();
-        if (isLandscapeOrientation()) {
+        if (buttonEditMode) {
+            dpadVisible = true;
+        } else if (isLandscapeOrientation()) {
             if (dpadVisible && (android.os.SystemClock.elapsedRealtime() - lastDpadActivityMs > 10000L)) {
                 dpadVisible = false;
             }
@@ -488,6 +761,9 @@ try {
             }
         }
         if (keypadVisible) {
+            if (buttonEditMode) {
+                drawEditGrid(canvas, viewWidth, viewHeight);
+            }
             drawKeypad(canvas);
         }
         // Draw "Booting..." / "Exiting..." text centered on the game viewport within the skin
@@ -514,6 +790,17 @@ try {
                 overlayTextPaint.setTextSize(maxSize * (maxWidth / measured));
             }
             canvas.drawText(pausedText, cx, cy, overlayTextPaint);
+        }
+        if (showFps) {
+            drawFpsOverlay(canvas);
+            if (!released) {
+                // Keep the counter ticking (and decaying to 0 when the game
+                // stops presenting) even if no new frame arrives.
+                postInvalidateDelayed(250L);
+            }
+        }
+        if (buttonEditMode) {
+            drawButtonEditChrome(canvas, viewWidth, viewHeight);
         }
         // Keep the status LED blinking even when the game presents a static frame. Wake up only
         // at the next edge (flash start or end) instead of polling continuously.
@@ -606,7 +893,228 @@ try {
         return Math.max(16L, delay + 2L);
     }
 
+    private float logicalViewWidth() {
+        return rotated ? getHeight() : getWidth();
+    }
+
+    private float logicalViewHeight() {
+        return rotated ? getWidth() : getHeight();
+    }
+
+    private static int groupForControl(int id) {
+        if (id == CTRL_UP || id == CTRL_DOWN || id == CTRL_LEFT
+                || id == CTRL_RIGHT || id == CTRL_SELECT) {
+            return GROUP_DPAD;
+        }
+        if (id >= CTRL_DIAL_BASE && id < CTRL_DIAL_BASE + DIAL_LABELS.length) {
+            return GROUP_DIAL;
+        }
+        if (id == CTRL_SOFT1 || id == CTRL_SOFT2 || id == CTRL_MENU || id == CTRL_CLEAR) {
+            return GROUP_SOFT;
+        }
+        return -1;
+    }
+
+    private ButtonLayout activeButtonLayout(int group) {
+        if (group < 0 || group >= GROUP_COUNT) {
+            return null;
+        }
+        return buttonEditMode ? editButtonLayouts[group] : savedButtonLayouts[group];
+    }
+
+    private String buttonPrefKey(String gameId, int group, String suffix) {
+        return gameId + "_" + BUTTON_PREF_PREFIX + "_" + GROUP_PREF_NAMES[group] + "_" + suffix;
+    }
+
+    private void ensureButtonLayoutsLoaded() {
+        String gameId = EntryActivity.gameId;
+        if (gameId == null) {
+            gameId = "";
+        }
+        if (buttonLayoutsLoaded && gameId.equals(buttonLayoutGameId)) {
+            return;
+        }
+        android.content.SharedPreferences prefs = getContext().getSharedPreferences(
+                DisplayActivity.PREFS_NAME, android.content.Context.MODE_PRIVATE);
+        for (int i = 0; i < GROUP_COUNT; i++) {
+            ButtonLayout layout = savedButtonLayouts[i];
+            layout.dx = prefs.getFloat(buttonPrefKey(gameId, i, "dx"), 0f);
+            layout.dy = prefs.getFloat(buttonPrefKey(gameId, i, "dy"), 0f);
+            layout.scale = clamp(prefs.getFloat(buttonPrefKey(gameId, i, "scale"), 1f),
+                    BUTTON_SCALE_MIN, BUTTON_SCALE_MAX);
+            layout.hidden = prefs.getBoolean(buttonPrefKey(gameId, i, "hidden"), false);
+        }
+        buttonLayoutGameId = gameId;
+        buttonLayoutsLoaded = true;
+    }
+
+    private void saveButtonLayouts() {
+        String gameId = buttonLayoutGameId;
+        if (gameId == null) {
+            gameId = EntryActivity.gameId == null ? "" : EntryActivity.gameId;
+        }
+        android.content.SharedPreferences.Editor editor = getContext().getSharedPreferences(
+                DisplayActivity.PREFS_NAME, android.content.Context.MODE_PRIVATE).edit();
+        for (int i = 0; i < GROUP_COUNT; i++) {
+            ButtonLayout layout = editButtonLayouts[i];
+            savedButtonLayouts[i].copyFrom(layout);
+            editor.putFloat(buttonPrefKey(gameId, i, "dx"), layout.dx);
+            editor.putFloat(buttonPrefKey(gameId, i, "dy"), layout.dy);
+            editor.putFloat(buttonPrefKey(gameId, i, "scale"), layout.scale);
+            editor.putBoolean(buttonPrefKey(gameId, i, "hidden"), layout.hidden);
+        }
+        editor.commit();
+    }
+
+    private void resetEditButtonLayouts() {
+        for (int i = 0; i < GROUP_COUNT; i++) {
+            editButtonLayouts[i].reset();
+        }
+        editSelectedGroup = -1;
+        editPressGroup = -1;
+        editTool = EDIT_TOOL_MOVE;
+    }
+
+    /**
+     * Re-applies the active per-game transform to key rectangles computed by
+     * {@link #computeBaseZones()}. Scale is around the set's centre so all keys
+     * in a set grow/shrink together, then the whole set is translated by the
+     * stored fraction of the view size.
+     */
+    private void applyButtonLayouts() {
+        ensureButtonLayoutsLoaded();
+        float viewWidth = logicalViewWidth();
+        float viewHeight = logicalViewHeight();
+        if (viewWidth <= 0f || viewHeight <= 0f) {
+            return;
+        }
+        for (int group = 0; group < GROUP_COUNT; group++) {
+            RectF base = groupBaseBounds[group];
+            base.setEmpty();
+            for (KeyDef def : keys) {
+                if (groupForControl(def.id) == group && def.rect.width() > 0f
+                        && def.rect.height() > 0f) {
+                    base.union(def.rect);
+                }
+            }
+            ButtonLayout layout = activeButtonLayout(group);
+            if (layout == null || base.isEmpty()) {
+                groupBounds[group].setEmpty();
+                continue;
+            }
+            float scale = clamp(layout.scale, BUTTON_SCALE_MIN, BUTTON_SCALE_MAX);
+            float cx = base.centerX();
+            float cy = base.centerY();
+            float scaledLeft = cx + (base.left - cx) * scale;
+            float scaledTop = cy + (base.top - cy) * scale;
+            float scaledRight = cx + (base.right - cx) * scale;
+            float scaledBottom = cy + (base.bottom - cy) * scale;
+
+            float dx = layout.dx * viewWidth;
+            float dy = layout.dy * viewHeight;
+            float minDx = -scaledLeft;
+            float maxDx = viewWidth - scaledRight;
+            if (maxDx < minDx) {
+                dx = (viewWidth - (scaledRight - scaledLeft)) / 2f - scaledLeft;
+            } else {
+                dx = clamp(dx, minDx, maxDx);
+            }
+            float minDy = -scaledTop;
+            float maxDy = viewHeight - scaledBottom;
+            if (maxDy < minDy) {
+                dy = (viewHeight - (scaledBottom - scaledTop)) / 2f - scaledTop;
+            } else {
+                dy = clamp(dy, minDy, maxDy);
+            }
+
+            for (KeyDef def : keys) {
+                if (groupForControl(def.id) != group) {
+                    continue;
+                }
+                RectF r = def.rect;
+                float left = cx + (r.left - cx) * scale + dx;
+                float top = cy + (r.top - cy) * scale + dy;
+                float right = cx + (r.right - cx) * scale + dx;
+                float bottom = cy + (r.bottom - cy) * scale + dy;
+                r.set(left, top, right, bottom);
+            }
+            groupBounds[group].set(scaledLeft + dx, scaledTop + dy,
+                    scaledRight + dx, scaledBottom + dy);
+        }
+    }
+
+    private float editGridStep() {
+        float min = Math.min(logicalViewWidth(), logicalViewHeight());
+        return Math.max(14f, min / 12f);
+    }
+
+    private static float clamp(float value, float min, float max) {
+        if (value < min) return min;
+        if (value > max) return max;
+        return value;
+    }
+
+    private void updateEditGeometry() {
+        if (!buttonEditMode) {
+            return;
+        }
+        float viewWidth = logicalViewWidth();
+        float viewHeight = logicalViewHeight();
+        if (viewWidth <= 0f || viewHeight <= 0f) {
+            return;
+        }
+        float min = Math.min(viewWidth, viewHeight);
+        float icon = Math.max(26f, Math.min(62f, min * 0.105f));
+        float gap = Math.max(3f, icon * 0.14f);
+        float total = icon * EDIT_TOOL_COUNT + gap * (EDIT_TOOL_COUNT - 1);
+        float available = Math.max(120f, viewWidth - 8f);
+        if (total > available) {
+            icon = Math.max(20f, (available - gap * (EDIT_TOOL_COUNT - 1)) / EDIT_TOOL_COUNT);
+            total = icon * EDIT_TOOL_COUNT + gap * (EDIT_TOOL_COUNT - 1);
+        }
+        editIconSize = icon;
+        float startX = Math.max(4f, (viewWidth - total) / 2f);
+        float top = Math.max(4f, min * 0.015f);
+        for (int i = 0; i < EDIT_TOOL_COUNT; i++) {
+            float left = startX + i * (icon + gap);
+            editToolbarRects[i].set(left, top, left + icon, top + icon);
+        }
+        float labelSize = Math.max(7f, icon * 0.20f);
+        float pad = Math.max(3f, icon * 0.08f);
+        editToolbarPanel.set(startX - pad, top - pad,
+                startX + total + pad, top + icon + labelSize * 1.55f + pad);
+
+        float sliderTop = editToolbarPanel.bottom + Math.max(3f, icon * 0.12f);
+        float sliderWidth = Math.min(viewWidth * 0.62f, icon * 4.8f);
+        RectF resizeRect = editToolbarRects[EDIT_TOOL_RESIZE];
+        float sliderCenter = resizeRect.centerX();
+        float half = sliderWidth / 2f;
+        sliderCenter = clamp(sliderCenter, half + 4f, viewWidth - half - 4f);
+        float sliderHeight = labelSize * 1.55f + Math.max(10f, icon * 0.22f) + pad * 2f;
+        editResizePanel.set(sliderCenter - half, sliderTop,
+                sliderCenter + half, sliderTop + sliderHeight);
+        float trackInset = Math.max(8f, pad * 1.6f);
+        float trackY = sliderTop + labelSize * 1.55f + Math.max(2f, icon * 0.05f);
+        float trackHeight = Math.max(3f, icon * 0.075f);
+        editResizeTrack.set(editResizePanel.left + trackInset, trackY,
+                editResizePanel.right - trackInset, trackY + trackHeight);
+        ButtonLayout layout = activeButtonLayout(editSelectedGroup);
+        float scale = layout == null ? 1f : clamp(layout.scale, BUTTON_SCALE_MIN, BUTTON_SCALE_MAX);
+        float knobRadius = Math.max(5f, icon * 0.12f);
+        float knobX = editResizeTrack.left
+                + (scale - BUTTON_SCALE_MIN) / (BUTTON_SCALE_MAX - BUTTON_SCALE_MIN)
+                * editResizeTrack.width();
+        editResizeKnob.set(knobX - knobRadius, editResizeTrack.centerY() - knobRadius,
+                knobX + knobRadius, editResizeTrack.centerY() + knobRadius);
+    }
+
     private void computeZones() {
+        computeBaseZones();
+        applyButtonLayouts();
+        updateEditGeometry();
+    }
+
+    private void computeBaseZones() {
         float w = rotated ? getHeight() : getWidth();
         float h = rotated ? getWidth() : getHeight();
         if (w >= h) {
@@ -1163,14 +1671,26 @@ try {
     private void drawKeypad(Canvas canvas) {
         if (padRect.height() <= 0f) return;
         for (KeyDef def : keys) {
-            if (!dpadVisible && isLandscapeOrientation() && (def.id == CTRL_UP || def.id == CTRL_DOWN || def.id == CTRL_LEFT || def.id == CTRL_RIGHT || def.id == CTRL_SELECT)) {
+            int group = groupForControl(def.id);
+            boolean hidden = group >= 0 && activeButtonLayout(group) != null
+                    && activeButtonLayout(group).hidden;
+            if (!buttonEditMode && hidden) {
                 continue;
             }
-            drawKey(canvas, def);
+            if (!buttonEditMode && !dpadVisible && isLandscapeOrientation()
+                    && (def.id == CTRL_UP || def.id == CTRL_DOWN || def.id == CTRL_LEFT
+                    || def.id == CTRL_RIGHT || def.id == CTRL_SELECT)) {
+                continue;
+            }
+            drawKey(canvas, def, hidden && buttonEditMode ? 92 : 255);
         }
     }
 
     private void drawKey(Canvas canvas, KeyDef def) {
+        drawKey(canvas, def, 255);
+    }
+
+    private void drawKey(Canvas canvas, KeyDef def, int alphaOverride) {
         RectF rect = def.rect;
         if (rect.width() <= 0f || rect.height() <= 0f) return;
         boolean pressed = activeControls.contains(def.id);
@@ -1179,6 +1699,9 @@ try {
             if (artId != null) {
                 boolean landscape = isLandscapeOrientation();
                 int alpha = (artId.startsWith("dpad-") && landscape) ? 128 : 255;
+                if (alphaOverride < 255) {
+                    alpha = alpha * alphaOverride / 255;
+                }
                 boolean stretch = !landscape && isDialArt(artId);
                 if (controlsSkin.draw(canvas, artId, rect, pressed, alpha, stretch)) {
                     return;
@@ -1188,17 +1711,18 @@ try {
         float radius = Math.min(rect.width(), rect.height()) * 0.18f;
         if (def.id == CTRL_UP || def.id == CTRL_DOWN || def.id == CTRL_LEFT
                 || def.id == CTRL_RIGHT || def.id == CTRL_SELECT) {
-            keyFillPaint.setColor(pressed ? 0xCC505050 : 0x99303030);
-            keyStrokePaint.setColor(0xCCFFFFFF);
+            setPaintColorAndAlpha(keyFillPaint, pressed ? 0xCC505050 : 0x99303030, alphaOverride);
+            setPaintColorAndAlpha(keyStrokePaint, 0xCCFFFFFF, alphaOverride);
         } else if (pressed) {
-            keyFillPaint.setColor(0x99FFFF90);
-            keyStrokePaint.setColor(0xFFFFFFFF);
+            setPaintColorAndAlpha(keyFillPaint, 0x99FFFF90, alphaOverride);
+            setPaintColorAndAlpha(keyStrokePaint, 0xFFFFFFFF, alphaOverride);
         } else {
-            keyFillPaint.setColor(0x99303030);
-            keyStrokePaint.setColor(0xCCFFFFFF);
+            setPaintColorAndAlpha(keyFillPaint, 0x99303030, alphaOverride);
+            setPaintColorAndAlpha(keyStrokePaint, 0xCCFFFFFF, alphaOverride);
         }
         canvas.drawRoundRect(rect, radius, radius, keyFillPaint);
         canvas.drawRoundRect(rect, radius, radius, keyStrokePaint);
+        setPaintColorAndAlpha(keyTextPaint, 0xFFFFFFFF, alphaOverride);
         keyTextPaint.setTextSize(Math.min(rect.height() * 0.42f, rect.width() * 0.5f));
         float measured = keyTextPaint.measureText(def.label);
         if (measured > rect.width() * 0.9f && measured > 0f) {
@@ -1207,6 +1731,110 @@ try {
         if (keyTextPaint.getTextSize() < 8f) keyTextPaint.setTextSize(8f);
         canvas.drawText(def.label, rect.centerX(),
                 rect.centerY() + keyTextPaint.getTextSize() * 0.34f, keyTextPaint);
+    }
+
+    private static void setPaintColorAndAlpha(Paint paint, int color, int alphaOverride) {
+        paint.setColor(color);
+        int baseAlpha = color >>> 24;
+        paint.setAlpha(baseAlpha * Math.max(0, Math.min(255, alphaOverride)) / 255);
+    }
+
+    private void drawEditGrid(Canvas canvas, float viewWidth, float viewHeight) {
+        float step = editGridStep();
+        for (float x = 0f; x <= viewWidth; x += step) {
+            canvas.drawLine(x, 0f, x, viewHeight, editGridPaint);
+        }
+        for (float y = 0f; y <= viewHeight; y += step) {
+            canvas.drawLine(0f, y, viewWidth, y, editGridPaint);
+        }
+    }
+
+    private void drawButtonEditChrome(Canvas canvas, float viewWidth, float viewHeight) {
+        float margin = Math.max(3f, Math.min(viewWidth, viewHeight) * 0.007f);
+        for (int group = 0; group < GROUP_COUNT; group++) {
+            ButtonLayout layout = activeButtonLayout(group);
+            if (layout == null || layout.hidden || groupBounds[group].isEmpty()) {
+                continue;
+            }
+            RectF r = new RectF(groupBounds[group]);
+            r.inset(-margin, -margin);
+            boolean selected = editSelectedGroup == group
+                    && (editTool == EDIT_TOOL_MOVE || editTool == EDIT_TOOL_RESIZE);
+            float radius = Math.max(6f, margin * 2.2f);
+            if (selected) {
+                canvas.drawRoundRect(r, radius, radius, editSelectionFillPaint);
+            }
+            editHighlightPaint.setStrokeWidth(selected ? Math.max(6f, margin * 2.2f)
+                    : Math.max(4f, margin * 1.45f));
+            canvas.drawRoundRect(r, radius, radius, editHighlightPaint);
+        }
+        drawEditToolbar(canvas);
+        if (editTool == EDIT_TOOL_RESIZE && editSelectedGroup >= 0) {
+            drawEditResizeSlider(canvas);
+        }
+    }
+
+    private void drawEditToolbar(Canvas canvas) {
+        float radius = Math.max(5f, editIconSize * 0.12f);
+        canvas.drawRoundRect(editToolbarPanel, radius, radius, editToolbarBgPaint);
+        float labelSize = Math.max(7f, editIconSize * 0.20f);
+        editLabelPaint.setTextSize(labelSize);
+        for (int i = 0; i < EDIT_TOOL_COUNT; i++) {
+            RectF r = editToolbarRects[i];
+            boolean selected = i == editTool && i <= EDIT_TOOL_HIDE;
+            editToolFillPaint.setColor(selected ? 0x3AFFD600 : 0x2A000000);
+            editToolBorderPaint.setColor(selected ? 0xFFFFD600 : 0xCCFFFFFF);
+            editToolBorderPaint.setStrokeWidth(selected ? 2.5f : 1.5f);
+            canvas.drawRect(r, editToolFillPaint);
+            canvas.drawRect(r, editToolBorderPaint);
+            Drawable icon = editToolIcons == null ? null : editToolIcons[i];
+            if (icon != null) {
+                float inset = r.width() * 0.19f;
+                icon.setTint(selected ? 0xFFFFD600 : 0xFFFFFFFF);
+                icon.setBounds(Math.round(r.left + inset), Math.round(r.top + inset),
+                        Math.round(r.right - inset), Math.round(r.bottom - inset));
+                icon.draw(canvas);
+            }
+            String label = editToolLabel(i);
+            float labelWidth = editLabelPaint.measureText(label);
+            if (labelWidth > r.width() * 1.35f && labelWidth > 0f) {
+                editLabelPaint.setTextSize(labelSize * (r.width() * 1.35f / labelWidth));
+            } else {
+                editLabelPaint.setTextSize(labelSize);
+            }
+            canvas.drawText(label, r.centerX(), r.bottom + labelSize * 1.35f, editLabelPaint);
+        }
+    }
+
+    private String editToolLabel(int tool) {
+        switch (tool) {
+            case EDIT_TOOL_MOVE: return getContext().getString(R.string.edit_buttons_move);
+            case EDIT_TOOL_RESIZE: return getContext().getString(R.string.edit_buttons_resize);
+            case EDIT_TOOL_HIDE: return getContext().getString(R.string.edit_buttons_hide);
+            case EDIT_TOOL_RESET: return getContext().getString(R.string.edit_buttons_reset);
+            case EDIT_TOOL_OK: return getContext().getString(R.string.edit_buttons_ok);
+            case EDIT_TOOL_CANCEL: return getContext().getString(R.string.edit_buttons_cancel);
+            default: return "";
+        }
+    }
+
+    private void drawEditResizeSlider(Canvas canvas) {
+        ButtonLayout layout = activeButtonLayout(editSelectedGroup);
+        if (layout == null) {
+            return;
+        }
+        float radius = Math.max(5f, editIconSize * 0.12f);
+        canvas.drawRoundRect(editResizePanel, radius, radius, editToolbarBgPaint);
+        float labelSize = Math.max(7f, editIconSize * 0.20f);
+        editLabelPaint.setTextSize(labelSize);
+        String label = getContext().getString(R.string.edit_buttons_scale,
+                Math.round(clamp(layout.scale, BUTTON_SCALE_MIN, BUTTON_SCALE_MAX) * 100f));
+        float baseline = editResizePanel.top + Math.max(3f, editIconSize * 0.08f) + labelSize;
+        canvas.drawText(label, editResizePanel.centerX(), baseline, editLabelPaint);
+        float trackRadius = editResizeTrack.height() / 2f;
+        canvas.drawRoundRect(editResizeTrack, trackRadius, trackRadius, editSliderTrackPaint);
+        canvas.drawCircle(editResizeKnob.centerX(), editResizeKnob.centerY(),
+                editResizeKnob.width() / 2f, editSliderKnobPaint);
     }
 
     private static boolean isDialArt(String artId) {
@@ -1241,12 +1869,22 @@ try {
     }
 
     private int hitTest(float x, float y) {
-        if (!dpadVisible && isLandscapeOrientation()) {
+        boolean dpadHidden = false;
+        ButtonLayout dpadLayout = activeButtonLayout(GROUP_DPAD);
+        if (dpadLayout != null && dpadLayout.hidden) {
+            dpadHidden = true;
+        }
+        if (!dpadHidden && (!dpadVisible && isLandscapeOrientation())) {
             // skip dpad keys
-        } else {
+        } else if (!dpadHidden) {
             if (selectKey.rect.contains(x, y)) return CTRL_SELECT;
         }
         for (KeyDef def : keys) {
+            int group = groupForControl(def.id);
+            ButtonLayout layout = activeButtonLayout(group);
+            if (layout != null && layout.hidden) {
+                continue;
+            }
             if (!dpadVisible && isLandscapeOrientation() && (def.id == CTRL_UP || def.id == CTRL_DOWN || def.id == CTRL_LEFT || def.id == CTRL_RIGHT || def.id == CTRL_SELECT)) {
                 continue;
             }
@@ -1290,6 +1928,9 @@ try {
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         computeZones();
+        if (buttonEditMode) {
+            return handleButtonEditTouch(event);
+        }
         if (isLandscapeOrientation()) {
             dpadVisible = true;
             lastDpadActivityMs = android.os.SystemClock.elapsedRealtime();
@@ -1352,6 +1993,252 @@ try {
             }
         }
         return super.onTouchEvent(event);
+    }
+
+    private boolean handleButtonEditTouch(MotionEvent event) {
+        int action = event.getActionMasked();
+        switch (action) {
+            case MotionEvent.ACTION_DOWN: {
+                editPointerId = event.getPointerId(event.getActionIndex());
+                return editTouchDown(touchX(event, event.getActionIndex()),
+                        touchY(event, event.getActionIndex()));
+            }
+            case MotionEvent.ACTION_MOVE: {
+                int index = findPointerIndex(event, editPointerId);
+                if (index < 0) {
+                    return true;
+                }
+                float x = touchX(event, index);
+                float y = touchY(event, index);
+                if (editSliderDragging) {
+                    updateEditResizeFromX(x);
+                } else if (editTool == EDIT_TOOL_MOVE && editPressGroup >= 0) {
+                    updateEditDrag(x, y);
+                }
+                return true;
+            }
+            case MotionEvent.ACTION_POINTER_DOWN:
+                return true;
+            case MotionEvent.ACTION_POINTER_UP:
+                if (event.getPointerId(event.getActionIndex()) == editPointerId) {
+                    int index = event.getActionIndex();
+                    editTouchUp(touchX(event, index), touchY(event, index));
+                    editPointerId = -1;
+                }
+                return true;
+            case MotionEvent.ACTION_UP: {
+                int index = event.getActionIndex();
+                if (event.getPointerId(index) == editPointerId) {
+                    editTouchUp(touchX(event, index), touchY(event, index));
+                }
+                editPointerId = -1;
+                return true;
+            }
+            case MotionEvent.ACTION_CANCEL:
+                editPointerId = -1;
+                editPressGroup = -1;
+                editPressMoved = false;
+                editSliderDragging = false;
+                postInvalidate();
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    private static int findPointerIndex(MotionEvent event, int pointerId) {
+        for (int i = 0; i < event.getPointerCount(); i++) {
+            if (event.getPointerId(i) == pointerId) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private boolean editTouchDown(float x, float y) {
+        int tool = hitEditToolbar(x, y);
+        if (tool >= 0) {
+            handleEditToolbar(tool);
+            return true;
+        }
+        if (editTool == EDIT_TOOL_RESIZE && editSelectedGroup >= 0
+                && editResizePanel.contains(x, y)) {
+            editSliderDragging = true;
+            updateEditResizeFromX(x);
+            return true;
+        }
+        int group = hitEditGroup(x, y);
+        if (group < 0) {
+            if (editTool == EDIT_TOOL_MOVE) {
+                editSelectedGroup = -1;
+                postInvalidate();
+            }
+            return true;
+        }
+        if (editTool == EDIT_TOOL_HIDE) {
+            ButtonLayout layout = editButtonLayouts[group];
+            layout.hidden = !layout.hidden;
+            editSelectedGroup = -1;
+            postInvalidate();
+            return true;
+        }
+        if (editTool == EDIT_TOOL_MOVE || editTool == EDIT_TOOL_RESIZE) {
+            editPressGroup = group;
+            editPressWasSelected = editSelectedGroup == group;
+            editSelectedGroup = group;
+            editPressStartX = x;
+            editPressStartY = y;
+            editDragStartDx = editButtonLayouts[group].dx;
+            editDragStartDy = editButtonLayouts[group].dy;
+            editPressMoved = false;
+            editSliderDragging = false;
+            postInvalidate();
+            return true;
+        }
+        return true;
+    }
+
+    private void editTouchUp(float x, float y) {
+        if (editSliderDragging) {
+            editSliderDragging = false;
+            editPressGroup = -1;
+            return;
+        }
+        if (editTool == EDIT_TOOL_MOVE && editPressGroup >= 0
+                && !editPressMoved && editPressWasSelected) {
+            editSelectedGroup = -1;
+            postInvalidate();
+        }
+        editPressGroup = -1;
+        editPressMoved = false;
+    }
+
+    private int hitEditToolbar(float x, float y) {
+        for (int i = 0; i < EDIT_TOOL_COUNT; i++) {
+            if (editToolbarRects[i].contains(x, y)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private int hitEditGroup(float x, float y) {
+        float pad = Math.max(4f, editIconSize * 0.10f);
+        for (int group = 0; group < GROUP_COUNT; group++) {
+            ButtonLayout layout = editButtonLayouts[group];
+            if (layout.hidden && editTool != EDIT_TOOL_HIDE) {
+                continue;
+            }
+            RectF r = groupBounds[group];
+            if (!r.isEmpty() && x >= r.left - pad && x <= r.right + pad
+                    && y >= r.top - pad && y <= r.bottom + pad) {
+                return group;
+            }
+        }
+        return -1;
+    }
+
+    private void handleEditToolbar(int tool) {
+        if (tool == EDIT_TOOL_RESET) {
+            resetEditButtonLayouts();
+            editSliderDragging = false;
+            computeZones();
+            postInvalidate();
+            return;
+        }
+        if (tool == EDIT_TOOL_OK) {
+            finishButtonEditFromOverlay(true);
+            return;
+        }
+        if (tool == EDIT_TOOL_CANCEL) {
+            finishButtonEditFromOverlay(false);
+            return;
+        }
+        editTool = tool;
+        editPressGroup = -1;
+        editPressMoved = false;
+        editSliderDragging = false;
+        if (tool == EDIT_TOOL_HIDE) {
+            editSelectedGroup = -1;
+        }
+        postInvalidate();
+    }
+
+    private void finishButtonEditFromOverlay(boolean save) {
+        if (getContext() instanceof EntryActivity) {
+            ((EntryActivity) getContext()).finishButtonEditing(save);
+        } else {
+            endButtonEditMode(save);
+        }
+    }
+
+    private void updateEditDrag(float x, float y) {
+        if (editPressGroup < 0) {
+            return;
+        }
+        float dxPx = x - editPressStartX;
+        float dyPx = y - editPressStartY;
+        if (!editPressMoved) {
+            float slop = Math.max(5f, getResources().getDisplayMetrics().density * 4f);
+            if (Math.hypot(dxPx, dyPx) < slop) {
+                return;
+            }
+            editPressMoved = true;
+        }
+        float viewWidth = logicalViewWidth();
+        float viewHeight = logicalViewHeight();
+        if (viewWidth <= 0f || viewHeight <= 0f) {
+            return;
+        }
+        ButtonLayout layout = editButtonLayouts[editPressGroup];
+        float scale = clamp(layout.scale, BUTTON_SCALE_MIN, BUTTON_SCALE_MAX);
+        RectF base = groupBaseBounds[editPressGroup];
+        if (base.isEmpty()) {
+            return;
+        }
+        float cx = base.centerX();
+        float cy = base.centerY();
+        float scaledLeft = cx + (base.left - cx) * scale;
+        float scaledTop = cy + (base.top - cy) * scale;
+        float scaledRight = cx + (base.right - cx) * scale;
+        float scaledBottom = cy + (base.bottom - cy) * scale;
+        float step = editGridStep();
+
+        float targetLeft = scaledLeft + editDragStartDx * viewWidth + dxPx;
+        float targetTop = scaledTop + editDragStartDy * viewHeight + dyPx;
+        float newDx = Math.round(targetLeft / step) * step - scaledLeft;
+        float newDy = Math.round(targetTop / step) * step - scaledTop;
+
+        float minDx = -scaledLeft;
+        float maxDx = viewWidth - scaledRight;
+        if (maxDx < minDx) {
+            newDx = (viewWidth - (scaledRight - scaledLeft)) / 2f - scaledLeft;
+        } else {
+            newDx = clamp(newDx, minDx, maxDx);
+        }
+        float minDy = -scaledTop;
+        float maxDy = viewHeight - scaledBottom;
+        if (maxDy < minDy) {
+            newDy = (viewHeight - (scaledBottom - scaledTop)) / 2f - scaledTop;
+        } else {
+            newDy = clamp(newDy, minDy, maxDy);
+        }
+        layout.dx = newDx / viewWidth;
+        layout.dy = newDy / viewHeight;
+        computeZones();
+        postInvalidate();
+    }
+
+    private void updateEditResizeFromX(float x) {
+        if (editSelectedGroup < 0 || editResizeTrack.width() <= 0f) {
+            return;
+        }
+        float fraction = (x - editResizeTrack.left) / editResizeTrack.width();
+        fraction = clamp(fraction, 0f, 1f);
+        ButtonLayout layout = editButtonLayouts[editSelectedGroup];
+        layout.scale = BUTTON_SCALE_MIN + fraction * (BUTTON_SCALE_MAX - BUTTON_SCALE_MIN);
+        computeZones();
+        postInvalidate();
     }
 
     private void updatePointer(int pointerId, int control) {

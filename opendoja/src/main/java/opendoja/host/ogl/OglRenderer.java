@@ -4,6 +4,8 @@ import com.nttdocomo.ui.ogl.*;
 import opendoja.host.DesktopSurface;
 import opendoja.host.OpenDoJaLaunchArgs;
 import opendoja.host.OpenGlesRendererMode;
+import opendoja.host.compat.CompatFeature;
+import opendoja.host.compat.GameCompatibility;
 
 import opendoja.compat.awt.*;
 import java.util.*;
@@ -38,7 +40,7 @@ public class OglRenderer {
     private final ClipVector eyeVectorTemp = new ClipVector();
     private final ClipVector normalVectorTemp = new ClipVector();
     private final OglSoftwareRenderer software = new OglSoftwareRenderer(this);
-    private final OglHardwareBackend hardware = new OglHardwareBackend(this);
+    private final OglHardwareBackend hardware = OglHardwareBackend.create(this);
 
     public OglRenderer(Host host) {
         this.host = Objects.requireNonNull(host, "host");
@@ -93,7 +95,7 @@ public class OglRenderer {
     }
 
     public void flushHardwarePresentation() {
-        hardware.flush();
+        hardware.flushForPresentation();
     }
 
     public boolean hasBufferedHardwarePresentation() {
@@ -139,7 +141,9 @@ public class OglRenderer {
         // Offscreen Image surfaces do not have repaint hooks, but they still need to use the
         // same GL path as the canvas so renderImage()/syncOffscreenSurfaceForReadback() can
         // read back the finished frame before a later drawImage() composite.
-        return OpenDoJaLaunchArgs.openGlesRendererMode() == OpenGlesRendererMode.HARDWARE;
+        return OpenDoJaLaunchArgs.openGlesRendererMode() == OpenGlesRendererMode.HARDWARE
+                || GameCompatibility.isFeatureEnabled(
+                CompatFeature.OPENGLES_HARDWARE_RENDERER);
     }
 
 public final void glClearColor(float red, float green, float blue, float alpha) {
@@ -1283,7 +1287,7 @@ private void drawOgl(int mode, int first, int count, OglIndexSource indexSource)
     if (usesHardwareRenderer() && hardware.draw(mode, first, count, indexSource)) {
         return;
     }
-    hardware.flush();
+    hardware.flushForReadback();
     host.onSoftwareSurfaceMutation();
     SceneTrace.onDraw(ogl, mode, first, count, indexSource);
     software.draw(mode, first, count, indexSource);
@@ -1295,7 +1299,7 @@ private void drawOgl(int mode, int first, int count, OglIndexSource indexSource)
  * so the shared GL error flag is not disturbed.
  */
 private static final class SceneTrace {
-    static final boolean ENABLED = true;
+    static final boolean ENABLED = traceEnabled();
     static final long WINDOW_NANOS = 1_000_000_000L;
     static int draws;
     static int dynamicDraws;
@@ -1316,6 +1320,14 @@ private static final class SceneTrace {
     static long rasterDepthFailed;
     static long rasterAlphaFailed;
     static long rasterPixelsWritten;
+
+    private static boolean traceEnabled() {
+        try {
+            return Boolean.getBoolean("opendoja.ogl.trace");
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
 
     static void onDraw(OglState state, int mode, int first, int count, OglIndexSource indexSource) {
         if (!ENABLED) {
@@ -1548,7 +1560,7 @@ void transformVertex(ClipVector target, ClipVector eyeTarget, float x, float y, 
             if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
                 return;
             }
-            if (Math.abs(weight) < 0.000001f) {
+            if (absFloat(weight) < 0.000001f) {
                 continue;
             }
             multiply(clipVectorTemp, ogl.paletteMatrices[matrixIndex], x, y, z, 1f);
@@ -1592,7 +1604,7 @@ void transformNormal(ClipVector target, float nx, float ny, float nz, int vertex
             if (ogl.lastError != GraphicsOGL.GL_NO_ERROR) {
                 return;
             }
-            if (Math.abs(weight) < 0.000001f) {
+            if (absFloat(weight) < 0.000001f) {
                 continue;
             }
             transformNormalByMatrix(
@@ -1704,7 +1716,7 @@ int computeLightingColor(ClipVector eyePosition, float normalX, float normalY, f
         float lightZ;
         float attenuation;
         float lightDistance = 0f;
-        if (Math.abs(light.position[3]) < 0.000001f) {
+        if (absFloat(light.position[3]) < 0.000001f) {
             float length = vectorLength(light.position[0], light.position[1], light.position[2]);
             if (length <= 0.000001f) {
                 lightX = 0f;
@@ -1811,6 +1823,16 @@ float readFloatComponent(OglPointer pointer, int vertexIndex, int componentIndex
         return DirectBufferFactory.getFloat(floatBuffer, elementIndex);
     }
     if (pointer.pointer() instanceof ByteBuffer byteBuffer) {
+        byte[] data = DirectBufferFactory.peekByteArray(byteBuffer);
+        if (data != null) {
+            int segmentOffset = DirectBufferFactory.getSegmentOffset(byteBuffer);
+            int baseIndex = segmentOffset + byteOffset;
+            if (baseIndex < 0 || baseIndex + 4 > segmentOffset + DirectBufferFactory.getSegmentLength(byteBuffer)) {
+                ogl.lastError = GraphicsOGL.GL_INVALID_VALUE;
+                return 0f;
+            }
+            return readFloat(data, baseIndex);
+        }
         byte[] raw = new byte[4];
         int baseIndex = DirectBufferFactory.getSegmentOffset(byteBuffer) + byteOffset;
         if (baseIndex < 0 || baseIndex + raw.length > DirectBufferFactory.getSegmentOffset(byteBuffer)
@@ -1834,7 +1856,7 @@ float readFloatComponent(OglPointer pointer, int vertexIndex, int componentIndex
 float readArrayComponent(OglPointer pointer, int vertexIndex, int componentIndex) {
     int byteOffset = pointer.componentByteOffset(vertexIndex, componentIndex);
     if (pointer.bufferObject() != null) {
-        return readTypedFloat(pointer.type(), pointer.bufferObject().data(), byteOffset);
+        return readBufferComponent(pointer, byteOffset);
     }
     return switch (pointer.type()) {
         case GraphicsOGL.GL_FLOAT -> readFloatComponent(pointer, vertexIndex, componentIndex);
@@ -1851,7 +1873,7 @@ float readArrayComponent(OglPointer pointer, int vertexIndex, int componentIndex
 float readNormalComponent(OglPointer pointer, int vertexIndex, int componentIndex) {
     int byteOffset = pointer.componentByteOffset(vertexIndex, componentIndex);
     if (pointer.bufferObject() != null) {
-        return readTypedFloat(pointer.type(), pointer.bufferObject().data(), byteOffset);
+        return readBufferComponent(pointer, byteOffset);
     }
     return switch (pointer.type()) {
         case GraphicsOGL.GL_FLOAT -> readFloatComponent(pointer, vertexIndex, componentIndex);
@@ -1864,12 +1886,41 @@ float readNormalComponent(OglPointer pointer, int vertexIndex, int componentInde
     };
 }
 
+/**
+ * Reads a component from a buffer object. GL_FLOAT buffers are decoded into a
+ * cached float view once per upload, avoiding a Float.intBitsToFloat JNI call
+ * for every vertex component on every draw.
+ */
+private float readBufferComponent(OglPointer pointer, int byteOffset) {
+    OglBufferObject buffer = pointer.bufferObject();
+    byte[] data = buffer.data();
+    if (pointer.type() == GraphicsOGL.GL_FLOAT
+            && byteOffset >= 0 && (byteOffset & 3) == 0 && byteOffset + 3 < data.length) {
+        float[] view = buffer.floatView();
+        int index = byteOffset >>> 2;
+        if (index < view.length) {
+            return view[index];
+        }
+    }
+    return readTypedFloat(pointer.type(), data, byteOffset);
+}
+
 int readUnsignedByteComponent(OglPointer pointer, int vertexIndex, int componentIndex) {
     int byteOffset = pointer.componentByteOffset(vertexIndex, componentIndex);
     if (pointer.bufferObject() != null) {
         return readUnsignedByte(pointer.bufferObject().data(), byteOffset);
     }
     if (pointer.pointer() instanceof ByteBuffer byteBuffer) {
+        byte[] data = DirectBufferFactory.peekByteArray(byteBuffer);
+        if (data != null) {
+            int segmentOffset = DirectBufferFactory.getSegmentOffset(byteBuffer);
+            int baseIndex = segmentOffset + byteOffset;
+            if (baseIndex < 0 || baseIndex >= segmentOffset + DirectBufferFactory.getSegmentLength(byteBuffer)) {
+                ogl.lastError = GraphicsOGL.GL_INVALID_VALUE;
+                return 0;
+            }
+            return data[baseIndex] & 0xFF;
+        }
         int baseIndex = DirectBufferFactory.getSegmentOffset(byteBuffer) + byteOffset;
         if (baseIndex < 0 || baseIndex >= DirectBufferFactory.getSegmentOffset(byteBuffer)
                 + DirectBufferFactory.getSegmentLength(byteBuffer)) {
@@ -1888,6 +1939,16 @@ private float readDirectByteComponent(OglPointer pointer, int byteOffset) {
     if (!(pointer.pointer() instanceof ByteBuffer byteBuffer)) {
         ogl.lastError = GraphicsOGL.GL_INVALID_VALUE;
         return 0f;
+    }
+    byte[] data = DirectBufferFactory.peekByteArray(byteBuffer);
+    if (data != null) {
+        int segmentOffset = DirectBufferFactory.getSegmentOffset(byteBuffer);
+        int baseIndex = segmentOffset + byteOffset;
+        if (baseIndex < 0 || baseIndex >= segmentOffset + DirectBufferFactory.getSegmentLength(byteBuffer)) {
+            ogl.lastError = GraphicsOGL.GL_INVALID_VALUE;
+            return 0f;
+        }
+        return data[baseIndex];
     }
     int baseIndex = DirectBufferFactory.getSegmentOffset(byteBuffer) + byteOffset;
     if (baseIndex < 0 || baseIndex >= DirectBufferFactory.getSegmentOffset(byteBuffer)
@@ -1915,6 +1976,16 @@ private float readDirectShortComponent(OglPointer pointer, int byteOffset) {
         return DirectBufferFactory.getShort(shortBuffer, elementIndex);
     }
     if (pointer.pointer() instanceof ByteBuffer byteBuffer) {
+        byte[] data = DirectBufferFactory.peekByteArray(byteBuffer);
+        if (data != null) {
+            int segmentOffset = DirectBufferFactory.getSegmentOffset(byteBuffer);
+            int baseIndex = segmentOffset + byteOffset;
+            if (baseIndex < 0 || baseIndex + 1 >= segmentOffset + DirectBufferFactory.getSegmentLength(byteBuffer)) {
+                ogl.lastError = GraphicsOGL.GL_INVALID_VALUE;
+                return 0f;
+            }
+            return readSignedShort(data, baseIndex);
+        }
         int baseIndex = DirectBufferFactory.getSegmentOffset(byteBuffer) + byteOffset;
         if (baseIndex < 0 || baseIndex + 1 >= DirectBufferFactory.getSegmentOffset(byteBuffer)
                 + DirectBufferFactory.getSegmentLength(byteBuffer)) {
@@ -1988,6 +2059,13 @@ void drawRasterTriangle(RasterVertex v0, RasterVertex v1, RasterVertex v2, int[]
                                 Rectangle clip, int width, int height, RasterVertex[] clipInput,
                                 RasterVertex[] clipScratch, RasterVertex project0, RasterVertex project1,
                                 RasterVertex project2) {
+    if (isFullyInsideClipVolume(v0) && isFullyInsideClipVolume(v1) && isFullyInsideClipVolume(v2)) {
+        rasterizeProjectedTriangle(projectClipVertex(project0, v0),
+                projectClipVertex(project1, v1),
+                projectClipVertex(project2, v2),
+                pixels, depthBuffer, clip, width, height);
+        return;
+    }
     RasterVertex[] input = clipInput;
     RasterVertex[] scratch = clipScratch;
     input[0].copyFrom(v0);
@@ -2019,8 +2097,16 @@ void drawRasterTriangle(RasterVertex v0, RasterVertex v1, RasterVertex v2, int[]
     }
 }
 
-private int clipPolygonAgainstPlane(RasterVertex[] input, int inputCount, RasterVertex[] output, int plane) {
-    int outputCount = 0;
+private static boolean isFullyInsideClipVolume(RasterVertex vertex) {
+    return vertex.clipX + vertex.clipW >= 0f
+            && vertex.clipW - vertex.clipX >= 0f
+            && vertex.clipY + vertex.clipW >= 0f
+            && vertex.clipW - vertex.clipY >= 0f
+            && vertex.clipZ + vertex.clipW >= 0f
+            && vertex.clipW - vertex.clipZ >= 0f;
+}
+
+private int clipPolygonAgainstPlane(RasterVertex[] input, int inputCount, RasterVertex[] output, int plane) {    int outputCount = 0;
     RasterVertex previous = input[inputCount - 1];
     float previousDistance = clipDistance(previous, plane);
     boolean previousInside = previousDistance >= 0f;
@@ -2055,7 +2141,7 @@ private float clipDistance(RasterVertex vertex, int plane) {
 }
 
 private RasterVertex projectClipVertex(RasterVertex projected, RasterVertex clipVertex) {
-    float w = Math.abs(clipVertex.clipW) < 0.000001f
+    float w = absFloat(clipVertex.clipW) < 0.000001f
             ? (clipVertex.clipW < 0f ? -0.000001f : 0.000001f)
             : clipVertex.clipW;
     float ndcX = clipVertex.clipX / w;
@@ -2063,7 +2149,7 @@ private RasterVertex projectClipVertex(RasterVertex projected, RasterVertex clip
     float ndcZ = clipVertex.clipZ / w;
     float windowDepth = ogl.depthRangeNear + (((ndcZ + 1f) * 0.5f) * (ogl.depthRangeFar - ogl.depthRangeNear));
     float depth = 1f - windowDepth;
-    float reciprocalW = 1f / Math.max(0.000001f, Math.abs(w));
+    float reciprocalW = 1f / Math.max(0.000001f, absFloat(w));
     projected.set(
             clipVertex.clipX,
             clipVertex.clipY,
@@ -2117,20 +2203,41 @@ private void rasterizeProjectedTriangle(RasterVertex v0, RasterVertex v1, Raster
     if (traceRaster) {
         SceneTrace.rasterTriangles++;
     }
-    if (isCulled(v0, v1, v2)) {
-        if (traceRaster) {
-            SceneTrace.rasterCulled++;
-        }
-        return;
-    }
+    // Compute the signed area once and reuse it for culling and two-sided
+    // lighting; isCulled()/isFrontFacing() used to recompute the same edge
+    // function before the rasterizer ran.
     float area = edge(v0.x, v0.y, v1.x, v1.y, v2.x, v2.y);
-    if (Math.abs(area) < 0.0001f) {
+    if (absFloat(area) < 0.0001f) {
         if (traceRaster) {
             SceneTrace.rasterDegenerate++;
         }
         return;
     }
-    boolean useBackColor = ogl.lightModelTwoSide && !isFrontFacing(v0, v1, v2);
+    boolean frontFacing = ogl.frontFace == GraphicsOGL.GL_CCW ? area > 0f : area <= 0f;
+    if (ogl.cullFaceEnabled) {
+        boolean culled = switch (ogl.cullFace) {
+            case GraphicsOGL.GL_FRONT -> frontFacing;
+            case GraphicsOGL.GL_FRONT_AND_BACK -> true;
+            default -> !frontFacing;
+        };
+        if (culled) {
+            if (traceRaster) {
+                SceneTrace.rasterCulled++;
+            }
+            return;
+        }
+    }
+    boolean useBackColor = ogl.lightModelTwoSide && !frontFacing;
+    int flatColor = 0;
+    boolean flatColorKnown = false;
+    if (ogl.shadeModel == GraphicsOGL.GL_FLAT) {
+        flatColor = useBackColor ? v2.backColor : v2.color;
+        flatColorKnown = true;
+    } else if (v0.color == v1.color && v1.color == v2.color
+            && v0.backColor == v1.backColor && v1.backColor == v2.backColor) {
+        flatColor = useBackColor ? v0.backColor : v0.color;
+        flatColorKnown = true;
+    }
     int minX = clamp((int) Math.floor(Math.min(v0.x, Math.min(v1.x, v2.x))), 0, width - 1);
     int maxX = clamp((int) Math.ceil(Math.max(v0.x, Math.max(v1.x, v2.x))), 0, width - 1);
     int minY = clamp((int) Math.floor(Math.min(v0.y, Math.min(v1.y, v2.y))), 0, height - 1);
@@ -2156,7 +2263,9 @@ private void rasterizeProjectedTriangle(RasterVertex v0, RasterVertex v1, Raster
     boolean alphaTestEnabled = ogl.alphaTestEnabled;
     int alphaFunc = ogl.alphaFunc;
     float alphaRef = ogl.alphaRef;
+    int alphaTestMode = alphaTestMode(alphaTestEnabled, alphaFunc, alphaRef);
     boolean blendEnabled = ogl.blendCapEnabled;
+    int blendMode = blendMode(blendEnabled, ogl.blendSrcFactor, ogl.blendDstFactor);
     boolean depthWriteEnabled = ogl.depthMask && depthEnabled;
     OglTextureUnit unit0 = ogl.textureUnit(0);
     OglTextureUnit unit1 = ogl.textureUnit(1);
@@ -2164,6 +2273,11 @@ private void rasterizeProjectedTriangle(RasterVertex v0, RasterVertex v1, Raster
     OglTexture texture1 = ogl.textureEnabled(1) ? ogl.boundTexture(1) : null;
     boolean texturing0 = texture0 != null;
     boolean texturing1 = texture1 != null;
+    // Most geometry uses the default q=1 texture coordinates. In that case the
+    // interpolated q is exactly 1, so skip the per-pixel q interpolation and
+    // division entirely.
+    boolean constantQ0 = texturing0 && v0.q0 == 1f && v1.q0 == 1f && v2.q0 == 1f;
+    boolean constantQ1 = texturing1 && v0.q1 == 1f && v1.q1 == 1f && v2.q1 == 1f;
     int envFastMode0 = texturing0 ? textureEnvFastMode(unit0) : ENV_FAST_NONE;
     int envFastMode1 = texturing1 ? textureEnvFastMode(unit1) : ENV_FAST_NONE;
     int envRgbScale0 = unit0.rgbScale;
@@ -2205,7 +2319,7 @@ private void rasterizeProjectedTriangle(RasterVertex v0, RasterVertex v1, Raster
                 boolean depthPass = switch (depthFunc) {
                     case GraphicsOGL.GL_LESS -> depth > existingDepth + 0.00001f;
                     case GraphicsOGL.GL_LEQUAL -> depth >= existingDepth - 0.00001f;
-                    case GraphicsOGL.GL_EQUAL -> Math.abs(depth - existingDepth) <= 0.00001f;
+                    case GraphicsOGL.GL_EQUAL -> absFloat(depth - existingDepth) <= 0.00001f;
                     case GraphicsOGL.GL_GREATER -> depth < existingDepth - 0.00001f;
                     case GraphicsOGL.GL_GEQUAL -> depth <= existingDepth + 0.00001f;
                     case GraphicsOGL.GL_NEVER -> false;
@@ -2218,20 +2332,29 @@ private void rasterizeProjectedTriangle(RasterVertex v0, RasterVertex v1, Raster
                     continue;
                 }
             }
-            float denominator = (w0 * reciprocalW0) + (w1 * reciprocalW1) + (w2 * reciprocalW2);
+            float perspective0 = w0 * reciprocalW0;
+            float perspective1 = w1 * reciprocalW1;
+            float perspective2 = w2 * reciprocalW2;
+            float denominator = perspective0 + perspective1 + perspective2;
             if (denominator < 0.000001f) {
                 denominator = 0.000001f;
             }
             float inverseDenominator = 1f / denominator;
-            int primaryColor = interpolateColor(v0, v1, v2, w0, w1, w2, inverseDenominator, useBackColor);
+            float weight0 = perspective0 * inverseDenominator;
+            float weight1 = perspective1 * inverseDenominator;
+            float weight2 = perspective2 * inverseDenominator;
+            int primaryColor = flatColorKnown ? flatColor
+                    : interpolateColor(v0, v1, v2, weight0, weight1, weight2, useBackColor);
             int fragmentColor = primaryColor;
             if (texturing0) {
-                float u = ((w0 * v0.u0 * reciprocalW0) + (w1 * v1.u0 * reciprocalW1) + (w2 * v2.u0 * reciprocalW2)) * inverseDenominator;
-                float v = ((w0 * v0.v0 * reciprocalW0) + (w1 * v1.v0 * reciprocalW1) + (w2 * v2.v0 * reciprocalW2)) * inverseDenominator;
-                float q = ((w0 * v0.q0 * reciprocalW0) + (w1 * v1.q0 * reciprocalW1) + (w2 * v2.q0 * reciprocalW2)) * inverseDenominator;
-                if (q != 0f && q != 1f) {
-                    u /= q;
-                    v /= q;
+                float u = (weight0 * v0.u0) + (weight1 * v1.u0) + (weight2 * v2.u0);
+                float v = (weight0 * v0.v0) + (weight1 * v1.v0) + (weight2 * v2.v0);
+                if (!constantQ0) {
+                    float q = (weight0 * v0.q0) + (weight1 * v1.q0) + (weight2 * v2.q0);
+                    if (q != 0f && q != 1f) {
+                        u /= q;
+                        v /= q;
+                    }
                 }
                 int sampled = texture0.sample(u, v);
                 fragmentColor = switch (envFastMode0) {
@@ -2244,12 +2367,14 @@ private void rasterizeProjectedTriangle(RasterVertex v0, RasterVertex v1, Raster
                 };
             }
             if (texturing1) {
-                float u = ((w0 * v0.u1 * reciprocalW0) + (w1 * v1.u1 * reciprocalW1) + (w2 * v2.u1 * reciprocalW2)) * inverseDenominator;
-                float v = ((w0 * v0.v1 * reciprocalW0) + (w1 * v1.v1 * reciprocalW1) + (w2 * v2.v1 * reciprocalW2)) * inverseDenominator;
-                float q = ((w0 * v0.q1 * reciprocalW0) + (w1 * v1.q1 * reciprocalW1) + (w2 * v2.q1 * reciprocalW2)) * inverseDenominator;
-                if (q != 0f && q != 1f) {
-                    u /= q;
-                    v /= q;
+                float u = (weight0 * v0.u1) + (weight1 * v1.u1) + (weight2 * v2.u1);
+                float v = (weight0 * v0.v1) + (weight1 * v1.v1) + (weight2 * v2.v1);
+                if (!constantQ1) {
+                    float q = (weight0 * v0.q1) + (weight1 * v1.q1) + (weight2 * v2.q1);
+                    if (q != 0f && q != 1f) {
+                        u /= q;
+                        v /= q;
+                    }
                 }
                 int sampled = texture1.sample(u, v);
                 fragmentColor = switch (envFastMode1) {
@@ -2261,26 +2386,15 @@ private void rasterizeProjectedTriangle(RasterVertex v0, RasterVertex v1, Raster
                             applyTextureEnvironment(fragmentColor, primaryColor, sampled, texture1, unit1);
                 };
             }
-            if (alphaTestEnabled) {
+            if (alphaTestMode != ALPHA_TEST_NONE) {
                 int alphaByte = fragmentColor >>> 24;
-                boolean alphaPass;
-                if (alphaFunc == GraphicsOGL.GL_GREATER) {
-                    alphaPass = (alphaByte / 255f) > alphaRef;
-                } else if (alphaFunc == GraphicsOGL.GL_GEQUAL) {
-                    alphaPass = (alphaByte / 255f) >= alphaRef;
-                } else if (alphaFunc == GraphicsOGL.GL_LESS) {
-                    alphaPass = (alphaByte / 255f) < alphaRef;
-                } else if (alphaFunc == GraphicsOGL.GL_LEQUAL) {
-                    alphaPass = (alphaByte / 255f) <= alphaRef;
-                } else if (alphaFunc == GraphicsOGL.GL_NEVER) {
-                    alphaPass = false;
-                } else if (alphaFunc == GraphicsOGL.GL_EQUAL) {
-                    alphaPass = Math.abs((alphaByte / 255f) - alphaRef) <= 0.0001f;
-                } else if (alphaFunc == GraphicsOGL.GL_NOTEQUAL) {
-                    alphaPass = Math.abs((alphaByte / 255f) - alphaRef) > 0.0001f;
-                } else {
-                    alphaPass = true;
-                }
+                boolean alphaPass = switch (alphaTestMode) {
+                    case ALPHA_TEST_ALWAYS -> true;
+                    case ALPHA_TEST_NEVER -> false;
+                    case ALPHA_TEST_NOT_ZERO -> alphaByte != 0;
+                    case ALPHA_TEST_ZERO -> alphaByte == 0;
+                    default -> passesAlphaTestAlpha(alphaByte, alphaFunc, alphaRef);
+                };
                 if (!alphaPass) {
                     if (traceRaster) {
                         SceneTrace.rasterAlphaFailed++;
@@ -2288,9 +2402,13 @@ private void rasterizeProjectedTriangle(RasterVertex v0, RasterVertex v1, Raster
                     continue;
                 }
             }
-            int blended = blendEnabled
-                    ? blend(fragmentColor, pixels[offset], ogl.blendSrcFactor, ogl.blendDstFactor)
-                    : fragmentColor;
+            int blended = switch (blendMode) {
+                case BLEND_NONE -> fragmentColor;
+                case BLEND_SRC_ALPHA_ONE -> blendSourceAlphaOne(fragmentColor, pixels[offset]);
+                case BLEND_SRC_ALPHA_INV_SRC_ALPHA -> blendSourceAlpha(fragmentColor, pixels[offset]);
+                case BLEND_ONE_INV_SRC_ALPHA -> blendOneOneMinusSourceAlpha(fragmentColor, pixels[offset]);
+                default -> blend(fragmentColor, pixels[offset], ogl.blendSrcFactor, ogl.blendDstFactor);
+            };
             pixels[offset] = blended;
             wroteAny = true;
             if (traceRaster) {
@@ -2348,24 +2466,6 @@ void drawLineLoop(int first, int primitiveCount, OglIndexSource elementIndices, 
     }
 }
 
-private boolean isCulled(RasterVertex v0, RasterVertex v1, RasterVertex v2) {
-    if (!ogl.cullFaceEnabled) {
-        return false;
-    }
-    boolean frontFacing = isFrontFacing(v0, v1, v2);
-    return switch (ogl.cullFace) {
-        case GraphicsOGL.GL_FRONT -> frontFacing;
-        case GraphicsOGL.GL_FRONT_AND_BACK -> true;
-        default -> !frontFacing;
-    };
-}
-
-private boolean isFrontFacing(RasterVertex v0, RasterVertex v1, RasterVertex v2) {
-    float area = edge(v0.x, v0.y, v1.x, v1.y, v2.x, v2.y);
-    boolean ccw = area > 0f;
-    return ogl.frontFace == GraphicsOGL.GL_CCW ? ccw : !ccw;
-}
-
 private boolean passesDepth(float incoming, float existing) {
     if (!ogl.depthEnabled()) {
         return true;
@@ -2373,7 +2473,7 @@ private boolean passesDepth(float incoming, float existing) {
     return switch (ogl.depthFunc) {
         case GraphicsOGL.GL_LESS -> incoming > existing + 0.00001f;
         case GraphicsOGL.GL_LEQUAL -> incoming >= existing - 0.00001f;
-        case GraphicsOGL.GL_EQUAL -> Math.abs(incoming - existing) <= 0.00001f;
+        case GraphicsOGL.GL_EQUAL -> absFloat(incoming - existing) <= 0.00001f;
         case GraphicsOGL.GL_GREATER -> incoming < existing - 0.00001f;
         case GraphicsOGL.GL_GEQUAL -> incoming <= existing + 0.00001f;
         case GraphicsOGL.GL_ALWAYS -> true;
@@ -2382,25 +2482,93 @@ private boolean passesDepth(float incoming, float existing) {
     };
 }
 
-private boolean passesAlphaTest(int color) {
-    return passesAlphaTestAlpha((color >>> 24) & 0xFF);
+private static boolean passesAlphaTestAlpha(int alphaByte, int alphaFunc, float alphaRef) {
+    float alpha = alphaByte / 255f;
+    switch (alphaFunc) {
+        case GraphicsOGL.GL_NEVER:
+            return false;
+        case GraphicsOGL.GL_LESS:
+            return alpha < alphaRef;
+        case GraphicsOGL.GL_LEQUAL:
+            return alpha <= alphaRef;
+        case GraphicsOGL.GL_GREATER:
+            return alpha > alphaRef;
+        case GraphicsOGL.GL_GEQUAL:
+            return alpha >= alphaRef;
+        case GraphicsOGL.GL_EQUAL: {
+            float difference = alpha - alphaRef;
+            if (difference < 0f) {
+                difference = -difference;
+            }
+            return difference <= 0.0001f;
+        }
+        case GraphicsOGL.GL_NOTEQUAL: {
+            float difference = alpha - alphaRef;
+            if (difference < 0f) {
+                difference = -difference;
+            }
+            return difference > 0.0001f;
+        }
+        default:
+            return true;
+    }
 }
 
-private boolean passesAlphaTestAlpha(int alphaByte) {
-    if (!ogl.alphaTestEnabled) {
-        return true;
+private static final int ALPHA_TEST_NONE = 0;
+private static final int ALPHA_TEST_GENERIC = 1;
+private static final int ALPHA_TEST_NOT_ZERO = 2;
+private static final int ALPHA_TEST_ZERO = 3;
+private static final int ALPHA_TEST_ALWAYS = 4;
+private static final int ALPHA_TEST_NEVER = 5;
+
+/**
+ * Collapses the alpha-test state into an integer mode once per triangle. The
+ * overwhelmingly common case is GL_NOTEQUAL with a zero reference, which is
+ * exactly an integer alpha != 0 test and avoids the Math.abs() JNI call that
+ * used to dominate the per-pixel path.
+ */
+private static int alphaTestMode(boolean enabled, int alphaFunc, float alphaRef) {
+    if (!enabled) {
+        return ALPHA_TEST_NONE;
     }
-    float alpha = alphaByte / 255f;
-    return switch (ogl.alphaFunc) {
-        case GraphicsOGL.GL_NOTEQUAL -> Math.abs(alpha - ogl.alphaRef) > 0.0001f;
-        case GraphicsOGL.GL_GREATER -> alpha > ogl.alphaRef;
-        case GraphicsOGL.GL_GEQUAL -> alpha >= ogl.alphaRef;
-        case GraphicsOGL.GL_EQUAL -> Math.abs(alpha - ogl.alphaRef) <= 0.0001f;
-        case GraphicsOGL.GL_LESS -> alpha < ogl.alphaRef;
-        case GraphicsOGL.GL_LEQUAL -> alpha <= ogl.alphaRef;
-        case GraphicsOGL.GL_ALWAYS -> true;
-        default -> true;
-    };
+    if (alphaFunc == GraphicsOGL.GL_ALWAYS) {
+        return ALPHA_TEST_ALWAYS;
+    }
+    if (alphaFunc == GraphicsOGL.GL_NEVER) {
+        return ALPHA_TEST_NEVER;
+    }
+    if (alphaRef == 0f) {
+        return switch (alphaFunc) {
+            case GraphicsOGL.GL_NOTEQUAL, GraphicsOGL.GL_GREATER -> ALPHA_TEST_NOT_ZERO;
+            case GraphicsOGL.GL_EQUAL, GraphicsOGL.GL_LEQUAL -> ALPHA_TEST_ZERO;
+            case GraphicsOGL.GL_GEQUAL -> ALPHA_TEST_ALWAYS;
+            case GraphicsOGL.GL_LESS -> ALPHA_TEST_NEVER;
+            default -> ALPHA_TEST_GENERIC;
+        };
+    }
+    return ALPHA_TEST_GENERIC;
+}
+
+private static final int BLEND_NONE = 0;
+private static final int BLEND_SRC_ALPHA_ONE = 1;
+private static final int BLEND_SRC_ALPHA_INV_SRC_ALPHA = 2;
+private static final int BLEND_ONE_INV_SRC_ALPHA = 3;
+private static final int BLEND_GENERIC = 4;
+
+private static int blendMode(boolean enabled, int srcFactor, int dstFactor) {
+    if (!enabled) {
+        return BLEND_NONE;
+    }
+    if (srcFactor == GraphicsOGL.GL_SRC_ALPHA && dstFactor == GraphicsOGL.GL_ONE) {
+        return BLEND_SRC_ALPHA_ONE;
+    }
+    if (srcFactor == GraphicsOGL.GL_SRC_ALPHA && dstFactor == GraphicsOGL.GL_ONE_MINUS_SRC_ALPHA) {
+        return BLEND_SRC_ALPHA_INV_SRC_ALPHA;
+    }
+    if (srcFactor == GraphicsOGL.GL_ONE && dstFactor == GraphicsOGL.GL_ONE_MINUS_SRC_ALPHA) {
+        return BLEND_ONE_INV_SRC_ALPHA;
+    }
+    return BLEND_GENERIC;
 }
 
 private static void multiply(ClipVector out, float[] matrix, float x, float y, float z, float w) {
@@ -2417,7 +2585,7 @@ private static void multiply(ClipVector out, float[] matrix, float x, float y, f
 }
 
 private int interpolateColor(RasterVertex v0, RasterVertex v1, RasterVertex v2,
-                             float w0, float w1, float w2, float inverseDenominator, boolean useBackColor) {
+                             float weight0, float weight1, float weight2, boolean useBackColor) {
     int c0 = useBackColor ? v0.backColor : v0.color;
     int c1 = useBackColor ? v1.backColor : v1.color;
     int c2 = useBackColor ? v2.backColor : v2.color;
@@ -2427,18 +2595,19 @@ private int interpolateColor(RasterVertex v0, RasterVertex v1, RasterVertex v2,
     if (c0 == c1 && c1 == c2) {
         return c0;
     }
-    float red = interpolateChannel((c0 >>> 16) & 0xFF, (c1 >>> 16) & 0xFF, (c2 >>> 16) & 0xFF,
-            w0, w1, w2, v0.reciprocalW, v1.reciprocalW, v2.reciprocalW, inverseDenominator);
-    float green = interpolateChannel((c0 >>> 8) & 0xFF, (c1 >>> 8) & 0xFF, (c2 >>> 8) & 0xFF,
-            w0, w1, w2, v0.reciprocalW, v1.reciprocalW, v2.reciprocalW, inverseDenominator);
-    float blue = interpolateChannel(c0 & 0xFF, c1 & 0xFF, c2 & 0xFF,
-            w0, w1, w2, v0.reciprocalW, v1.reciprocalW, v2.reciprocalW, inverseDenominator);
-    float alpha = interpolateChannel((c0 >>> 24) & 0xFF, (c1 >>> 24) & 0xFF, (c2 >>> 24) & 0xFF,
-            w0, w1, w2, v0.reciprocalW, v1.reciprocalW, v2.reciprocalW, inverseDenominator);
-    return (roundedChannel(alpha) << 24)
-            | (roundedChannel(red) << 16)
-            | (roundedChannel(green) << 8)
-            | roundedChannel(blue);
+    int alpha = roundedChannel((weight0 * ((c0 >>> 24) & 0xFF))
+            + (weight1 * ((c1 >>> 24) & 0xFF))
+            + (weight2 * ((c2 >>> 24) & 0xFF)));
+    int red = roundedChannel((weight0 * ((c0 >>> 16) & 0xFF))
+            + (weight1 * ((c1 >>> 16) & 0xFF))
+            + (weight2 * ((c2 >>> 16) & 0xFF)));
+    int green = roundedChannel((weight0 * ((c0 >>> 8) & 0xFF))
+            + (weight1 * ((c1 >>> 8) & 0xFF))
+            + (weight2 * ((c2 >>> 8) & 0xFF)));
+    int blue = roundedChannel((weight0 * (c0 & 0xFF))
+            + (weight1 * (c1 & 0xFF))
+            + (weight2 * (c2 & 0xFF)));
+    return (alpha << 24) | (red << 16) | (green << 8) | blue;
 }
 
 private static int roundedChannel(float value) {
@@ -2451,13 +2620,6 @@ private static int roundedChannel(float value) {
     // Math.round() becomes a JNI Float.floatToRawIntBits call here; a rounded cast
     // is equivalent for this clamped, non-negative range.
     return (int) (value + 0.5f);
-}
-
-private float interpolateChannel(float c0, float c1, float c2,
-                                 float w0, float w1, float w2,
-                                 float reciprocalW0, float reciprocalW1, float reciprocalW2,
-                                 float inverseDenominator) {
-    return ((w0 * c0 * reciprocalW0) + (w1 * c1 * reciprocalW1) + (w2 * c2 * reciprocalW2)) * inverseDenominator;
 }
 
 private int applyTextureEnvironment(int previousColor, int primaryColor, int sampledColor,
@@ -2837,10 +2999,22 @@ private static int blend(int source, int destination, int srcFactor, int dstFact
             destinationR, destinationG, destinationB, destinationA);
     float dstBlendA = blendFactorComponent(dstFactor, 3, sourceR, sourceG, sourceB, sourceA,
             destinationR, destinationG, destinationB, destinationA);
-    return (clamp(Math.round(((sourceA * srcBlendA) + (destinationA * dstBlendA)) * 255f), 0, 255) << 24)
-            | (clamp(Math.round(((sourceR * srcBlendR) + (destinationR * dstBlendR)) * 255f), 0, 255) << 16)
-            | (clamp(Math.round(((sourceG * srcBlendG) + (destinationG * dstBlendG)) * 255f), 0, 255) << 8)
-            | clamp(Math.round(((sourceB * srcBlendB) + (destinationB * dstBlendB)) * 255f), 0, 255);
+    return (roundedClampedByte(((sourceA * srcBlendA) + (destinationA * dstBlendA)) * 255f) << 24)
+            | (roundedClampedByte(((sourceR * srcBlendR) + (destinationR * dstBlendR)) * 255f) << 16)
+            | (roundedClampedByte(((sourceG * srcBlendG) + (destinationG * dstBlendG)) * 255f) << 8)
+            | roundedClampedByte(((sourceB * srcBlendB) + (destinationB * dstBlendB)) * 255f);
+}
+
+private static int roundedClampedByte(float value) {
+    if (value <= 0f) {
+        return 0;
+    }
+    if (value >= 255f) {
+        return 255;
+    }
+    // Math.round() routes through Float.floatToRawIntBits on this ART build;
+    // a rounded cast is equivalent for this clamped, non-negative range.
+    return (int) (value + 0.5f);
 }
 
 private static float blendFactorComponent(int factor, int channel,
@@ -2890,6 +3064,21 @@ private static int blendSourceAlpha(int source, int destination) {
             | (blendChannel((source >>> 16) & 0xFF, sourceAlpha, (destination >>> 16) & 0xFF, inverseAlpha) << 16)
             | (blendChannel((source >>> 8) & 0xFF, sourceAlpha, (destination >>> 8) & 0xFF, inverseAlpha) << 8)
             | blendChannel(source & 0xFF, sourceAlpha, destination & 0xFF, inverseAlpha);
+}
+
+/**
+ * Integer fast path for GL_SRC_ALPHA / GL_ONE (additive alpha blending),
+ * which is the blend mode used by the Gundam 3D materials.
+ */
+private static int blendSourceAlphaOne(int source, int destination) {
+    int sourceAlpha = (source >>> 24) & 0xFF;
+    if (sourceAlpha == 0) {
+        return destination;
+    }
+    return (blendChannel(sourceAlpha, sourceAlpha, (destination >>> 24) & 0xFF, 255) << 24)
+            | (blendChannel((source >>> 16) & 0xFF, sourceAlpha, (destination >>> 16) & 0xFF, 255) << 16)
+            | (blendChannel((source >>> 8) & 0xFF, sourceAlpha, (destination >>> 8) & 0xFF, 255) << 8)
+            | blendChannel(source & 0xFF, sourceAlpha, destination & 0xFF, 255);
 }
 
 private static int blendOneOneMinusSourceAlpha(int source, int destination) {
@@ -2952,6 +3141,15 @@ private static int clamp(int value, int min, int max) {
     return Math.max(min, Math.min(max, value));
 }
 
+/**
+ * Branching absolute value. ART routes {@link Math#abs(float)} through
+ * Float.floatToRawIntBits on this target, which showed up as a hot JNI call in
+ * vertex projection. The sign test is exact for every value used here.
+ */
+static float absFloat(float value) {
+    return value < 0f ? -value : value;
+}
+
 private static final class SharedGlObjectStore {
     private final AtomicInteger nextTextureId = new AtomicInteger(1);
     private final AtomicInteger nextBufferId = new AtomicInteger(1);
@@ -3012,10 +3210,22 @@ static final class RasterVertex {
     }
 
     void copyFrom(RasterVertex other) {
-        set(other.clipX, other.clipY, other.clipZ, other.clipW,
-                other.x, other.y, other.depth, other.reciprocalW,
-                other.u0, other.v0, other.q0, other.u1, other.v1, other.q1,
-                other.color, other.backColor);
+        clipX = other.clipX;
+        clipY = other.clipY;
+        clipZ = other.clipZ;
+        clipW = other.clipW;
+        x = other.x;
+        y = other.y;
+        depth = other.depth;
+        reciprocalW = other.reciprocalW;
+        u0 = other.u0;
+        v0 = other.v0;
+        q0 = other.q0;
+        u1 = other.u1;
+        v1 = other.v1;
+        q1 = other.q1;
+        color = other.color;
+        backColor = other.backColor;
     }
 
     RasterVertex copyOf(RasterVertex other) {
@@ -3057,10 +3267,10 @@ static final class RasterVertex {
         int toR = (to >>> 16) & 0xFF;
         int toG = (to >>> 8) & 0xFF;
         int toB = to & 0xFF;
-        int alpha = Math.round(fromA + ((toA - fromA) * t));
-        int red = Math.round(fromR + ((toR - fromR) * t));
-        int green = Math.round(fromG + ((toG - fromG) * t));
-        int blue = Math.round(fromB + ((toB - fromB) * t));
+        int alpha = roundedChannel(fromA + ((toA - fromA) * t));
+        int red = roundedChannel(fromR + ((toR - fromR) * t));
+        int green = roundedChannel(fromG + ((toG - fromG) * t));
+        int blue = roundedChannel(fromB + ((toB - fromB) * t));
         return (alpha << 24) | (red << 16) | (green << 8) | blue;
     }
 }
@@ -3116,14 +3326,56 @@ record OglPointer(int size, int type, int stride, DirectBuffer pointer,
 static final class OglBufferObject {
     private byte[] data = new byte[0];
     private int usage = GraphicsOGL.GL_STATIC_DRAW;
+    private float[] floatView;
+    private short[] shortView;
 
     byte[] data() {
         return data;
     }
 
+    /** Cached little-endian float decoding of the buffer contents. */
+    float[] floatView() {
+        byte[] bytes = data;
+        float[] view = floatView;
+        if (view != null && view.length * 4 == bytes.length) {
+            return view;
+        }
+        int count = bytes.length / 4;
+        view = new float[count];
+        for (int i = 0; i < count; i++) {
+            int offset = i * 4;
+            int bits = (bytes[offset] & 0xFF)
+                    | ((bytes[offset + 1] & 0xFF) << 8)
+                    | ((bytes[offset + 2] & 0xFF) << 16)
+                    | ((bytes[offset + 3] & 0xFF) << 24);
+            view[i] = Float.intBitsToFloat(bits);
+        }
+        floatView = view;
+        return view;
+    }
+
+    /** Cached little-endian short decoding, used for element index buffers. */
+    short[] shortView() {
+        byte[] bytes = data;
+        short[] view = shortView;
+        if (view != null && view.length * 2 == bytes.length) {
+            return view;
+        }
+        int count = bytes.length / 2;
+        view = new short[count];
+        for (int i = 0; i < count; i++) {
+            int offset = i * 2;
+            view[i] = (short) ((bytes[offset] & 0xFF) | ((bytes[offset + 1] & 0xFF) << 8));
+        }
+        shortView = view;
+        return view;
+    }
+
     void replace(byte[] data, int usage) {
         this.data = data == null ? new byte[0] : data.clone();
         this.usage = usage;
+        this.floatView = null;
+        this.shortView = null;
     }
 
     boolean update(int offset, byte[] updateBytes) {
@@ -3135,17 +3387,22 @@ static final class OglBufferObject {
             data = Arrays.copyOf(data, requiredLength);
         }
         System.arraycopy(updateBytes, 0, data, offset, updateBytes.length);
+        floatView = null;
+        shortView = null;
         return true;
     }
 }
 
-record OglIndexSource(ShortBuffer pointer, OglBufferObject bufferObject, int byteOffset) {
+record OglIndexSource(ShortBuffer pointer, OglBufferObject bufferObject, int byteOffset,
+                      short[] directIndices, int directOffset) {
     static OglIndexSource direct(ShortBuffer pointer) {
-        return new OglIndexSource(pointer, null, 0);
+        return new OglIndexSource(pointer, null, 0,
+                DirectBufferFactory.peekShortArray(pointer),
+                DirectBufferFactory.getSegmentOffset(pointer));
     }
 
     static OglIndexSource bufferObject(OglBufferObject bufferObject, int byteOffset) {
-        return new OglIndexSource(null, bufferObject, byteOffset);
+        return new OglIndexSource(null, bufferObject, byteOffset, null, 0);
     }
 
     int elementCount() {
@@ -3159,12 +3416,18 @@ record OglIndexSource(ShortBuffer pointer, OglBufferObject bufferObject, int byt
     }
 
     int indexAt(int primitiveIndex) {
-        if (pointer != null) {
-            int elementIndex = DirectBufferFactory.getSegmentOffset(pointer) + primitiveIndex;
-            return DirectBufferFactory.getShort(pointer, elementIndex) & 0xFFFF;
+        if (directIndices != null) {
+            return directIndices[directOffset + primitiveIndex] & 0xFFFF;
         }
         if (bufferObject == null) {
             return 0;
+        }
+        if ((byteOffset & 1) == 0) {
+            short[] view = bufferObject.shortView();
+            int index = (byteOffset >>> 1) + primitiveIndex;
+            if (index >= 0 && index < view.length) {
+                return view[index] & 0xFFFF;
+            }
         }
         return readUnsignedShort(bufferObject.data(), byteOffset + (primitiveIndex * 2));
     }
@@ -3179,17 +3442,28 @@ static final class OglTexture {
     int magFilter = GraphicsOGL.GL_NEAREST;
     int wrapS = GraphicsOGL.GL_REPEAT;
     int wrapT = GraphicsOGL.GL_REPEAT;
+    boolean linearFilter;
     int uploadRevision;
 
     void setParameter(int pname, int value) {
         switch (pname) {
-            case GraphicsOGL.GL_TEXTURE_MIN_FILTER -> minFilter = value;
-            case GraphicsOGL.GL_TEXTURE_MAG_FILTER -> magFilter = value;
+            case GraphicsOGL.GL_TEXTURE_MIN_FILTER -> {
+                minFilter = value;
+                updateLinearFilter();
+            }
+            case GraphicsOGL.GL_TEXTURE_MAG_FILTER -> {
+                magFilter = value;
+                updateLinearFilter();
+            }
             case GraphicsOGL.GL_TEXTURE_WRAP_S -> wrapS = value;
             case GraphicsOGL.GL_TEXTURE_WRAP_T -> wrapT = value;
             default -> {
             }
         }
+    }
+
+    private void updateLinearFilter() {
+        linearFilter = minFilter == GraphicsOGL.GL_LINEAR || magFilter == GraphicsOGL.GL_LINEAR;
     }
 
     static boolean supportsCompressedInternalFormat(int internalFormat) {
@@ -3295,13 +3569,20 @@ static final class OglTexture {
         if (pixels.length == 0 || width <= 0 || height <= 0) {
             return 0xFFFFFFFF;
         }
-        float sampledU = wrapCoordinate(u, wrapS);
-        float sampledV = wrapCoordinate(v, wrapT);
-        if (minFilter == GraphicsOGL.GL_LINEAR || magFilter == GraphicsOGL.GL_LINEAR) {
-            return bilinearSample(sampledU, sampledV);
+        // Both REPEAT and CLAMP_TO_EDGE leave in-range coordinates unchanged,
+        // so skip wrapping in the common case. The helper only handles the
+        // out-of-range branch; this avoids re-testing [0, 1) inside the call.
+        if (u < 0f || u >= 1f) {
+            u = wrapOutOfRangeCoordinate(u, wrapS);
         }
-        int x = (int) (sampledU * (width - 1) + 0.5f);
-        int y = (int) (sampledV * (height - 1) + 0.5f);
+        if (v < 0f || v >= 1f) {
+            v = wrapOutOfRangeCoordinate(v, wrapT);
+        }
+        if (linearFilter) {
+            return bilinearSample(u, v);
+        }
+        int x = (int) (u * (width - 1) + 0.5f);
+        int y = (int) (v * (height - 1) + 0.5f);
         return pixels[(y * width) + x];
     }
 
@@ -3316,9 +3597,10 @@ static final class OglTexture {
         int y0 = (int) y;
         int x1 = x0 + 1 < width ? x0 + 1 : x0;
         int y1 = y0 + 1 < height ? y0 + 1 : y0;
-        // wrapCoordinate() already guarantees [0, 1], so both the integer cell and
-        // the fractional weight stay in range. Math.round() compiles to a JNI call
-        // to Float.floatToRawIntBits on this ART build and dominated texture sampling.
+        // wrapOutOfRangeCoordinate() already guarantees [0, 1], so both the
+        // integer cell and the fractional weight stay in range. Math.round()
+        // compiles to a JNI call to Float.floatToRawIntBits on this ART build
+        // and dominated texture sampling.
         int tx = (int) ((x - x0) * 256f + 0.5f);
         int ty = (int) ((y - y0) * 256f + 0.5f);
         int invTx = 256 - tx;
@@ -3348,17 +3630,22 @@ static final class OglTexture {
         return value > 255 ? 255 : value;
     }
 
-    private static float wrapCoordinate(float value, int wrapMode) {
+    private static float wrapOutOfRangeCoordinate(float value, int wrapMode) {
         if (wrapMode == GraphicsOGL.GL_CLAMP_TO_EDGE) {
             if (value < 0f) {
                 return 0f;
             }
             return value > 1f ? 1f : value;
         }
-        // Fractions in [0, 1) are already wrapped; avoiding Math.floor() here
-        // removes a JNI call for every texture lookup in the common case.
-        if (value >= 0f && value < 1f) {
-            return value;
+        // Truncation matches floor() for the normal, modest texture-coordinate
+        // range and avoids a Math.floor() JNI call. Keep the original path for
+        // huge or non-finite values, where the cast would saturate.
+        if (value >= 0f && value < 16_777_216f) {
+            return value - (int) value;
+        }
+        if (value > -16_777_216f && value < 0f) {
+            float wrapped = value - (int) value;
+            return wrapped < 0f ? wrapped + 1f : wrapped;
         }
         float wrapped = value - (float) Math.floor(value);
         return wrapped < 0f ? wrapped + 1f : wrapped;

@@ -1,11 +1,35 @@
 <resources>
+    <string name="app_name">Pocket DoJa</string>
+    <string name="title_pocket_doja">Pocket DoJa</string>
     <string name="no_installed_games">Không có game đã cài đặt\nDùng menu góc phải trên để nhập .JAM</string>
+    <string name="search">Tìm kiếm</string>
+    <string name="about_body">Pocket DoJa là dự án trình giả lập trên Android dựa trên OpenDoJa, nhằm khám phá và bảo tồn trải nghiệm của các trò chơi Java i-mode NTT DoCoMo cổ điển.</string>
+    <string name="paypal_label">"PayPal: "</string>
+    <string name="wallet_label">"Địa chỉ ví: "</string>
+    <string name="footer_donations">Các khoản quyên góp hoàn toàn là tự nguyện và giúp hỗ trợ quá trình phát triển và bảo tồn tiếp tục.\n\nCảm ơn bạn đã quan tâm đến Pocket DoJa!\n\n</string>
+    <string name="copied">Đã sao chép</string>
+    <string name="about">Giới thiệu</string>
+    <string name="invalid_image">Hình ảnh không hợp lệ</string>
     <string name="menu_import_jam">Nhập .JAM</string>
     <string name="menu_key_mapping">Ánh xạ phím</string>
     <string name="menu_settings">Cài đặt</string>
     <string name="menu_theme">Giao diện</string>
     <string name="menu_about">Giới thiệu</string>
     <string name="menu_exit">Thoát</string>
+
+    <string-array name="home_menu_items">
+        <item>@string/menu_import_jam</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/menu_settings</item>
+        <item>@string/menu_theme</item>
+        <item>@string/menu_about</item>
+        <item>@string/menu_exit</item>
+        <item>@string/menu_diagnostics</item>
+    </string-array>
+
+    <string name="language">Ngôn ngữ</string>
+    <string name="use_system_language">Dùng ngôn ngữ hệ thống</string>
+    <string name="menu_diagnostics">Lưu chẩn đoán</string>
     <string name="opt_change_icon">Đổi biểu tượng</string>
     <string name="opt_reset_icon">Đặt lại biểu tượng</string>
     <string name="opt_rename">Đổi tên</string>
@@ -13,33 +37,100 @@
     <string name="opt_export_save">Xuất lưu</string>
     <string name="opt_import_save">Nhập lưu</string>
     <string name="opt_remove">Xóa khỏi thư viện</string>
+
+    <string-array name="game_options">
+        <item>@string/opt_change_icon</item>
+        <item>@string/opt_reset_icon</item>
+        <item>@string/opt_rename</item>
+        <item>@string/opt_display</item>
+        <item>@string/opt_export_save</item>
+        <item>@string/opt_import_save</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/opt_reset_data</item>
+        <item>@string/opt_import_sd</item>
+        <item>@string/opt_remove</item>
+    </string-array>
+
+    <string name="opt_reset_data">Đặt lại dữ liệu trò chơi</string>
+    <string name="opt_import_sd">Nhập dữ liệu SD</string>
+    <string name="reset_data_title">Đặt lại dữ liệu trò chơi?</string>
+    <string name="reset_data_message">Khôi phục dữ liệu gốc của trò chơi (scratchpad). Mọi tiến trình hoặc cài đặt đã lưu sau khi nhập trò chơi sẽ bị mất.</string>
+    <string name="reset_data_done">Đã đặt lại dữ liệu trò chơi về bản gốc</string>
+    <string name="reset_data_failed">Đặt lại thất bại:</string>
+    <string name="reset_data_unavailable">Không có bản sao dữ liệu gốc</string>
+    <string name="corrupt_data_title">Dữ liệu trò chơi bị hỏng</string>
+    <string name="corrupt_data_message">Dữ liệu đã lưu của trò chơi này bị hỏng và có thể không khởi động được (ví dụ \"lỗi kết nối\"). Đặt lại về dữ liệu gốc? Mọi tiến trình đã lưu sẽ bị mất. Bạn cũng có thể làm việc này sau từ danh sách trò chơi: nhấn giữ trò chơi, sau đó nhấn \"Đặt lại dữ liệu trò chơi\".</string>
+    <string name="corrupt_data_reset">Đặt lại dữ liệu</string>
+    <string name="corrupt_data_cancel">Để sau</string>
     <string name="rename_title">Đổi tên</string>
     <string name="ok">OK</string>
     <string name="cancel">Hủy</string>
+    <string name="delete">Xóa</string>
+    <string name="load_jam">Tải JAM</string>
+    <string name="invalid_image_msg">Hình ảnh không hợp lệ: %1$s</string>
+    <string name="save_exported">Đã xuất bản lưu</string>
+    <string name="export_failed">Xuất thất bại: %1$s</string>
+    <string name="save_imported">Đã nhập bản lưu thành công</string>
+    <string name="import_failed">Nhập thất bại: %1$s</string>
+    <string name="no_valid_games">Không tìm thấy trò chơi hợp lệ</string>
     <string name="key_mapping_title">Ánh xạ phím</string>
+    <string name="binding_hint">Nhấn vào một hàng rồi nhấn phím phần cứng để gán; nhấn giữ để xóa. Phím Quay lại để thoát.</string>
+    <string name="binding_capturing">Đang gán: %1$s - nhấn phím phần cứng (Quay lại để hủy)</string>
     <string name="unbound">Chưa gán</string>
     <string name="reset">Đặt lại</string>
+    <string name="doja_key">Phím DoJa %1$d</string>
+    <string name="exit_game_action">Thoát trò chơi</string>
     <string name="display_title">Hiển thị</string>
+    <string name="display_title_game">Hiển thị: %1$s</string>
     <string name="orientation">Hướng màn hình</string>
     <string name="game_screen">Màn hình game</string>
     <string name="debugging">Gỡ lỗi</string>
+    <string name="inherit_global">Kế thừa toàn cục</string>
     <string name="portrait">Dọc</string>
     <string name="landscape">Ngang</string>
+    <string name="portrait_reverse">Dọc (đảo ngược)</string>
+    <string name="landscape_reverse">Ngang (đảo ngược)</string>
     <string name="original">Gốc</string>
     <string name="full_screen">Toàn màn hình</string>
+    <string name="game_display">Hiển thị trò chơi</string>
+    <string name="fill_screen">Lấp đầy màn hình</string>
+    <string name="scale_to_fit">Thu phóng vừa màn hình</string>
     <string name="enable">Bật</string>
     <string name="disable">Tắt</string>
-    <string name="game_menu">Menu game</string>
-    <string name="hide_keypad">Ẩn bàn phím</string>
-    <string name="exit_game">Thoát game</string>
-    <string name="theme_title">Giao diện và nhạc nền</string>
-    <string name="theme">Giao diện</string>
-    <string name="no_bgm">Không có nhạc nền</string>
-    <string name="bgm">Nhạc nền</string>
-    <string name="about">Giới thiệu</string>
     <string name="filter">Bộ lọc</string>
     <string name="filter_none">Không</string>
+    <string name="filter_scanlines">Dòng quét</string>
+    <string name="filter_lcd_grid">Lưới LCD</string>
+    <string name="filter_crt">CRT</string>
+    <string name="filter_dot_matrix">Ma trận điểm</string>
+    <string name="filter_gameboy">Game Boy</string>
+    <string name="filter_sepia">Nâu đỏ</string>
+    <string name="filter_grayscale">Thang xám</string>
+    <string name="display_fps">Hệ thống</string>
+    <string name="show_fps">Hiện FPS</string>
+    <string name="use_hardware_rendering">Dùng kết xuất phần cứng</string>
+    <string name="reset_to_global">Đặt lại về mặc định toàn cục</string>
+    <string name="theme_title">Giao diện và nhạc nền</string>
+    <string name="theme">Giao diện</string>
+    <string name="no_track_selected">Chưa chọn bản nhạc</string>
+    <string name="default_builtin">Mặc định (tích hợp)</string>
+    <string name="select_audio">Chọn tệp âm thanh (.mp3/.ogg/.mld)</string>
+    <string name="invalid_mld">Tệp MLD không hợp lệ hoặc không được hỗ trợ</string>
     <string name="bgm_import_failed">Không thể đọc tệp đã chọn</string>
     <string name="unsupported_audio">Định dạng âm thanh không được hỗ trợ</string>
     <string name="paused_press_any_key">-Tạm dừng- Nhấn phím bất kỳ để tiếp tục</string>
+    <string name="no_bgm">Không có nhạc nền</string>
+    <string name="bgm">Nhạc nền</string>
+    <string name="default_bgm">Nhạc nền mặc định</string>
+    <string name="game_menu">Menu game</string>
+    <string name="edit_buttons">Chỉnh sửa nút</string>
+    <string name="edit_buttons_move">Di chuyển</string>
+    <string name="edit_buttons_resize">Đổi kích thước</string>
+    <string name="edit_buttons_hide">Ẩn</string>
+    <string name="edit_buttons_reset">Đặt lại</string>
+    <string name="edit_buttons_ok">OK</string>
+    <string name="edit_buttons_cancel">Hủy</string>
+    <string name="edit_buttons_scale">Tỷ lệ %1$d%%</string>
+    <string name="hide_keypad">Ẩn bàn phím</string>
+    <string name="exit_game">Thoát game</string>
 </resources>

@@ -352,6 +352,49 @@ public final class DirectBufferFactory {
         return requireFloatArray(buff)[index];
     }
 
+    /**
+     * Returns the backing byte array of a host byte buffer, or {@code null} for
+     * unknown implementations. Used by the software rasterizer to avoid
+     * allocating a temporary byte array per vertex component.
+     */
+    public static byte[] peekByteArray(ByteBuffer buff) {
+        if (buff instanceof HostByteBuffer host) {
+            return host.values();
+        }
+        if (buff instanceof ArrayByteBuffer array) {
+            return array.values;
+        }
+        return null;
+    }
+
+    /**
+     * Returns the backing short array of a host short buffer, or {@code null}
+     * for unknown implementations.
+     */
+    public static short[] peekShortArray(ShortBuffer buff) {
+        if (buff instanceof HostShortBuffer host) {
+            return host.values();
+        }
+        if (buff instanceof ArrayShortBuffer array) {
+            return array.values;
+        }
+        return null;
+    }
+
+    /**
+     * Returns the backing float array of a host float buffer, or {@code null}
+     * for unknown implementations.
+     */
+    public static float[] peekFloatArray(FloatBuffer buff) {
+        if (buff instanceof HostFloatBuffer host) {
+            return host.values();
+        }
+        if (buff instanceof ArrayFloatBuffer array) {
+            return array.values;
+        }
+        return null;
+    }
+
     public abstract static class AbstractBuffer {
         int segmentOffset;
         int segmentLength;

@@ -16,11 +16,13 @@ public final class LocaleHelper {
     public static final String KEY_LANGUAGE = "language";
 
     public static final String[] LANGUAGE_TAGS = {
-            "en", "zh-CN", "zh-TW", "th", "ja", "ko", "es", "vi", "ms"
+            "en", "zh-CN", "zh-TW", "th", "ja", "ko", "es", "vi", "ms",
+            "fil", "ta", "ru", "pt-BR", "fr", "pl"
     };
 
     public static final String[] LANGUAGE_NAMES = {
-            "English", "中文 (简体)", "中文 (繁體)", "ไทย", "日本語", "한국어", "Español", "Tiếng Việt", "Bahasa Melayu"
+            "English", "中文 (简体)", "中文 (繁體)", "ไทย", "日本語", "한국어", "Español", "Tiếng Việt", "Bahasa Melayu",
+            "Filipino", "தமிழ்", "Русский", "Português (Brasil)", "Français", "Polski"
     };
 
     public static void applyLocale(Context context) {

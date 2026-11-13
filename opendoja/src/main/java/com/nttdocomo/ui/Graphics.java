@@ -2032,7 +2032,16 @@ public class Graphics implements com.nttdocomo.ui.graphics3d.Graphics3D, com.ntt
         // Hardware presentation reads the GL framebuffer back into the software surface. That
         // does not make the surface "software dirty"; only later Java2D writes should trigger a
         // re-upload on the next GL pass, especially when the hardware path uses supersampling.
-        oglRenderer.flushHardwarePresentation();
+        //
+        // For an on-screen canvas, defer that readback: the next 2D primitive runs
+        // prepareSoftwareSurfaceMutation() (which reads back lazily), and unlock() reads it back
+        // before presenting. Titles such as Kingdom Hearts coded flush 3D twice per frame; doing
+        // a full-frame readback at every pass added ~13 ms per pass and halved their frame rate.
+        // Offscreen images keep the eager flush because their content may be consumed by
+        // Image.renderImage() without an unlock boundary.
+        if (!surface.hasRepaintHook()) {
+            oglRenderer.flushHardwarePresentation();
+        }
         // The lock belongs to the surface, not to this Graphics object. Titles such as
         // Dragon Quest More Mystery Dungeon obtain a separate Graphics3D from
         // Canvas.getGraphics() and render the map while the application holds the frame lock

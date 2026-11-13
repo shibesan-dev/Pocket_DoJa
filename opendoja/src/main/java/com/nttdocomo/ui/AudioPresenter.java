@@ -272,6 +272,12 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
     // Async callbacks from superseded play/stop cycles must not leak into the
     // current presenter state.
     private long callbackGeneration;
+    // A completion event can be delayed behind the application callback queue
+    // while a title owns its own paint loop (Dragon Quest 3 busy-loops in
+    // Canvas.paintMap and polls getCurrentTime()). Keep the event pending so a
+    // game-thread audio query can still deliver it exactly once.
+    private boolean completionDeliveryPending;
+    private long completionDeliveryGeneration;
 
     /**
      * Applications cannot create this class directly.
@@ -646,6 +652,7 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
      * @return the current playback time in milliseconds
      */
     public int getCurrentTime() {
+        deliverPendingCompletionFromAudioQuery();
         if (activeSoundKind == MediaManager.PreparedSound.Kind.SAMPLED && sampledPlayer != null) {
             return sampledPlayer.getCurrentTimeMillis();
         }
@@ -672,6 +679,7 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
      * @return the total playback time in milliseconds
      */
     public int getTotalTime() {
+        deliverPendingCompletionFromAudioQuery();
         if (activeSoundKind == MediaManager.PreparedSound.Kind.SAMPLED && sampledPlayer != null) {
             return sampledPlayer.getTotalTimeMillis();
         }
@@ -932,6 +940,60 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
         MEDIA_CALLBACKS.execute(callback);
     }
 
+    /**
+     * Queues the COMPLETE event while also keeping it pending for
+     * {@link #deliverPendingCompletion(String)}. Titles that never yield to the
+     * host render path (and can therefore miss a queued callback for an
+     * arbitrarily long time) poll {@link #getCurrentTime()} from their own
+     * loop; that poll is a safe application-thread point to deliver the event.
+     */
+    private void notifyCompletionAsync() {
+        if (mediaListener == null) {
+            synchronized (this) {
+                completionDeliveryPending = false;
+            }
+            return;
+        }
+        Runnable callback = () -> deliverPendingCompletion("runtime-callback");
+        DoJaRuntime runtime = DoJaRuntime.current();
+        if (runtime != null) {
+            runtime.postApplicationCallback(callback);
+            return;
+        }
+        MEDIA_CALLBACKS.execute(callback);
+    }
+
+    /**
+     * Delivers a pending COMPLETE event exactly once. A new play/stop cycle
+     * bumps {@code callbackGeneration}; in that case the old completion is
+     * stale and is discarded.
+     */
+    private void deliverPendingCompletion(String source) {
+        synchronized (this) {
+            if (!completionDeliveryPending
+                    || completionDeliveryGeneration != callbackGeneration) {
+                completionDeliveryPending = false;
+                return;
+            }
+            completionDeliveryPending = false;
+        }
+        if (OpenDoJaLog.isDebugEnabled()) {
+            OpenDoJaLog.debug(AudioPresenter.class,
+                    "media complete delivered via " + source + " id=" + debugId
+                            + " thread=" + Thread.currentThread().getName());
+        }
+        notifyListener(AUDIO_COMPLETE, 0);
+    }
+
+    private void deliverPendingCompletionFromAudioQuery() {
+        synchronized (this) {
+            if (!completionDeliveryPending) {
+                return;
+            }
+        }
+        deliverPendingCompletion("audio-query");
+    }
+
     private long nextCallbackGeneration() {
         synchronized (this) {
             return ++callbackGeneration;
@@ -1058,7 +1120,11 @@ public class AudioPresenter implements MediaPresenter, AutoCloseable {
         playing = false;
         lastMldSyncTimeMillis = Integer.MIN_VALUE;
         cancelSyncEvents();
-        notifyListenerAsync(AUDIO_COMPLETE, 0);
+        synchronized (this) {
+            completionDeliveryPending = true;
+            completionDeliveryGeneration = callbackGeneration;
+        }
+        notifyCompletionAsync();
     }
 
     private void handlePlaybackFailure(long playbackToken, Exception exception, String label) {

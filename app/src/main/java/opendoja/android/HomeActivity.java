@@ -1266,18 +1266,25 @@ public class HomeActivity extends Activity {
         new Thread(() -> {
             String report;
             java.io.File out = null;
+            java.io.File logOut = null;
             try {
                 report = buildDiagnosticsReport();
                 out = writeDiagnostics(report);
+                logOut = copyRuntimeLog();
             } catch (Throwable throwable) {
                 report = "diagnostics failed: " + throwable;
             }
             final String finalReport = report;
             final java.io.File finalOut = out;
+            final java.io.File finalLogOut = logOut;
             runOnUiThread(() -> {
                 if (finalOut != null) {
+                    String message = "Saved: " + finalOut.getAbsolutePath();
+                    if (finalLogOut != null) {
+                        message += "\nlog: " + finalLogOut.getAbsolutePath();
+                    }
                     android.widget.Toast.makeText(this,
-                            "Saved: " + finalOut.getAbsolutePath(), android.widget.Toast.LENGTH_LONG).show();
+                            message, android.widget.Toast.LENGTH_LONG).show();
                 }
                 try {
                     Intent send = new Intent(Intent.ACTION_SEND);
@@ -1418,7 +1425,7 @@ public class HomeActivity extends Activity {
             }
             if (log.exists()) {
                 appendLogMatches(sb, log);
-                sb.append("\nlog tail (").append(log.getName()).append("):\n").append(tail(log, 150));
+                sb.append("\nlog (").append(log.getName()).append("):\n").append(tail(log, 4000));
             } else {
                 sb.append("\n(no runtime log file; enable Debugging to capture it)\n");
             }
@@ -1500,6 +1507,45 @@ public class HomeActivity extends Activity {
                 }
                 try (java.io.FileWriter writer = new java.io.FileWriter(candidate, false)) {
                     writer.write(report);
+                }
+                return candidate;
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
+    }
+
+    /** Saves the complete current runtime log next to the diagnostics report. */
+    private java.io.File copyRuntimeLog() {
+        java.io.File source = new java.io.File(getExternalFilesDir(null), "pocketdoja-log.txt");
+        if (!source.exists()) {
+            source = new java.io.File(getFilesDir(), "pocketdoja-log.txt");
+        }
+        if (!source.exists()) {
+            return null;
+        }
+        java.io.File[] candidates = {
+                new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS), "pocketdoja-log.txt"),
+                new java.io.File(getExternalFilesDir(null), "pocketdoja-log.txt"),
+                new java.io.File(getFilesDir(), "pocketdoja-log.txt")
+        };
+        for (java.io.File candidate : candidates) {
+            try {
+                if (candidate.getCanonicalFile().equals(source.getCanonicalFile())) {
+                    return candidate;
+                }
+                java.io.File parent = candidate.getParentFile();
+                if (parent != null) {
+                    parent.mkdirs();
+                }
+                try (java.io.FileInputStream in = new java.io.FileInputStream(source);
+                     java.io.FileOutputStream output = new java.io.FileOutputStream(candidate, false)) {
+                    byte[] buffer = new byte[16384];
+                    int read;
+                    while ((read = in.read(buffer)) > 0) {
+                        output.write(buffer, 0, read);
+                    }
                 }
                 return candidate;
             } catch (Throwable ignored) {
@@ -2338,6 +2384,11 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         row.setFocusable(false);
         row.setOnClickListener(v -> onGameTapped(game));
         row.setOnLongClickListener(v -> {
+            // Move the selection to the pressed game first so the highlight
+            // matches the item whose options are about to open.
+            selectedGamePath = game.jam.getAbsolutePath();
+            updateGameHighlight();
+            ensureSelectedGameVisible();
             showGameOptions(game);
             return true;
         });
@@ -2774,6 +2825,11 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         cell.setTag(game.jam.getAbsolutePath());
         cell.setOnClickListener(v -> onGameTapped(game));
         cell.setOnLongClickListener(v -> {
+            // Move the selection to the pressed game first so the highlight
+            // matches the item whose options are about to open.
+            selectedGamePath = game.jam.getAbsolutePath();
+            updateGameHighlight();
+            ensureSelectedGameVisible();
             showGameOptions(game);
             return true;
         });

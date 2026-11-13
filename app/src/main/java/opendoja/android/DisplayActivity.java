@@ -25,6 +25,8 @@ public class DisplayActivity extends Activity {
     static final String KEY_GAME_DISPLAY = "gameDisplay";
     static final String KEY_FILTER = "filter";
     static final String KEY_HIDE_KEYPAD = "hideKeypad";
+    static final String KEY_SHOW_FPS = "showFps";
+    static final String KEY_USE_HARDWARE_RENDERER = "useHardwareRenderer";
     static final String KEY_DEBUG = "debugLogging";
     static final String INHERIT = "inherit";
 
@@ -46,6 +48,8 @@ public class DisplayActivity extends Activity {
     private String pendingGameDisplay;
     private String pendingFilter;
     private String pendingDebug;
+    private boolean pendingShowFps;
+    private boolean pendingUseHardwareRenderer;
     private boolean pendingUseSystem;
     private String pendingLanguage;
 
@@ -80,6 +84,8 @@ public class DisplayActivity extends Activity {
             pendingFilter = prefs.getString(KEY_FILTER, GameFilters.ID_NONE);
         }
         pendingDebug = prefs.getString(KEY_DEBUG, "disable");
+        pendingShowFps = prefs.getBoolean(KEY_SHOW_FPS, false);
+        pendingUseHardwareRenderer = prefs.getBoolean(KEY_USE_HARDWARE_RENDERER, true);
         pendingUseSystem = prefs.getBoolean(LocaleHelper.KEY_USE_SYSTEM_LANGUAGE, true);
         pendingLanguage = prefs.getString(LocaleHelper.KEY_LANGUAGE, "en");
 
@@ -194,6 +200,29 @@ public class DisplayActivity extends Activity {
         }
 
         if (!perGame) {
+            // FPS counter overlay (global): drawn on the game screen itself.
+            TextView sectionFps = new TextView(this);
+            sectionFps.setText(R.string.display_fps);
+            sectionFps.setTextSize(18f);
+            sectionFps.setTypeface(Typeface.DEFAULT_BOLD);
+            sectionFps.setPadding(0, pad, 0, pad / 2);
+            root.addView(sectionFps, matchWrap());
+
+            android.widget.CheckBox showFpsCb = new android.widget.CheckBox(this);
+            showFpsCb.setText(R.string.show_fps);
+            showFpsCb.setChecked(pendingShowFps);
+            showFpsCb.setOnCheckedChangeListener((b, checked) -> pendingShowFps = checked);
+            root.addView(showFpsCb, matchWrap());
+
+            android.widget.CheckBox hardwareCb = new android.widget.CheckBox(this);
+            hardwareCb.setText(R.string.use_hardware_rendering);
+            hardwareCb.setChecked(pendingUseHardwareRenderer);
+            hardwareCb.setOnCheckedChangeListener((b, checked) ->
+                    pendingUseHardwareRenderer = checked);
+            root.addView(hardwareCb, matchWrap());
+        }
+
+        if (!perGame) {
             // Debugging (global)
             TextView sectionDebug = new TextView(this);
             sectionDebug.setText(R.string.debugging);
@@ -225,14 +254,14 @@ public class DisplayActivity extends Activity {
         if (!perGame) {
             // Language section
             TextView sectionLang = new TextView(this);
-            sectionLang.setText("Language");
+            sectionLang.setText(R.string.language);
             sectionLang.setTextSize(18f);
             sectionLang.setTypeface(Typeface.DEFAULT_BOLD);
             sectionLang.setPadding(0, pad, 0, pad / 2);
             root.addView(sectionLang, matchWrap());
 
             android.widget.CheckBox useSystemCb = new android.widget.CheckBox(this);
-            useSystemCb.setText("Use System Language");
+            useSystemCb.setText(R.string.use_system_language);
             useSystemCb.setChecked(pendingUseSystem);
             useSystemCb.setOnCheckedChangeListener((b, checked) -> pendingUseSystem = checked);
             root.addView(useSystemCb, matchWrap());
@@ -253,7 +282,7 @@ public class DisplayActivity extends Activity {
             updateLangLabel.run();
             langRow.setOnClickListener(v -> {
                 new android.app.AlertDialog.Builder(this)
-                        .setTitle("Language")
+                        .setTitle(R.string.language)
                         .setItems(LocaleHelper.LANGUAGE_NAMES, (d, which) -> {
                             pendingLanguage = LocaleHelper.LANGUAGE_TAGS[which];
                             updateLangLabel.run();
@@ -357,6 +386,8 @@ public class DisplayActivity extends Activity {
         }
          if (gameId == null || gameId.isEmpty()) {
              editor.putString(KEY_DEBUG, pendingDebug);
+             editor.putBoolean(KEY_SHOW_FPS, pendingShowFps);
+             editor.putBoolean(KEY_USE_HARDWARE_RENDERER, pendingUseHardwareRenderer);
              editor.putBoolean(LocaleHelper.KEY_USE_SYSTEM_LANGUAGE, pendingUseSystem);
              editor.putString(LocaleHelper.KEY_LANGUAGE, pendingLanguage);
          }

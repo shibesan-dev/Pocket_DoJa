@@ -186,6 +186,8 @@ private static volatile Thread gameThread;
             boolean hidden = hkPrefs.getBoolean(gameId + "_" + DisplayActivity.KEY_HIDE_KEYPAD, false);
             surfaceView.setKeypadVisible(!hidden);
         }
+        applyShowFpsPreference();
+        applyRendererPreference();
         android.widget.FrameLayout root = new android.widget.FrameLayout(this);
         root.setBackgroundColor(0xFF000000);
         root.addView(surfaceView, new android.widget.FrameLayout.LayoutParams(
@@ -214,6 +216,16 @@ private static volatile Thread gameThread;
 
     @Override
     public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+        if (surfaceView != null && surfaceView.isButtonEditMode()) {
+            // While laying out the on-screen controls, BACK cancels the editor
+            // instead of opening the game menu or being routed to the title.
+            if (event.getKeyCode() == android.view.KeyEvent.KEYCODE_BACK
+                    && event.getAction() == android.view.KeyEvent.ACTION_DOWN
+                    && event.getRepeatCount() == 0) {
+                finishButtonEditing(false);
+            }
+            return true;
+        }
         if (suspended && !isFinishing()) {
             // "-Paused- Press any key to continue": the first key press resumes
             // the game; it is consumed so the game never sees a stale press.
@@ -266,6 +278,9 @@ private static volatile Thread gameThread;
         if (surfaceView == null) {
             return;
         }
+        if (surfaceView.isButtonEditMode()) {
+            return;
+        }
         boolean keypadShown = surfaceView.isKeypadVisible();
 
         float density = getResources().getDisplayMetrics().density;
@@ -305,6 +320,28 @@ private static volatile Thread gameThread;
             persistHideKeypad(isChecked);
         });
         root.addView(hideCheck);
+
+        android.widget.TextView editButtons = new android.widget.TextView(this);
+        editButtons.setText(R.string.edit_buttons);
+        editButtons.setTextSize(16f);
+        editButtons.setTypeface(null, android.graphics.Typeface.BOLD);
+        editButtons.setGravity(android.view.Gravity.CENTER);
+        editButtons.setMinHeight(minHeight);
+        editButtons.setPadding(btnPadH, btnPadV, btnPadH, btnPadV);
+        editButtons.setBackground(normalBg);
+        editButtons.setOnTouchListener((v, e) -> {
+            if (e.getAction() == android.view.MotionEvent.ACTION_DOWN) v.setBackground(pressedBg);
+            else if (e.getAction() == android.view.MotionEvent.ACTION_UP || e.getAction() == android.view.MotionEvent.ACTION_CANCEL) v.setBackground(normalBg);
+            return false;
+        });
+        editButtons.setOnClickListener(v -> {
+            if (gameMenu != null) gameMenu.dismiss();
+            startButtonEditing();
+        });
+        android.widget.LinearLayout.LayoutParams editLp = new android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+        editLp.topMargin = pad / 2;
+        root.addView(editButtons, editLp);
 
         android.graphics.drawable.GradientDrawable exitNormalBg = new android.graphics.drawable.GradientDrawable();
         exitNormalBg.setColor(0xFF3A3A3A);
@@ -347,7 +384,65 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
         android.content.SharedPreferences prefs = getSharedPreferences(DisplayActivity.PREFS_NAME, MODE_PRIVATE);
         String gid = EntryActivity.gameId;
         if (gid == null || gid.isEmpty()) return;
-        prefs.edit().putBoolean(gid + "_" + DisplayActivity.KEY_HIDE_KEYPAD, hidden).commit();
+        android.content.SharedPreferences.Editor editor = prefs.edit();
+        if (hidden) {
+            editor.putBoolean(gid + "_" + DisplayActivity.KEY_HIDE_KEYPAD, true);
+        } else {
+            // Avoid leaving a "false" line behind in display.xml; the default is
+            // keypad visible, so only the hidden state needs to be stored.
+            editor.remove(gid + "_" + DisplayActivity.KEY_HIDE_KEYPAD);
+        }
+        editor.commit();
+    }
+
+    /** Opens the per-game on-screen control editor and pauses the title. */
+    private void startButtonEditing() {
+        if (surfaceView == null || surfaceView.isButtonEditMode()) {
+            return;
+        }
+        if (gameMenu != null && gameMenu.isShowing()) {
+            gameMenu.dismiss();
+        }
+        if (!suspended) {
+            suspendGame();
+        }
+        surfaceView.beginButtonEditMode();
+        opendoja.host.OpenDoJaLog.info(EntryActivity.class, "startButtonEditing: game=" + gameId);
+    }
+
+    /** Called by the surface's OK/Cancel buttons (and BACK while editing).
+     *  Resumes the game once the pending layout has been saved or discarded. */
+    void finishButtonEditing(boolean save) {
+        if (surfaceView == null || !surfaceView.isButtonEditMode()) {
+            return;
+        }
+        opendoja.host.OpenDoJaLog.info(EntryActivity.class,
+                "finishButtonEditing: save=" + save + " game=" + gameId);
+        surfaceView.endButtonEditMode(save);
+        if (suspended) {
+            resumeGame();
+        }
+    }
+
+    /** Applies the global Show FPS display preference to the game surface. */
+    private void applyShowFpsPreference() {
+        if (surfaceView == null) {
+            return;
+        }
+        android.content.SharedPreferences prefs = getSharedPreferences(DisplayActivity.PREFS_NAME, MODE_PRIVATE);
+        surfaceView.setShowFps(prefs.getBoolean(DisplayActivity.KEY_SHOW_FPS, false));
+    }
+
+    /**
+     * Selects the OpenGL ES scene renderer for the next launch. The core reads this
+     * as a launch property, so apply it before the game thread creates its runtime.
+     */
+    private void applyRendererPreference() {
+        android.content.SharedPreferences prefs = getSharedPreferences(DisplayActivity.PREFS_NAME, MODE_PRIVATE);
+        boolean hardware = prefs.getBoolean(DisplayActivity.KEY_USE_HARDWARE_RENDERER, true);
+        System.setProperty(OpenDoJaLaunchArgs.OPEN_GLES_RENDERER,
+                hardware ? opendoja.host.OpenGlesRendererMode.HARDWARE.id()
+                        : opendoja.host.OpenGlesRendererMode.SOFTWARE.id());
     }
 
     private void exitGame() {
@@ -915,6 +1010,11 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
 
     @Override
     public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
+        if (surfaceView != null && surfaceView.isButtonEditMode()) {
+            // The editor owns the touch surface; do not treat a tap as the
+            // "press any key to continue" wake gesture.
+            return super.dispatchTouchEvent(ev);
+        }
         if (suspended && !isFinishing()) {
             // Tapping the screen also resumes a hibernating game (touch is a
             // key press on the on-screen keypad); consume the tap.
@@ -930,8 +1030,16 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
     protected void onResume() {
         super.onResume();
         HomeActivity.applyDisplayOrientation(this, gameId);
+        applyShowFpsPreference();
+        applyRendererPreference();
         if (suspended) {
-            showPausedOverlay();
+            if (surfaceView != null && surfaceView.isButtonEditMode()) {
+                // The editor is already a deliberate pause; the "-Paused-"
+                // overlay would cover its toolbar.
+                surfaceView.hidePausedOverlay();
+            } else {
+                showPausedOverlay();
+            }
         }
     }
 
@@ -1243,7 +1351,7 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
                 if (logFile.getParentFile() == null) {
                     logFile = new java.io.File(getFilesDir(), "pocketdoja-log.txt");
                 }
-                OpenDoJaLog.setFileLoggingEnabled(true, logFile);
+                OpenDoJaLog.setFileLoggingEnabled(true, logFile, false);
                 OpenDoJaLog.configure(OpenDoJaLog.Level.DEBUG);
             } else {
                 OpenDoJaLog.setFileLoggingEnabled(false, null);

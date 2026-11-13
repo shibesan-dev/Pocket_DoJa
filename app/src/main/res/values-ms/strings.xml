@@ -1,11 +1,35 @@
 <resources>
+    <string name="app_name">Pocket DoJa</string>
+    <string name="title_pocket_doja">Pocket DoJa</string>
     <string name="no_installed_games">Tiada permainan dipasang\nGuna menu kanan atas untuk import .JAM</string>
+    <string name="search">Cari</string>
+    <string name="about_body">Pocket DoJa ialah projek emulator berasaskan Android yang berdasarkan OpenDoJa, khusus untuk meneroka dan memelihara pengalaman permainan Java i-mode NTT DoCoMo klasik.</string>
+    <string name="paypal_label">"PayPal: "</string>
+    <string name="wallet_label">"Alamat dompet: "</string>
+    <string name="footer_donations">Derma adalah sepenuhnya pilihan dan membantu menyokong usaha pembangunan dan pemeliharaan yang berterusan.\n\nTerima kasih atas minat anda terhadap Pocket DoJa!\n\n</string>
+    <string name="copied">Disalin</string>
+    <string name="about">Tentang</string>
+    <string name="invalid_image">Imej tidak sah</string>
     <string name="menu_import_jam">Import .JAM</string>
     <string name="menu_key_mapping">Pemetaan kekunci</string>
     <string name="menu_settings">Tetapan</string>
     <string name="menu_theme">Tema</string>
     <string name="menu_about">Tentang</string>
     <string name="menu_exit">Keluar</string>
+
+    <string-array name="home_menu_items">
+        <item>@string/menu_import_jam</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/menu_settings</item>
+        <item>@string/menu_theme</item>
+        <item>@string/menu_about</item>
+        <item>@string/menu_exit</item>
+        <item>@string/menu_diagnostics</item>
+    </string-array>
+
+    <string name="language">Bahasa</string>
+    <string name="use_system_language">Guna bahasa sistem</string>
+    <string name="menu_diagnostics">Simpan diagnostik</string>
     <string name="opt_change_icon">Tukar ikon</string>
     <string name="opt_reset_icon">Set semula ikon</string>
     <string name="opt_rename">Namakan semula</string>
@@ -13,33 +37,100 @@
     <string name="opt_export_save">Eksport simpanan</string>
     <string name="opt_import_save">Import simpanan</string>
     <string name="opt_remove">Buang dari pustaka</string>
+
+    <string-array name="game_options">
+        <item>@string/opt_change_icon</item>
+        <item>@string/opt_reset_icon</item>
+        <item>@string/opt_rename</item>
+        <item>@string/opt_display</item>
+        <item>@string/opt_export_save</item>
+        <item>@string/opt_import_save</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/opt_reset_data</item>
+        <item>@string/opt_import_sd</item>
+        <item>@string/opt_remove</item>
+    </string-array>
+
+    <string name="opt_reset_data">Set semula data permainan</string>
+    <string name="opt_import_sd">Import data SD</string>
+    <string name="reset_data_title">Set semula data permainan?</string>
+    <string name="reset_data_message">Pulihkan data permainan asal (scratchpad). Sebarang kemajuan atau tetapan yang disimpan selepas permainan diimport akan hilang.</string>
+    <string name="reset_data_done">Data permainan diset semula kepada asal</string>
+    <string name="reset_data_failed">Set semula gagal:</string>
+    <string name="reset_data_unavailable">Tiada snapshot data asal tersedia</string>
+    <string name="corrupt_data_title">Data permainan rosak</string>
+    <string name="corrupt_data_message">Data simpanan permainan ini rosak dan mungkin gagal dimulakan (contohnya \"ralat sambungan\"). Set semula kepada data permainan asal? Sebarang kemajuan yang disimpan akan hilang. Anda juga boleh melakukannya kemudian dari senarai permainan: tekan lama permainan, kemudian ketik \"Set semula data permainan\".</string>
+    <string name="corrupt_data_reset">Set semula data</string>
+    <string name="corrupt_data_cancel">Bukan sekarang</string>
     <string name="rename_title">Namakan semula</string>
     <string name="ok">OK</string>
     <string name="cancel">Batal</string>
+    <string name="delete">Padam</string>
+    <string name="load_jam">Muat JAM</string>
+    <string name="invalid_image_msg">Imej tidak sah: %1$s</string>
+    <string name="save_exported">Simpanan dieksport</string>
+    <string name="export_failed">Eksport gagal: %1$s</string>
+    <string name="save_imported">Simpanan berjaya diimport</string>
+    <string name="import_failed">Import gagal: %1$s</string>
+    <string name="no_valid_games">Tiada permainan sah ditemui</string>
     <string name="key_mapping_title">Pemetaan kekunci</string>
+    <string name="binding_hint">Ketik baris kemudian tekan kekunci perkakasan untuk mengikat; tekan lama untuk kosongkan. Kembali untuk keluar.</string>
+    <string name="binding_capturing">Mengikat: %1$s - tekan kekunci perkakasan (Kembali untuk batal)</string>
     <string name="unbound">Belum dipetakan</string>
     <string name="reset">Set semula</string>
+    <string name="doja_key">Kekunci DoJa %1$d</string>
+    <string name="exit_game_action">Keluar permainan</string>
     <string name="display_title">Paparan</string>
+    <string name="display_title_game">Paparan: %1$s</string>
     <string name="orientation">Orientasi</string>
     <string name="game_screen">Skrin permainan</string>
     <string name="debugging">Nyahpepijat</string>
+    <string name="inherit_global">Warisi global</string>
     <string name="portrait">Potret</string>
     <string name="landscape">Landskap</string>
+    <string name="portrait_reverse">Potret (terbalik)</string>
+    <string name="landscape_reverse">Landskap (terbalik)</string>
     <string name="original">Asal</string>
     <string name="full_screen">Skrin penuh</string>
+    <string name="game_display">Paparan permainan</string>
+    <string name="fill_screen">Penuhkan skrin</string>
+    <string name="scale_to_fit">Skala mengikut saiz</string>
     <string name="enable">Aktifkan</string>
     <string name="disable">Nyahaktifkan</string>
-    <string name="game_menu">Menu permainan</string>
-    <string name="hide_keypad">Sembunyi pad kekunci</string>
-    <string name="exit_game">Keluar permainan</string>
-    <string name="theme_title">Tema dan BGM</string>
-    <string name="theme">Tema</string>
-    <string name="no_bgm">Tiada BGM</string>
-    <string name="bgm">BGM</string>
-    <string name="about">Tentang</string>
     <string name="filter">Penapis</string>
     <string name="filter_none">Tiada</string>
+    <string name="filter_scanlines">Garis imbas</string>
+    <string name="filter_lcd_grid">Grid LCD</string>
+    <string name="filter_crt">CRT</string>
+    <string name="filter_dot_matrix">Matriks titik</string>
+    <string name="filter_gameboy">Game Boy</string>
+    <string name="filter_sepia">Sepia</string>
+    <string name="filter_grayscale">Skala kelabu</string>
+    <string name="display_fps">Sistem</string>
+    <string name="show_fps">Tunjuk FPS</string>
+    <string name="use_hardware_rendering">Guna pemaparan perkakasan</string>
+    <string name="reset_to_global">Set semula kepada lalai global</string>
+    <string name="theme_title">Tema dan BGM</string>
+    <string name="theme">Tema</string>
+    <string name="no_track_selected">Tiada trek dipilih</string>
+    <string name="default_builtin">Lalai (terbina dalam)</string>
+    <string name="select_audio">Pilih fail audio (.mp3/.ogg/.mld)</string>
+    <string name="invalid_mld">Fail MLD tidak sah atau tidak disokong</string>
     <string name="bgm_import_failed">Tidak dapat membaca fail yang dipilih</string>
     <string name="unsupported_audio">Format audio tidak disokong</string>
     <string name="paused_press_any_key">-Dijeda- Tekan sebarang kekunci untuk meneruskan</string>
+    <string name="no_bgm">Tiada BGM</string>
+    <string name="bgm">BGM</string>
+    <string name="default_bgm">BGM lalai</string>
+    <string name="game_menu">Menu permainan</string>
+    <string name="edit_buttons">Sunting butang</string>
+    <string name="edit_buttons_move">Gerak</string>
+    <string name="edit_buttons_resize">Ubah saiz</string>
+    <string name="edit_buttons_hide">Sembunyi</string>
+    <string name="edit_buttons_reset">Set semula</string>
+    <string name="edit_buttons_ok">OK</string>
+    <string name="edit_buttons_cancel">Batal</string>
+    <string name="edit_buttons_scale">Skala %1$d%%</string>
+    <string name="hide_keypad">Sembunyi pad kekunci</string>
+    <string name="exit_game">Keluar permainan</string>
 </resources>

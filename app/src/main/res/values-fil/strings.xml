@@ -1,0 +1,136 @@
+<resources>
+    <string name="app_name">Pocket DoJa</string>
+    <string name="title_pocket_doja">Pocket DoJa</string>
+    <string name="no_installed_games">Walang naka-install na laro\nGamitin ang menu sa kanang itaas para mag-import ng .JAM</string>
+    <string name="search">Maghanap</string>
+    <string name="about_body">Ang Pocket DoJa ay isang proyektong emulator para sa Android na batay sa OpenDoJa, na nakatuon sa paggalugad at pagpreserba ng karanasan sa mga klasikong NTT DoCoMo i-mode Java na laro.</string>
+    <string name="paypal_label">"PayPal: "</string>
+    <string name="wallet_label">"Address ng wallet: "</string>
+    <string name="footer_donations">Ang mga donasyon ay ganap na opsyonal at tumutulong sa patuloy na pag-develop at pagpreserba.\n\nSalamat sa iyong interes sa Pocket DoJa!\n\n</string>
+    <string name="copied">Nakopya</string>
+    <string name="about">Tungkol</string>
+    <string name="invalid_image">Di-wastong larawan</string>
+    <string name="menu_import_jam">Mag-import ng .JAM</string>
+    <string name="menu_key_mapping">Pagmamapa ng Key</string>
+    <string name="menu_settings">Mga Setting</string>
+    <string name="menu_theme">Tema</string>
+    <string name="menu_about">Tungkol</string>
+    <string name="menu_exit">Lumabas</string>
+
+    <string-array name="home_menu_items">
+        <item>@string/menu_import_jam</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/menu_settings</item>
+        <item>@string/menu_theme</item>
+        <item>@string/menu_about</item>
+        <item>@string/menu_exit</item>
+        <item>@string/menu_diagnostics</item>
+    </string-array>
+
+    <string name="language">Wika</string>
+    <string name="use_system_language">Gamitin ang wika ng system</string>
+    <string name="menu_diagnostics">I-save ang diagnostics</string>
+    <string name="opt_change_icon">Palitan ang Icon</string>
+    <string name="opt_reset_icon">I-reset ang Icon</string>
+    <string name="opt_rename">Palitan ang Pangalan</string>
+    <string name="opt_display">Display</string>
+    <string name="opt_export_save">I-export ang Save</string>
+    <string name="opt_import_save">I-import ang Save</string>
+    <string name="opt_remove">Alisin sa Library</string>
+
+    <string-array name="game_options">
+        <item>@string/opt_change_icon</item>
+        <item>@string/opt_reset_icon</item>
+        <item>@string/opt_rename</item>
+        <item>@string/opt_display</item>
+        <item>@string/opt_export_save</item>
+        <item>@string/opt_import_save</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/opt_reset_data</item>
+        <item>@string/opt_import_sd</item>
+        <item>@string/opt_remove</item>
+    </string-array>
+
+    <string name="opt_reset_data">I-reset ang Data ng Laro</string>
+    <string name="opt_import_sd">Mag-import ng SD Data</string>
+    <string name="reset_data_title">I-reset ang data ng laro?</string>
+    <string name="reset_data_message">Ibalik ang orihinal na data ng laro (scratchpad). Mawawala ang anumang pag-unlad o setting na na-save pagkatapos i-import ang laro.</string>
+    <string name="reset_data_done">Naibalik ang data ng laro sa orihinal</string>
+    <string name="reset_data_failed">Nabigo ang pag-reset:</string>
+    <string name="reset_data_unavailable">Walang available na snapshot ng orihinal na data</string>
+    <string name="corrupt_data_title">Sirang data ng laro</string>
+    <string name="corrupt_data_message">Ang na-save na data ng larong ito ay sira at maaaring hindi ito magsimula (halimbawa, \"error sa koneksyon\"). I-reset ito sa orihinal na data ng laro? Mawawala ang anumang na-save na pag-unlad. Maaari mo rin itong gawin mamaya mula sa listahan ng laro: pindutin nang matagal ang laro, pagkatapos ay i-tap ang \"I-reset ang Data ng Laro\".</string>
+    <string name="corrupt_data_reset">I-reset ang data</string>
+    <string name="corrupt_data_cancel">Hindi ngayon</string>
+    <string name="rename_title">Palitan ang Pangalan</string>
+    <string name="ok">OK</string>
+    <string name="cancel">Kanselahin</string>
+    <string name="delete">Tanggalin</string>
+    <string name="load_jam">I-load ang JAM</string>
+    <string name="invalid_image_msg">Di-wastong larawan: %1$s</string>
+    <string name="save_exported">Na-export ang save</string>
+    <string name="export_failed">Nabigo ang pag-export: %1$s</string>
+    <string name="save_imported">Matagumpay na na-import ang save</string>
+    <string name="import_failed">Nabigo ang pag-import: %1$s</string>
+    <string name="no_valid_games">Walang nakitang valid na laro</string>
+    <string name="key_mapping_title">Pagmamapa ng Key</string>
+    <string name="binding_hint">I-tap ang isang row at pindutin ang hardware key para i-bind; pindutin nang matagal para i-clear. Back para lumabas.</string>
+    <string name="binding_capturing">Nagbi-bind: %1$s - pindutin ang hardware key (Back para kanselahin)</string>
+    <string name="unbound">Hindi naka-bind</string>
+    <string name="reset">I-reset</string>
+    <string name="doja_key">DoJa key %1$d</string>
+    <string name="exit_game_action">Lumabas sa laro</string>
+    <string name="display_title">Display</string>
+    <string name="display_title_game">Display: %1$s</string>
+    <string name="orientation">Orientation</string>
+    <string name="game_screen">Screen ng Laro</string>
+    <string name="debugging">Pag-debug</string>
+    <string name="inherit_global">Mamana ang global</string>
+    <string name="portrait">Portrait</string>
+    <string name="landscape">Landscape</string>
+    <string name="portrait_reverse">Portrait (baliktad)</string>
+    <string name="landscape_reverse">Landscape (baliktad)</string>
+    <string name="original">Orihinal</string>
+    <string name="full_screen">Full Screen</string>
+    <string name="game_display">Display ng Laro</string>
+    <string name="fill_screen">Punan ang Screen</string>
+    <string name="scale_to_fit">I-scale para magkasya</string>
+    <string name="enable">I-enable</string>
+    <string name="disable">I-disable</string>
+    <string name="filter">Filter</string>
+    <string name="filter_none">Wala</string>
+    <string name="filter_scanlines">Scanlines</string>
+    <string name="filter_lcd_grid">LCD Grid</string>
+    <string name="filter_crt">CRT</string>
+    <string name="filter_dot_matrix">Dot Matrix</string>
+    <string name="filter_gameboy">Game Boy</string>
+    <string name="filter_sepia">Sepia</string>
+    <string name="filter_grayscale">Grayscale</string>
+    <string name="display_fps">System</string>
+    <string name="show_fps">Ipakita ang FPS</string>
+    <string name="use_hardware_rendering">Gumamit ng Hardware Rendering</string>
+    <string name="reset_to_global">I-reset sa Global Defaults</string>
+    <string name="theme_title">Tema at BGM</string>
+    <string name="theme">Tema</string>
+    <string name="no_track_selected">Walang napiling track</string>
+    <string name="default_builtin">Default (built-in)</string>
+    <string name="select_audio">Pumili ng audio file (.mp3/.ogg/.mld)</string>
+    <string name="invalid_mld">Di-wasto o hindi suportadong MLD file</string>
+    <string name="bgm_import_failed">Hindi mabasa ang napiling file</string>
+    <string name="unsupported_audio">Hindi suportadong audio format</string>
+    <string name="paused_press_any_key">-Naka-pause- Pindutin ang anumang key para magpatuloy</string>
+    <string name="no_bgm">Walang BGM</string>
+    <string name="bgm">BGM</string>
+    <string name="default_bgm">Default BGM</string>
+    <string name="game_menu">Menu ng Laro</string>
+    <string name="edit_buttons">I-edit ang mga Button</string>
+    <string name="edit_buttons_move">Ilipat</string>
+    <string name="edit_buttons_resize">I-resize</string>
+    <string name="edit_buttons_hide">Itago</string>
+    <string name="edit_buttons_reset">I-reset</string>
+    <string name="edit_buttons_ok">OK</string>
+    <string name="edit_buttons_cancel">Kanselahin</string>
+    <string name="edit_buttons_scale">Scale %1$d%%</string>
+    <string name="hide_keypad">Itago ang Keypad</string>
+    <string name="exit_game">Lumabas sa Laro</string>
+</resources>

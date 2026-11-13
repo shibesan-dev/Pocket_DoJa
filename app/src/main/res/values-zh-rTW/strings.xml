@@ -1,11 +1,35 @@
 <resources>
+    <string name="app_name">Pocket DoJa</string>
+    <string name="title_pocket_doja">Pocket DoJa</string>
     <string name="no_installed_games">沒有已安裝的遊戲\n請使用右上角選單匯入 .JAM</string>
+    <string name="search">搜尋</string>
+    <string name="about_body">Pocket DoJa 是一個基於 OpenDoJa 的 Android 模擬器專案，致力於探索與保存經典 NTT DoCoMo i-mode Java 遊戲的體驗。</string>
+    <string name="paypal_label">"PayPal: "</string>
+    <string name="wallet_label">"錢包地址: "</string>
+    <string name="footer_donations">捐款完全出於自願，用於支持持續開發與保存工作。\n\n感謝您對 Pocket DoJa 的關注！\n\n</string>
+    <string name="copied">已複製</string>
+    <string name="about">關於</string>
+    <string name="invalid_image">無效圖片</string>
     <string name="menu_import_jam">匯入 .JAM</string>
     <string name="menu_key_mapping">按鍵對應</string>
     <string name="menu_settings">設定</string>
     <string name="menu_theme">主題</string>
     <string name="menu_about">關於</string>
     <string name="menu_exit">退出</string>
+
+    <string-array name="home_menu_items">
+        <item>@string/menu_import_jam</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/menu_settings</item>
+        <item>@string/menu_theme</item>
+        <item>@string/menu_about</item>
+        <item>@string/menu_exit</item>
+        <item>@string/menu_diagnostics</item>
+    </string-array>
+
+    <string name="language">語言</string>
+    <string name="use_system_language">使用系統語言</string>
+    <string name="menu_diagnostics">儲存診斷資訊</string>
     <string name="opt_change_icon">更換圖示</string>
     <string name="opt_reset_icon">重設圖示</string>
     <string name="opt_rename">重新命名</string>
@@ -13,33 +37,100 @@
     <string name="opt_export_save">匯出存檔</string>
     <string name="opt_import_save">匯入存檔</string>
     <string name="opt_remove">從媒體庫移除</string>
+
+    <string-array name="game_options">
+        <item>@string/opt_change_icon</item>
+        <item>@string/opt_reset_icon</item>
+        <item>@string/opt_rename</item>
+        <item>@string/opt_display</item>
+        <item>@string/opt_export_save</item>
+        <item>@string/opt_import_save</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/opt_reset_data</item>
+        <item>@string/opt_import_sd</item>
+        <item>@string/opt_remove</item>
+    </string-array>
+
+    <string name="opt_reset_data">重設遊戲資料</string>
+    <string name="opt_import_sd">匯入 SD 資料</string>
+    <string name="reset_data_title">重設遊戲資料？</string>
+    <string name="reset_data_message">還原遊戲的原始資料（暫存區）。匯入遊戲後儲存的任何進度或設定都將遺失。</string>
+    <string name="reset_data_done">遊戲資料已還原為原始狀態</string>
+    <string name="reset_data_failed">重設失敗：</string>
+    <string name="reset_data_unavailable">沒有可用的原始資料快照</string>
+    <string name="corrupt_data_title">遊戲資料損毀</string>
+    <string name="corrupt_data_message">此遊戲的存檔資料已損毀，可能無法啟動（例如出現「連線錯誤」）。要重設為原始遊戲資料嗎？已儲存的進度將會遺失。您也可以稍後在遊戲清單中操作：長按遊戲，然後點選「重設遊戲資料」。</string>
+    <string name="corrupt_data_reset">重設資料</string>
+    <string name="corrupt_data_cancel">暫時不要</string>
     <string name="rename_title">重新命名</string>
     <string name="ok">確定</string>
     <string name="cancel">取消</string>
+    <string name="delete">刪除</string>
+    <string name="load_jam">載入 JAM</string>
+    <string name="invalid_image_msg">無效圖片: %1$s</string>
+    <string name="save_exported">存檔已匯出</string>
+    <string name="export_failed">匯出失敗: %1$s</string>
+    <string name="save_imported">存檔匯入成功</string>
+    <string name="import_failed">匯入失敗: %1$s</string>
+    <string name="no_valid_games">未找到有效遊戲</string>
     <string name="key_mapping_title">按鍵對應</string>
+    <string name="binding_hint">點選一列後按下硬體按鍵進行綁定；長按清除。返回鍵退出。</string>
+    <string name="binding_capturing">正在綁定: %1$s - 請按硬體按鍵 (返回取消)</string>
     <string name="unbound">未指派</string>
     <string name="reset">重設</string>
+    <string name="doja_key">DoJa 鍵 %1$d</string>
+    <string name="exit_game_action">結束遊戲</string>
     <string name="display_title">顯示</string>
+    <string name="display_title_game">顯示: %1$s</string>
     <string name="orientation">方向</string>
     <string name="game_screen">遊戲畫面</string>
     <string name="debugging">偵錯</string>
+    <string name="inherit_global">繼承全域</string>
     <string name="portrait">直向</string>
     <string name="landscape">橫向</string>
+    <string name="portrait_reverse">直向 (反轉)</string>
+    <string name="landscape_reverse">橫向 (反轉)</string>
     <string name="original">原始</string>
     <string name="full_screen">全螢幕</string>
+    <string name="game_display">遊戲顯示</string>
+    <string name="fill_screen">填滿螢幕</string>
+    <string name="scale_to_fit">縮放以符合</string>
     <string name="enable">啟用</string>
     <string name="disable">停用</string>
-    <string name="game_menu">遊戲選單</string>
-    <string name="hide_keypad">隱藏鍵盤</string>
-    <string name="exit_game">結束遊戲</string>
-    <string name="theme_title">主題與背景音樂</string>
-    <string name="theme">主題</string>
-    <string name="no_bgm">無背景音樂</string>
-    <string name="bgm">背景音樂</string>
-    <string name="about">關於</string>
     <string name="filter">濾鏡</string>
     <string name="filter_none">無</string>
+    <string name="filter_scanlines">掃描線</string>
+    <string name="filter_lcd_grid">LCD 網格</string>
+    <string name="filter_crt">CRT</string>
+    <string name="filter_dot_matrix">點陣</string>
+    <string name="filter_gameboy">Game Boy</string>
+    <string name="filter_sepia">棕褐色</string>
+    <string name="filter_grayscale">灰階</string>
+    <string name="display_fps">系統</string>
+    <string name="show_fps">顯示 FPS</string>
+    <string name="use_hardware_rendering">使用硬體渲染</string>
+    <string name="reset_to_global">重設為全域預設</string>
+    <string name="theme_title">主題與背景音樂</string>
+    <string name="theme">主題</string>
+    <string name="no_track_selected">未選擇曲目</string>
+    <string name="default_builtin">預設 (內建)</string>
+    <string name="select_audio">選擇音訊檔案 (.mp3/.ogg/.mld)</string>
+    <string name="invalid_mld">MLD 檔案無效或不受支援</string>
     <string name="bgm_import_failed">無法讀取所選檔案</string>
     <string name="unsupported_audio">不支援的音訊格式</string>
     <string name="paused_press_any_key">-已暫停- 按任意鍵繼續</string>
+    <string name="no_bgm">無背景音樂</string>
+    <string name="bgm">背景音樂</string>
+    <string name="default_bgm">預設背景音樂</string>
+    <string name="game_menu">遊戲選單</string>
+    <string name="edit_buttons">編輯按鈕</string>
+    <string name="edit_buttons_move">移動</string>
+    <string name="edit_buttons_resize">調整大小</string>
+    <string name="edit_buttons_hide">隱藏</string>
+    <string name="edit_buttons_reset">重設</string>
+    <string name="edit_buttons_ok">確定</string>
+    <string name="edit_buttons_cancel">取消</string>
+    <string name="edit_buttons_scale">縮放 %1$d%%</string>
+    <string name="hide_keypad">隱藏鍵盤</string>
+    <string name="exit_game">結束遊戲</string>
 </resources>

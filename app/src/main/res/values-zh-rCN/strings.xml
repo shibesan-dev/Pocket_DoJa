@@ -4,14 +4,9 @@
     <string name="no_installed_games">没有已安装的游戏\n请使用右上角菜单导入 .JAM</string>
     <string name="search">搜索</string>
     <string name="about_body">Pocket DoJa 是一个基于 OpenDoJa 的 Android 模拟器项目，致力于探索与保存经典 NTT DoCoMo i-mode Java 游戏的体验。</string>
-    <string name="paypal_label">PayPal: </string>
-    <string name="wallet_label">钱包地址: </string>
-    <string name="footer_donations">
-捐赠完全自愿，用于支持持续开发与保存工作。
-
-感谢您对 Pocket DoJa 的关注！
-
-</string>
+    <string name="paypal_label">"PayPal: "</string>
+    <string name="wallet_label">"钱包地址: "</string>
+    <string name="footer_donations">捐赠完全自愿，用于支持持续开发与保存工作。\n\n感谢您对 Pocket DoJa 的关注！\n\n</string>
     <string name="copied">已复制</string>
     <string name="about">关于</string>
     <string name="invalid_image">无效图片</string>
@@ -32,6 +27,9 @@
         <item>@string/menu_diagnostics</item>
     </string-array>
 
+    <string name="language">语言</string>
+    <string name="use_system_language">使用系统语言</string>
+    <string name="menu_diagnostics">保存诊断信息</string>
     <string name="opt_change_icon">更换图标</string>
     <string name="opt_reset_icon">重置图标</string>
     <string name="opt_rename">重命名</string>
@@ -53,6 +51,17 @@
         <item>@string/opt_remove</item>
     </string-array>
 
+    <string name="opt_reset_data">重置游戏数据</string>
+    <string name="opt_import_sd">导入 SD 数据</string>
+    <string name="reset_data_title">重置游戏数据？</string>
+    <string name="reset_data_message">恢复游戏的原始数据（暂存区）。导入游戏后保存的任何进度或设置都将丢失。</string>
+    <string name="reset_data_done">游戏数据已恢复为原始状态</string>
+    <string name="reset_data_failed">重置失败：</string>
+    <string name="reset_data_unavailable">没有可用的原始数据快照</string>
+    <string name="corrupt_data_title">游戏数据损坏</string>
+    <string name="corrupt_data_message">此游戏的存档数据已损坏，可能无法启动（例如出现“连接错误”）。要重置为原始游戏数据吗？已保存的进度将会丢失。你也可以稍后在游戏列表中操作：长按游戏，然后点击“重置游戏数据”。</string>
+    <string name="corrupt_data_reset">重置数据</string>
+    <string name="corrupt_data_cancel">暂不</string>
     <string name="rename_title">重命名</string>
     <string name="ok">确定</string>
     <string name="cancel">取消</string>
@@ -64,15 +73,13 @@
     <string name="save_imported">存档导入成功</string>
     <string name="import_failed">导入失败: %1$s</string>
     <string name="no_valid_games">未找到有效游戏</string>
-
     <string name="key_mapping_title">按键映射</string>
-    <string name="binding_hint">点击一行然后按硬件键进行绑定；长按清除。返回键退出。</string>
-    <string name="binding_capturing">正在绑定: %1$s - 请按硬件键 (返回取消)</string>
+    <string name="binding_hint">点击一行后按下硬件按键进行绑定；长按清除。返回键退出。</string>
+    <string name="binding_capturing">正在绑定: %1$s - 请按硬件按键 (返回取消)</string>
     <string name="unbound">未绑定</string>
     <string name="reset">重置</string>
     <string name="doja_key">DoJa 键 %1$d</string>
     <string name="exit_game_action">退出游戏</string>
-
     <string name="display_title">显示</string>
     <string name="display_title_game">显示: %1$s</string>
     <string name="orientation">方向</string>
@@ -85,25 +92,45 @@
     <string name="landscape_reverse">横屏 (反转)</string>
     <string name="original">原始</string>
     <string name="full_screen">全屏</string>
+    <string name="game_display">游戏显示</string>
+    <string name="fill_screen">填充屏幕</string>
+    <string name="scale_to_fit">缩放适应</string>
     <string name="enable">启用</string>
     <string name="disable">禁用</string>
+    <string name="filter">滤镜</string>
+    <string name="filter_none">无</string>
+    <string name="filter_scanlines">扫描线</string>
+    <string name="filter_lcd_grid">LCD 网格</string>
+    <string name="filter_crt">CRT</string>
+    <string name="filter_dot_matrix">点阵</string>
+    <string name="filter_gameboy">Game Boy</string>
+    <string name="filter_sepia">棕褐色</string>
+    <string name="filter_grayscale">灰度</string>
+    <string name="display_fps">系统</string>
+    <string name="show_fps">显示 FPS</string>
+    <string name="use_hardware_rendering">使用硬件渲染</string>
     <string name="reset_to_global">重置为全局默认</string>
-
     <string name="theme_title">主题与背景音乐</string>
     <string name="theme">主题</string>
     <string name="no_track_selected">未选择音轨</string>
     <string name="default_builtin">默认 (内置)</string>
     <string name="select_audio">选择音频文件 (.mp3/.ogg/.mld)</string>
     <string name="invalid_mld">MLD 文件无效或不受支持</string>
+    <string name="bgm_import_failed">无法读取所选文件</string>
+    <string name="unsupported_audio">不支持的音频格式</string>
+    <string name="paused_press_any_key">-已暂停- 按任意键继续</string>
     <string name="no_bgm">无背景音乐</string>
     <string name="bgm">背景音乐</string>
     <string name="default_bgm">默认背景音乐</string>
     <string name="game_menu">游戏菜单</string>
+    <string name="edit_buttons">编辑按钮</string>
+    <string name="edit_buttons_move">移动</string>
+    <string name="edit_buttons_resize">调整大小</string>
+    <string name="edit_buttons_hide">隐藏</string>
+    <string name="edit_buttons_reset">重置</string>
+    <string name="edit_buttons_ok">确定</string>
+    <string name="edit_buttons_cancel">取消</string>
+    <string name="edit_buttons_scale">缩放 %1$d%%</string>
     <string name="hide_keypad">隐藏键盘</string>
     <string name="exit_game">退出游戏</string>
-    <string name="filter">滤镜</string>
-    <string name="filter_none">无</string>
-    <string name="bgm_import_failed">无法读取所选文件</string>
-    <string name="unsupported_audio">不支持的音频格式</string>
-    <string name="paused_press_any_key">-已暂停- 按任意键继续</string>
 </resources>

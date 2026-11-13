@@ -54,6 +54,14 @@ public final class OpenDoJaLog {
     }
 
     public static void setFileLoggingEnabled(boolean enabled, File file) {
+        setFileLoggingEnabled(enabled, file, true);
+    }
+
+    /**
+     * Enables runtime file logging. When {@code append} is false the file is
+     * truncated first, so each game launch starts with a clean log.
+     */
+    public static void setFileLoggingEnabled(boolean enabled, File file, boolean append) {
         PrintStream existing = fileStream;
         if (existing != null) {
             try { existing.close(); } catch (Exception ignored) {}
@@ -64,7 +72,7 @@ public final class OpenDoJaLog {
             try {
                 File parent = file.getParentFile();
                 if (parent != null) parent.mkdirs();
-                fileStream = new PrintStream(new FileOutputStream(file, true), true);
+                fileStream = new PrintStream(new FileOutputStream(file, append), true);
                 fileLoggingEnabled = true;
             } catch (Exception ignored) {
                 fileStream = null;

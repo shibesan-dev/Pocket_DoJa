@@ -1,11 +1,35 @@
 <resources>
+    <string name="app_name">Pocket DoJa</string>
+    <string name="title_pocket_doja">Pocket DoJa</string>
     <string name="no_installed_games">설치된 게임 없음\n우측 상단 메뉴로 .JAM 가져오기</string>
+    <string name="search">검색</string>
+    <string name="about_body">Pocket DoJa는 OpenDoJa를 기반으로 한 Android 에뮬레이터 프로젝트로, 클래식 NTT DoCoMo i-mode Java 게임의 경험을 탐구하고 보존하는 데 전념합니다.</string>
+    <string name="paypal_label">"PayPal: "</string>
+    <string name="wallet_label">"지갑 주소: "</string>
+    <string name="footer_donations">기부는 전적으로 선택 사항이며 지속적인 개발과 보존 활동을 지원합니다.\n\nPocket DoJa에 관심을 가져주셔서 감사합니다!\n\n</string>
+    <string name="copied">복사됨</string>
+    <string name="about">정보</string>
+    <string name="invalid_image">잘못된 이미지</string>
     <string name="menu_import_jam">.JAM 가져오기</string>
     <string name="menu_key_mapping">키 매핑</string>
     <string name="menu_settings">설정</string>
     <string name="menu_theme">테마</string>
     <string name="menu_about">정보</string>
     <string name="menu_exit">종료</string>
+
+    <string-array name="home_menu_items">
+        <item>@string/menu_import_jam</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/menu_settings</item>
+        <item>@string/menu_theme</item>
+        <item>@string/menu_about</item>
+        <item>@string/menu_exit</item>
+        <item>@string/menu_diagnostics</item>
+    </string-array>
+
+    <string name="language">언어</string>
+    <string name="use_system_language">시스템 언어 사용</string>
+    <string name="menu_diagnostics">진단 정보 저장</string>
     <string name="opt_change_icon">아이콘 변경</string>
     <string name="opt_reset_icon">아이콘 초기화</string>
     <string name="opt_rename">이름 변경</string>
@@ -13,33 +37,100 @@
     <string name="opt_export_save">세이브 내보내기</string>
     <string name="opt_import_save">세이브 가져오기</string>
     <string name="opt_remove">라이브러리에서 제거</string>
+
+    <string-array name="game_options">
+        <item>@string/opt_change_icon</item>
+        <item>@string/opt_reset_icon</item>
+        <item>@string/opt_rename</item>
+        <item>@string/opt_display</item>
+        <item>@string/opt_export_save</item>
+        <item>@string/opt_import_save</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/opt_reset_data</item>
+        <item>@string/opt_import_sd</item>
+        <item>@string/opt_remove</item>
+    </string-array>
+
+    <string name="opt_reset_data">게임 데이터 초기화</string>
+    <string name="opt_import_sd">SD 데이터 가져오기</string>
+    <string name="reset_data_title">게임 데이터를 초기화할까요?</string>
+    <string name="reset_data_message">원본 게임 데이터(스크래치패드)를 복원합니다. 게임을 가져온 후 저장한 진행 상황이나 설정은 모두 사라집니다.</string>
+    <string name="reset_data_done">게임 데이터를 원본으로 초기화했습니다</string>
+    <string name="reset_data_failed">초기화 실패:</string>
+    <string name="reset_data_unavailable">사용 가능한 원본 데이터 스냅샷이 없습니다</string>
+    <string name="corrupt_data_title">손상된 게임 데이터</string>
+    <string name="corrupt_data_message">이 게임의 저장 데이터가 손상되어 시작하지 못할 수 있습니다(예: \"연결 오류\"). 원본 게임 데이터로 초기화할까요? 저장된 진행 상황은 사라집니다. 나중에 게임 목록에서 게임을 길게 누른 뒤 \"게임 데이터 초기화\"를 선택해도 됩니다.</string>
+    <string name="corrupt_data_reset">데이터 초기화</string>
+    <string name="corrupt_data_cancel">나중에</string>
     <string name="rename_title">이름 변경</string>
     <string name="ok">확인</string>
     <string name="cancel">취소</string>
+    <string name="delete">삭제</string>
+    <string name="load_jam">JAM 불러오기</string>
+    <string name="invalid_image_msg">잘못된 이미지: %1$s</string>
+    <string name="save_exported">세이브를 내보냈습니다</string>
+    <string name="export_failed">내보내기 실패: %1$s</string>
+    <string name="save_imported">세이브를 가져왔습니다</string>
+    <string name="import_failed">가져오기 실패: %1$s</string>
+    <string name="no_valid_games">유효한 게임을 찾을 수 없습니다</string>
     <string name="key_mapping_title">키 매핑</string>
+    <string name="binding_hint">행을 탭한 뒤 하드웨어 키를 눌러 할당하세요. 길게 누르면 해제됩니다. 뒤로 가면 종료합니다.</string>
+    <string name="binding_capturing">할당 중: %1$s - 하드웨어 키를 누르세요 (뒤로: 취소)</string>
     <string name="unbound">미할당</string>
     <string name="reset">초기화</string>
+    <string name="doja_key">DoJa 키 %1$d</string>
+    <string name="exit_game_action">게임 종료</string>
     <string name="display_title">표시</string>
+    <string name="display_title_game">표시: %1$s</string>
     <string name="orientation">화면 방향</string>
     <string name="game_screen">게임 화면</string>
     <string name="debugging">디버깅</string>
+    <string name="inherit_global">전역 설정 따르기</string>
     <string name="portrait">세로</string>
     <string name="landscape">가로</string>
+    <string name="portrait_reverse">세로 (반전)</string>
+    <string name="landscape_reverse">가로 (반전)</string>
     <string name="original">원본</string>
     <string name="full_screen">전체 화면</string>
+    <string name="game_display">게임 표시</string>
+    <string name="fill_screen">화면 채우기</string>
+    <string name="scale_to_fit">화면에 맞추기</string>
     <string name="enable">사용</string>
     <string name="disable">사용 안 함</string>
-    <string name="game_menu">게임 메뉴</string>
-    <string name="hide_keypad">키패드 숨기기</string>
-    <string name="exit_game">게임 종료</string>
-    <string name="theme_title">테마와 BGM</string>
-    <string name="theme">테마</string>
-    <string name="no_bgm">BGM 없음</string>
-    <string name="bgm">BGM</string>
-    <string name="about">정보</string>
     <string name="filter">필터</string>
     <string name="filter_none">없음</string>
+    <string name="filter_scanlines">주사선</string>
+    <string name="filter_lcd_grid">LCD 그리드</string>
+    <string name="filter_crt">CRT</string>
+    <string name="filter_dot_matrix">도트 매트릭스</string>
+    <string name="filter_gameboy">게임보이</string>
+    <string name="filter_sepia">세피아</string>
+    <string name="filter_grayscale">그레이스케일</string>
+    <string name="display_fps">시스템</string>
+    <string name="show_fps">FPS 표시</string>
+    <string name="use_hardware_rendering">하드웨어 렌더링 사용</string>
+    <string name="reset_to_global">전역 기본값으로 초기화</string>
+    <string name="theme_title">테마와 BGM</string>
+    <string name="theme">테마</string>
+    <string name="no_track_selected">선택한 트랙 없음</string>
+    <string name="default_builtin">기본 (내장)</string>
+    <string name="select_audio">오디오 파일 선택 (.mp3/.ogg/.mld)</string>
+    <string name="invalid_mld">잘못되었거나 지원되지 않는 MLD 파일</string>
     <string name="bgm_import_failed">선택한 파일을 읽을 수 없습니다</string>
     <string name="unsupported_audio">지원되지 않는 오디오 형식입니다</string>
     <string name="paused_press_any_key">-일시정지- 아무 키나 눌러 계속</string>
+    <string name="no_bgm">BGM 없음</string>
+    <string name="bgm">BGM</string>
+    <string name="default_bgm">기본 BGM</string>
+    <string name="game_menu">게임 메뉴</string>
+    <string name="edit_buttons">버튼 편집</string>
+    <string name="edit_buttons_move">이동</string>
+    <string name="edit_buttons_resize">크기 조정</string>
+    <string name="edit_buttons_hide">숨기기</string>
+    <string name="edit_buttons_reset">초기화</string>
+    <string name="edit_buttons_ok">확인</string>
+    <string name="edit_buttons_cancel">취소</string>
+    <string name="edit_buttons_scale">배율 %1$d%%</string>
+    <string name="hide_keypad">키패드 숨기기</string>
+    <string name="exit_game">게임 종료</string>
 </resources>

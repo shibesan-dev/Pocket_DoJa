@@ -1,0 +1,136 @@
+<resources>
+    <string name="app_name">Pocket DoJa</string>
+    <string name="title_pocket_doja">Pocket DoJa</string>
+    <string name="no_installed_games">நிறுவப்பட்ட விளையாட்டுகள் இல்லை\n.JAM இறக்குமதி செய்ய மேல் வலது மெனுவைப் பயன்படுத்தவும்</string>
+    <string name="search">தேடு</string>
+    <string name="about_body">Pocket DoJa என்பது OpenDoJa அடிப்படையிலான Android எமுலேட்டர் திட்டமாகும், இது கிளாசிக் NTT DoCoMo i-mode Java விளையாட்டுகளின் அனுபவத்தை ஆராய்ந்து பாதுகாக்க அர்ப்பணிக்கப்பட்டுள்ளது.</string>
+    <string name="paypal_label">"PayPal: "</string>
+    <string name="wallet_label">"வாலட் முகவரி: "</string>
+    <string name="footer_donations">நன்கொடைகள் முழுவதும் விருப்பத்தேர்வு மட்டுமே; தொடர்ச்சியான மேம்பாடு மற்றும் பாதுகாப்பு முயற்சிகளுக்கு உதவுகின்றன.\n\nPocket DoJa மீதான உங்கள் ஆர்வத்திற்கு நன்றி!\n\n</string>
+    <string name="copied">நகலெடுக்கப்பட்டது</string>
+    <string name="about">பற்றி</string>
+    <string name="invalid_image">தவறான படம்</string>
+    <string name="menu_import_jam">.JAM இறக்குமதி</string>
+    <string name="menu_key_mapping">விசை மேப்பிங்</string>
+    <string name="menu_settings">அமைப்புகள்</string>
+    <string name="menu_theme">தீம்</string>
+    <string name="menu_about">பற்றி</string>
+    <string name="menu_exit">வெளியேறு</string>
+
+    <string-array name="home_menu_items">
+        <item>@string/menu_import_jam</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/menu_settings</item>
+        <item>@string/menu_theme</item>
+        <item>@string/menu_about</item>
+        <item>@string/menu_exit</item>
+        <item>@string/menu_diagnostics</item>
+    </string-array>
+
+    <string name="language">மொழி</string>
+    <string name="use_system_language">கணினி மொழியைப் பயன்படுத்து</string>
+    <string name="menu_diagnostics">கண்டறிதல் தகவலைச் சேமி</string>
+    <string name="opt_change_icon">ஐகானை மாற்று</string>
+    <string name="opt_reset_icon">ஐகானை மீட்டமை</string>
+    <string name="opt_rename">மறுபெயரிடு</string>
+    <string name="opt_display">காட்சி</string>
+    <string name="opt_export_save">சேமிப்பை ஏற்றுமதி</string>
+    <string name="opt_import_save">சேமிப்பை இறக்குமதி</string>
+    <string name="opt_remove">நூலகத்திலிருந்து நீக்கு</string>
+
+    <string-array name="game_options">
+        <item>@string/opt_change_icon</item>
+        <item>@string/opt_reset_icon</item>
+        <item>@string/opt_rename</item>
+        <item>@string/opt_display</item>
+        <item>@string/opt_export_save</item>
+        <item>@string/opt_import_save</item>
+        <item>@string/menu_key_mapping</item>
+        <item>@string/opt_reset_data</item>
+        <item>@string/opt_import_sd</item>
+        <item>@string/opt_remove</item>
+    </string-array>
+
+    <string name="opt_reset_data">விளையாட்டு தரவை மீட்டமை</string>
+    <string name="opt_import_sd">SD தரவை இறக்குமதி</string>
+    <string name="reset_data_title">விளையாட்டு தரவை மீட்டமைக்கவா?</string>
+    <string name="reset_data_message">விளையாட்டின் அசல் தரவை (scratchpad) மீட்டெடுக்கும். விளையாட்டு இறக்குமதி செய்யப்பட்ட பிறகு சேமிக்கப்பட்ட எந்த முன்னேற்றமும் அமைப்புகளும் இழக்கப்படும்.</string>
+    <string name="reset_data_done">விளையாட்டு தரவு அசலுக்கு மீட்டமைக்கப்பட்டது</string>
+    <string name="reset_data_failed">மீட்டமைப்பு தோல்வியடைந்தது:</string>
+    <string name="reset_data_unavailable">அசல் தரவு ஸ்னாப்ஷாட் எதுவும் இல்லை</string>
+    <string name="corrupt_data_title">சேதமடைந்த விளையாட்டு தரவு</string>
+    <string name="corrupt_data_message">இந்த விளையாட்டின் சேமிக்கப்பட்ட தரவு சேதமடைந்துள்ளதால் அது தொடங்காமல் போகலாம் (எடுத்துக்காட்டாக \"இணைப்பு பிழை\"). அசல் விளையாட்டு தரவுக்கு மீட்டமைக்கவா? சேமிக்கப்பட்ட முன்னேற்றம் இழக்கப்படும். விளையாட்டு பட்டியலிலிருந்து பின்னர் இதைச் செய்யலாம்: விளையாட்டை நீண்ட நேரம் அழுத்தி, \"விளையாட்டு தரவை மீட்டமை\" என்பதைத் தட்டவும்.</string>
+    <string name="corrupt_data_reset">தரவை மீட்டமை</string>
+    <string name="corrupt_data_cancel">இப்போது வேண்டாம்</string>
+    <string name="rename_title">மறுபெயரிடு</string>
+    <string name="ok">சரி</string>
+    <string name="cancel">ரத்து</string>
+    <string name="delete">நீக்கு</string>
+    <string name="load_jam">JAM ஏற்று</string>
+    <string name="invalid_image_msg">தவறான படம்: %1$s</string>
+    <string name="save_exported">சேமிப்பு ஏற்றுமதி செய்யப்பட்டது</string>
+    <string name="export_failed">ஏற்றுமதி தோல்வி: %1$s</string>
+    <string name="save_imported">சேமிப்பு வெற்றிகரமாக இறக்குமதி செய்யப்பட்டது</string>
+    <string name="import_failed">இறக்குமதி தோல்வி: %1$s</string>
+    <string name="no_valid_games">செல்லுபடியாகும் விளையாட்டுகள் எதுவும் இல்லை</string>
+    <string name="key_mapping_title">விசை மேப்பிங்</string>
+    <string name="binding_hint">ஒரு வரிசையைத் தட்டி, வன்பொருள் விசையை அழுத்தி இணைக்கவும்; நீண்ட நேரம் அழுத்தினால் அழிக்கப்படும். வெளியேற பின்செல்.</string>
+    <string name="binding_capturing">இணைக்கிறது: %1$s - வன்பொருள் விசையை அழுத்தவும் (ரத்து செய்ய பின்செல்)</string>
+    <string name="unbound">இணைக்கப்படவில்லை</string>
+    <string name="reset">மீட்டமை</string>
+    <string name="doja_key">DoJa விசை %1$d</string>
+    <string name="exit_game_action">விளையாட்டிலிருந்து வெளியேறு</string>
+    <string name="display_title">காட்சி</string>
+    <string name="display_title_game">காட்சி: %1$s</string>
+    <string name="orientation">திசை</string>
+    <string name="game_screen">விளையாட்டு திரை</string>
+    <string name="debugging">பிழைத்திருத்தம்</string>
+    <string name="inherit_global">உலகளாவியதைப் பெறு</string>
+    <string name="portrait">செங்குத்து</string>
+    <string name="landscape">கிடைமட்ட</string>
+    <string name="portrait_reverse">செங்குத்து (தலைகீழ்)</string>
+    <string name="landscape_reverse">கிடைமட்ட (தலைகீழ்)</string>
+    <string name="original">அசல்</string>
+    <string name="full_screen">முழுத்திரை</string>
+    <string name="game_display">விளையாட்டு காட்சி</string>
+    <string name="fill_screen">திரையை நிரப்பு</string>
+    <string name="scale_to_fit">பொருந்தும் அளவுக்கு மாற்று</string>
+    <string name="enable">இயக்கு</string>
+    <string name="disable">முடக்கு</string>
+    <string name="filter">வடிகட்டி</string>
+    <string name="filter_none">எதுவும் இல்லை</string>
+    <string name="filter_scanlines">ஸ்கேன் கோடுகள்</string>
+    <string name="filter_lcd_grid">LCD கட்டம்</string>
+    <string name="filter_crt">CRT</string>
+    <string name="filter_dot_matrix">புள்ளி அணி</string>
+    <string name="filter_gameboy">Game Boy</string>
+    <string name="filter_sepia">செபியா</string>
+    <string name="filter_grayscale">சாம்பல் நிறம்</string>
+    <string name="display_fps">சிஸ்டம்</string>
+    <string name="show_fps">FPS காட்டு</string>
+    <string name="use_hardware_rendering">வன்பொருள் ரெண்டரிங்கைப் பயன்படுத்து</string>
+    <string name="reset_to_global">உலகளாவிய இயல்புநிலைக்கு மீட்டமை</string>
+    <string name="theme_title">தீம் &amp; BGM</string>
+    <string name="theme">தீம்</string>
+    <string name="no_track_selected">எந்தப் பாடலும் தேர்ந்தெடுக்கப்படவில்லை</string>
+    <string name="default_builtin">இயல்புநிலை (உள்ளமைந்த)</string>
+    <string name="select_audio">ஆடியோ கோப்பைத் தேர்ந்தெடு (.mp3/.ogg/.mld)</string>
+    <string name="invalid_mld">தவறான அல்லது ஆதரிக்கப்படாத MLD கோப்பு</string>
+    <string name="bgm_import_failed">தேர்ந்தெடுத்த கோப்பைப் படிக்க முடியவில்லை</string>
+    <string name="unsupported_audio">ஆதரிக்கப்படாத ஆடியோ வடிவம்</string>
+    <string name="paused_press_any_key">-இடைநிறுத்தப்பட்டது- தொடர ஏதேனும் விசையை அழுத்தவும்</string>
+    <string name="no_bgm">BGM இல்லை</string>
+    <string name="bgm">BGM</string>
+    <string name="default_bgm">இயல்புநிலை BGM</string>
+    <string name="game_menu">விளையாட்டு மெனு</string>
+    <string name="edit_buttons">பொத்தான்களைத் திருத்து</string>
+    <string name="edit_buttons_move">நகர்த்து</string>
+    <string name="edit_buttons_resize">அளவை மாற்று</string>
+    <string name="edit_buttons_hide">மறை</string>
+    <string name="edit_buttons_reset">மீட்டமை</string>
+    <string name="edit_buttons_ok">சரி</string>
+    <string name="edit_buttons_cancel">ரத்து</string>
+    <string name="edit_buttons_scale">அளவு %1$d%%</string>
+    <string name="hide_keypad">விசைப்பலகையை மறை</string>
+    <string name="exit_game">விளையாட்டிலிருந்து வெளியேறு</string>
+</resources>
