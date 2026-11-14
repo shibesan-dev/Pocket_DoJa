@@ -60,10 +60,15 @@ public final class CustomFilePicker {
                 return false;
             }
         } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-            if (activity.checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
-                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                activity.requestPermissions(
-                        new String[]{android.Manifest.permission.READ_EXTERNAL_STORAGE}, 9100);
+            boolean readGranted = activity.checkSelfPermission(
+                    android.Manifest.permission.READ_EXTERNAL_STORAGE)
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            if (!readGranted) {
+                // READ and WRITE share the "Storage" system prompt on this API
+                // range. Browsing/import only needs READ; WRITE is for exports.
+                activity.requestPermissions(new String[]{
+                        android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                        android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, 9100);
                 Toast.makeText(activity, "Grant storage access, then try again", Toast.LENGTH_LONG).show();
                 return false;
             }

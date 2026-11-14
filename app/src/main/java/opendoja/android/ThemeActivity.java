@@ -1,6 +1,7 @@
 package opendoja.android;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -39,6 +40,12 @@ public class ThemeActivity extends Activity {
 
     static final String[] SKINS = {"silver", "blue", "red", "green", "orange"};
     static final String[] SKIN_LABELS = {"Silver (Metallic)", "Blue", "Red", "Green", "Orange"};
+
+    private static final int REQUEST_PICK_BGM_SAF = 1;
+    private static final int REQUEST_STORAGE_PERMISSION = 9001;
+    private Runnable pendingStorageAction;
+    private Runnable pendingSafAction;
+    private boolean waitingForStorageSettings;
 
     private SharedPreferences prefs;
     private String pendingTheme;
@@ -214,6 +221,22 @@ public class ThemeActivity extends Activity {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        if (pendingStorageAction != null) {
+            if (hasDirectStorageAccess()) {
+                Runnable action = pendingStorageAction;
+                clearPendingStorageAction();
+                action.run();
+            } else if (waitingForStorageSettings) {
+                waitingForStorageSettings = false;
+                clearPendingStorageAction();
+                Toast.makeText(this, "Storage access was not granted", Toast.LENGTH_LONG).show();
+            }
+        }
+    }
+
+    @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         // The post() request above can run before the window gains focus (for
@@ -250,7 +273,8 @@ public class ThemeActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == 1 && resultCode == RESULT_OK && data != null && data.getData() != null) {
+        if (requestCode == REQUEST_PICK_BGM_SAF
+                && resultCode == RESULT_OK && data != null && data.getData() != null) {
             Uri uri = data.getData();
             // Some pickers return URIs without a file name/extension; resolve the display name
             // and identify the format from the content itself.
@@ -269,14 +293,156 @@ public class ThemeActivity extends Activity {
 
     /** Built-in picker: works with or without DocumentsUI and is D-pad navigable. */
     private void pickBgmCustom() {
-        CustomFilePicker.pickFile(this, "Select audio file",
-                new String[]{".mp3", ".ogg", ".mld"}, file -> {
-                    try (InputStream in = new FileInputStream(file)) {
-                        installBgmFromStream(in, file.getName());
-                    } catch (Exception e) {
-                        Toast.makeText(this, R.string.bgm_import_failed, Toast.LENGTH_LONG).show();
+        runWithStorageAccess(
+                () -> CustomFilePicker.pickFile(this, "Select audio file",
+                        new String[]{".mp3", ".ogg", ".mld"}, file -> {
+                            try (InputStream in = new FileInputStream(file)) {
+                                installBgmFromStream(in, file.getName());
+                            } catch (Exception e) {
+                                Toast.makeText(this, R.string.bgm_import_failed, Toast.LENGTH_LONG).show();
+                            }
+                        }),
+                this::launchSafBgmPicker);
+    }
+
+    private boolean hasDirectStorageAccess() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            return android.os.Environment.isExternalStorageManager();
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            return checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        }
+        return true;
+    }
+
+    private void runWithStorageAccess(Runnable directAction, Runnable safAction) {
+        if (hasDirectStorageAccess()) {
+            clearPendingStorageAction();
+            directAction.run();
+            return;
+        }
+        pendingStorageAction = directAction;
+        pendingSafAction = safAction;
+        waitingForStorageSettings = false;
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            showStorageAccessChoice();
+        } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            requestPermissions(new String[]{
+                    android.Manifest.permission.READ_EXTERNAL_STORAGE},
+                    REQUEST_STORAGE_PERMISSION);
+        }
+    }
+
+    /**
+     * The BGM picker shares the same storage gate as the launcher. Devices
+     * without DocumentsUI must use "Grant access"; the system picker entry is
+     * only a fallback for devices that still provide one.
+     */
+    private void showStorageAccessChoice() {
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Storage access")
+                .setMessage("The built-in file browser needs 'All files access' to browse shared storage. "
+                        + "Grant it in Settings, or use the system file picker instead (if available).")
+                .setPositiveButton("Grant access", (d, which) -> {
+                    if (!openAllFilesAccessSettings()) {
+                        Toast.makeText(this, "All files access is not available; opening the system picker",
+                                Toast.LENGTH_LONG).show();
+                        runPendingSafAction();
                     }
-                });
+                })
+                .setNeutralButton("System picker", (d, which) -> runPendingSafAction())
+                .setNegativeButton("Cancel", (d, which) -> clearPendingStorageAction())
+                .create();
+        dialog.setOnCancelListener(d -> clearPendingStorageAction());
+        dialog.show();
+    }
+
+    private void showStoragePermissionDenied() {
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Storage access")
+                .setMessage("Storage permission was denied. Allow it in the app settings to use the built-in "
+                        + "browser, or use the system file picker instead (if available).")
+                .setPositiveButton("App settings", (d, which) -> openAppDetailsSettings())
+                .setNeutralButton("System picker", (d, which) -> runPendingSafAction())
+                .setNegativeButton("Cancel", (d, which) -> clearPendingStorageAction())
+                .create();
+        dialog.setOnCancelListener(d -> clearPendingStorageAction());
+        dialog.show();
+    }
+
+    private boolean openAllFilesAccessSettings() {
+        waitingForStorageSettings = true;
+        try {
+            Intent intent = new Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+            return true;
+        } catch (Exception first) {
+            try {
+                startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+                return true;
+            } catch (Exception ignored) {
+                waitingForStorageSettings = false;
+                return false;
+            }
+        }
+    }
+
+    private void openAppDetailsSettings() {
+        waitingForStorageSettings = true;
+        try {
+            Intent intent = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        } catch (Exception exception) {
+            waitingForStorageSettings = false;
+            Toast.makeText(this, "App settings are not available", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void runPendingSafAction() {
+        Runnable safAction = pendingSafAction;
+        clearPendingStorageAction();
+        if (safAction != null) {
+            safAction.run();
+        }
+    }
+
+    private void clearPendingStorageAction() {
+        pendingStorageAction = null;
+        pendingSafAction = null;
+        waitingForStorageSettings = false;
+    }
+
+    /** System picker fallback (SAF): copies through a content URI and needs no storage permission. */
+    private void launchSafBgmPicker() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivityForResult(intent, REQUEST_PICK_BGM_SAF);
+        } catch (Exception exception) {
+            Toast.makeText(this, "No system file picker available", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQUEST_STORAGE_PERMISSION || pendingStorageAction == null) {
+            return;
+        }
+        if (hasDirectStorageAccess()) {
+            Runnable action = pendingStorageAction;
+            clearPendingStorageAction();
+            action.run();
+            return;
+        }
+        // Keep the pending action: the user can grant access in Settings and
+        // come back, or use the system picker fallback.
+        showStoragePermissionDenied();
     }
 
     private void installBgmFromStream(InputStream in, String name) {

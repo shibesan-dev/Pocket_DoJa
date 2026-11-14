@@ -91,7 +91,14 @@ public class HomeActivity extends Activity {
     private static final int REQUEST_EXPORT_SAVE = 3;
     private static final int REQUEST_IMPORT_SAVE = 4;
     private static final int REQUEST_IMPORT_SD_DATA = 5;
+    private static final int REQUEST_STORAGE_PERMISSION = 9001;
     private File pendingSdDataGame;
+    // Shared by every built-in picker. If the user has to grant storage
+    // access first, the action is held here and replayed when they return.
+    private Runnable pendingStorageAction;
+    private Runnable pendingSafAction;
+    private boolean pendingStorageWrite;
+    private boolean waitingForStorageSettings;
     // Shown in diagnostics so we can confirm which build is actually installed.
     private static final String DIAG_BUILD = "2026-11-11 15:55 led-blink";
     // Save Diagnostics - Dev use only!! Enable/Disable
@@ -357,19 +364,15 @@ public class HomeActivity extends Activity {
             fixedTopBar.bringToFront();
             updateFixedTopBarTheme();
         }
-        if (pendingCustomImport) {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                if (android.os.Environment.isExternalStorageManager()) {
-                    pendingCustomImport = false;
-                    CustomFilePicker.pickFolder(this, "Select folder containing games",
-                            dir -> startBatchImportFromFiles(dir));
-                }
-            } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                    pendingCustomImport = false;
-                    CustomFilePicker.pickFolder(this, "Select folder containing games",
-                            dir -> startBatchImportFromFiles(dir));
-                }
+        if (pendingStorageAction != null) {
+            if (hasDirectStorageAccess(pendingStorageWrite)) {
+                Runnable action = pendingStorageAction;
+                clearPendingStorageAction();
+                action.run();
+            } else if (waitingForStorageSettings) {
+                waitingForStorageSettings = false;
+                clearPendingStorageAction();
+                Toast.makeText(this, "Storage access was not granted", Toast.LENGTH_LONG).show();
             }
         }
         if (!gameRunning) playBgm();
@@ -2897,9 +2900,12 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
                 .show();
     }
     private void startExportSave(GameEntry game) {
-        // Built-in folder picker: the system CREATE_DOCUMENT screen cannot be
-        // driven reliably with a D-pad (its action bar/save button is skipped).
-        exportSaveCustom(game);
+        // Built-in folder picker first: it is fully D-pad navigable. The
+        // system CREATE_DOCUMENT screen is only a fallback for devices where
+        // direct shared-storage access cannot be granted.
+        runWithStorageAccess(true,
+                () -> exportSaveCustom(game),
+                () -> launchSafExportSave(game));
     }
 
     private void exportSaveCustom(GameEntry game) {
@@ -2919,9 +2925,27 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         });
     }
 
+    private void launchSafExportSave(GameEntry game) {
+        pendingSaveGame = game;
+        try {
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("application/zip");
+            intent.putExtra(Intent.EXTRA_TITLE,
+                    stripExtension(game.jam.getName()) + ".pdsave");
+            startActivityForResult(intent, REQUEST_EXPORT_SAVE);
+        } catch (Exception exception) {
+            pendingSaveGame = null;
+            Toast.makeText(this, "No system file picker available", Toast.LENGTH_LONG).show();
+        }
+    }
+
     private void startImportSave(GameEntry game) {
-        // Built-in file picker (filtered to save archives) for every device.
-        importSaveCustom(game);
+        // Built-in file picker (filtered to save archives); fall back to the
+        // system OPEN_DOCUMENT screen when direct storage is unavailable.
+        runWithStorageAccess(false,
+                () -> importSaveCustom(game),
+                () -> launchSafImportSave(game));
     }
 
     private void importSaveCustom(GameEntry game) {
@@ -2937,6 +2961,19 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
                 }
             }).start();
         });
+    }
+
+    private void launchSafImportSave(GameEntry game) {
+        pendingSaveGame = game;
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            startActivityForResult(intent, REQUEST_IMPORT_SAVE);
+        } catch (Exception exception) {
+            pendingSaveGame = null;
+            Toast.makeText(this, "No system file picker available", Toast.LENGTH_LONG).show();
+        }
     }
 
     private void exportSaveToUri(GameEntry game, Uri uri) throws Exception {
@@ -3868,18 +3905,28 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
     }
 
     private void pickImportFolder() {
-        // Always use the built-in folder picker: DocumentsUI's "Use this
-        // folder" button cannot be reached with a D-pad.
-        pickImportFolderCustom();
+        // Built-in folder picker first: DocumentsUI's "Use this folder" button
+        // cannot be reached with a D-pad. The system picker is only a fallback
+        // for devices where direct shared-storage access cannot be granted.
+        runWithStorageAccess(false,
+                () -> CustomFilePicker.pickFolder(this, "Select folder containing games",
+                        dir -> startBatchImportFromFiles(dir)),
+                this::launchSafImportPicker);
     }
 
     /** Import a game's external SD-card data (e.g. a "sdcarddata" folder) into its SD folder. */
     private void pickSdDataFolder(GameEntry game) {
-        // Built-in folder picker, same UI and D-pad support as the other flows.
         pickSdFolderCustom(game.jam);
     }
 
     private void pickSdFolderCustom(File jam) {
+        // Built-in folder picker, same UI and D-pad support as the other flows.
+        runWithStorageAccess(false,
+                () -> pickSdFolderDirect(jam),
+                () -> launchSafSdData(jam));
+    }
+
+    private void pickSdFolderDirect(File jam) {
         CustomFilePicker.pickFolder(this, "Select SD data folder", dir -> {
             final File jamFile = jam;
             new Thread(() -> {
@@ -3920,6 +3967,20 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
                 }
             }).start();
         });
+    }
+
+    private void launchSafSdData(File jam) {
+        pendingSdDataGame = jam;
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                    | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+            startActivityForResult(intent, REQUEST_IMPORT_SD_DATA);
+        } catch (Exception exception) {
+            pendingSdDataGame = null;
+            Toast.makeText(this, "No system folder picker available", Toast.LENGTH_LONG).show();
+        }
     }
 
     private static int copyDirectoryTo(File sourceDir, File destDir) throws java.io.IOException {
@@ -4564,56 +4625,181 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
     }
 
     // ------------------------------------------------------------------
-    // Built-in (non-SAF) file browser. Used for every picker so behaviour
-    // is identical on devices with and without DocumentsUI.
+    // Direct-filesystem picker plus a storage-access gate shared by every
+    // entry point: Import .JAM, Export Save, Import Save, Change Icon,
+    // Import SD File, and the custom BGM picker in ThemeActivity.
     // ------------------------------------------------------------------
-    private boolean pendingCustomImport = false;
 
-    private void pickImportFolderCustom() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-            if (!android.os.Environment.isExternalStorageManager()) {
-                pendingCustomImport = true;
-                try {
-                    Intent intent = new Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
-                    intent.setData(android.net.Uri.parse("package:" + getPackageName()));
-                    startActivity(intent);
-                } catch (Exception e) {
-                    try {
-                        startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
-                    } catch (Exception ignored) {
-                    }
-                }
-                Toast.makeText(this, "Please grant 'All files access', then retry Import .JAM", Toast.LENGTH_LONG).show();
-                return;
-            }
-        } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+    private boolean hasDirectStorageAccess(boolean needWrite) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return android.os.Environment.isExternalStorageManager();
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
                     != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                pendingCustomImport = true;
-                requestPermissions(new String[]{android.Manifest.permission.READ_EXTERNAL_STORAGE}, 9001);
-                return;
+                return false;
+            }
+            if (needWrite && checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                return false;
             }
         }
-        CustomFilePicker.pickFolder(this, "Select folder containing games",
-                dir -> startBatchImportFromFiles(dir));
+        return true;
+    }
+
+    /**
+     * Runs a direct-filesystem picker when shared storage is available.
+     * Otherwise asks for permission, or offers the system picker (SAF) as a
+     * fallback for devices that still have DocumentsUI.
+     */
+    private void runWithStorageAccess(boolean needWrite, Runnable directAction, Runnable safAction) {
+        if (hasDirectStorageAccess(needWrite)) {
+            clearPendingStorageAction();
+            directAction.run();
+            return;
+        }
+        pendingStorageAction = directAction;
+        pendingSafAction = safAction;
+        pendingStorageWrite = needWrite;
+        waitingForStorageSettings = false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            showStorageAccessChoice();
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (needWrite) {
+                requestPermissions(new String[]{
+                        android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                        android.Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                        REQUEST_STORAGE_PERMISSION);
+            } else {
+                requestPermissions(new String[]{
+                        android.Manifest.permission.READ_EXTERNAL_STORAGE},
+                        REQUEST_STORAGE_PERMISSION);
+            }
+        }
+    }
+
+    /**
+     * Android 11+ hides the shared filesystem behind "All files access". Some
+     * devices never expose that switch (or an OEM ROM refuses to grant it), so
+     * offer the system picker as a permission-free fallback instead of
+     * dead-ending on the Settings screen. That fallback needs DocumentsUI,
+     * which is exactly what this app avoids on devices that lack it; those
+     * users should choose "Grant access".
+     */
+    private void showStorageAccessChoice() {
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Storage access")
+                .setMessage("The built-in file browser needs 'All files access' to browse shared storage. "
+                        + "Grant it in Settings, or use the system file picker instead (if available).")
+                .setPositiveButton("Grant access", (d, which) -> {
+                    if (!openAllFilesAccessSettings()) {
+                        Toast.makeText(this, "All files access is not available; opening the system picker",
+                                Toast.LENGTH_LONG).show();
+                        runPendingSafAction();
+                    }
+                })
+                .setNeutralButton("System picker", (d, which) -> runPendingSafAction())
+                .setNegativeButton("Cancel", (d, which) -> clearPendingStorageAction())
+                .create();
+        dialog.setOnCancelListener(d -> clearPendingStorageAction());
+        dialog.show();
+    }
+
+    private void showStoragePermissionDenied() {
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Storage access")
+                .setMessage("Storage permission was denied. Allow it in the app settings to use the built-in "
+                        + "browser, or use the system file picker instead (if available).")
+                .setPositiveButton("App settings", (d, which) -> openAppDetailsSettings())
+                .setNeutralButton("System picker", (d, which) -> runPendingSafAction())
+                .setNegativeButton("Cancel", (d, which) -> clearPendingStorageAction())
+                .create();
+        dialog.setOnCancelListener(d -> clearPendingStorageAction());
+        dialog.show();
+    }
+
+    private boolean openAllFilesAccessSettings() {
+        waitingForStorageSettings = true;
+        try {
+            Intent intent = new Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+            return true;
+        } catch (Exception first) {
+            try {
+                startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+                return true;
+            } catch (Exception ignored) {
+                waitingForStorageSettings = false;
+                return false;
+            }
+        }
+    }
+
+    private void openAppDetailsSettings() {
+        waitingForStorageSettings = true;
+        try {
+            Intent intent = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        } catch (Exception exception) {
+            waitingForStorageSettings = false;
+            Toast.makeText(this, "App settings are not available", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void runPendingSafAction() {
+        Runnable safAction = pendingSafAction;
+        clearPendingStorageAction();
+        if (safAction != null) {
+            safAction.run();
+        }
+    }
+
+    private void clearPendingStorageAction() {
+        pendingStorageAction = null;
+        pendingSafAction = null;
+        pendingStorageWrite = false;
+        waitingForStorageSettings = false;
+    }
+
+    /** System folder picker (SAF): imports through content URIs and needs no storage permission. */
+    private void launchSafImportPicker() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                    | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+            startActivityForResult(intent, REQUEST_IMPORT_FOLDER);
+        } catch (Exception exception) {
+            Toast.makeText(this, "No system file picker available", Toast.LENGTH_LONG).show();
+        }
     }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == 9001 && pendingCustomImport) {
-            if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                pendingCustomImport = false;
-                CustomFilePicker.pickFolder(this, "Select folder containing games",
-                        dir -> startBatchImportFromFiles(dir));
-            } else {
-                pendingCustomImport = false;
-                Toast.makeText(this, "Storage permission denied", Toast.LENGTH_LONG).show();
-            }
+        if (requestCode != REQUEST_STORAGE_PERMISSION || pendingStorageAction == null) {
+            return;
         }
+        if (hasDirectStorageAccess(pendingStorageWrite)) {
+            Runnable action = pendingStorageAction;
+            clearPendingStorageAction();
+            action.run();
+            return;
+        }
+        // Keep the pending action: the user can grant access in Settings and
+        // come back, or use the system picker fallback.
+        showStoragePermissionDenied();
     }
 
     private void pickImageFileCustom(GameEntry game) {
+        runWithStorageAccess(false,
+                () -> pickImageFileDirect(game),
+                () -> launchSafChangeIcon(game));
+    }
+
+    private void pickImageFileDirect(GameEntry game) {
         pendingIconGame = game;
         // Built-in picker filtered to image files; works with or without
         // DocumentsUI and is fully D-pad navigable.
@@ -4634,6 +4820,19 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
                                 Toast.LENGTH_LONG).show();
                     }
                 });
+    }
+
+    private void launchSafChangeIcon(GameEntry game) {
+        pendingIconGame = game;
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("image/*");
+            startActivityForResult(intent, REQUEST_CHANGE_ICON);
+        } catch (Exception exception) {
+            pendingIconGame = null;
+            Toast.makeText(this, "No system file picker available", Toast.LENGTH_LONG).show();
+        }
     }
 
     private void startBatchImportFromFiles(File root) {

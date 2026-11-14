@@ -17,12 +17,14 @@ final class ButtonHaptics {
     static final String PREF_KEY = "hapticIntensity";
     static final int DEFAULT_INTENSITY = 15;
 
-    // Long enough for the motor to spin up and be clearly felt. Short 10-20 ms
-    // pulses are almost imperceptible on many phones.
-    private static final int MIN_TICK_MS = 30;
-    private static final int MAX_TICK_MS = 90;
-    /** Amplitude floor so low slider values still produce a felt tick. */
-    private static final int MIN_AMPLITUDE = 100;
+    // Use a wide duration range. Some vibration motors ignore amplitude
+    // changes (or only support coarse steps), so duration is the one part of
+    // the effect that reliably makes the slider feel different.
+    private static final int MIN_TICK_MS = 20;
+    private static final int MAX_TICK_MS = 180;
+    // Keep a small amplitude floor so 1% is still a tick rather than a no-op,
+    // but leave enough range for low settings to feel genuinely lighter.
+    private static final int MIN_AMPLITUDE = 24;
     /** Avoids buzzing continuously while a finger slides across the keypad. */
     private static final long MIN_INTERVAL_MS = 30L;
 

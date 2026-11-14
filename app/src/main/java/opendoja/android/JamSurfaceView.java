@@ -1262,9 +1262,17 @@ try {
         }
     }
 
+    private float keyGap() {
+        // Fixed gap between on-screen keys. The key faces stretch to fill the
+        // remaining cell, so buttons grow with the device while the spacing
+        // between them stays the same physical size on every screen.
+        return Math.max(3f, 6f * getResources().getDisplayMetrics().density);
+    }
+
     private float editGridStep() {
-        float min = Math.min(logicalViewWidth(), logicalViewHeight());
-        return Math.max(14f, min / 12f);
+        // Movement grid for "Edit Buttons". A fixed dp step keeps dragging and
+        // the arrow-key nudge equally fine on small and very large screens.
+        return Math.max(8f, 12f * getResources().getDisplayMetrics().density);
     }
 
     private static float clamp(float value, float min, float max) {
@@ -1457,7 +1465,7 @@ try {
         float innerHeight = innerBottom - innerTop;
         if (innerWidth <= 0f || innerHeight <= 0f) return;
 
-        float gap = innerWidth * 0.018f;
+        float gap = keyGap();
         float dpadWidth = innerWidth * 0.32f;
         float softWidth = innerWidth * 0.20f;
         float dialWidth = innerWidth - dpadWidth - softWidth - 2f * gap;
@@ -1473,33 +1481,33 @@ try {
         rightKey.rect.set(gridLeft + 2f * cell, gridTop + cell, gridLeft + 3f * cell, gridTop + 2f * cell);
         selectKey.rect.set(gridLeft + cell, gridTop + cell, gridLeft + 2f * cell, gridTop + 2f * cell);
 
+        // Four equal rows filling the whole pad height. Only the gaps stay
+        // fixed; the buttons take all remaining space, so tall screens get
+        // taller keys instead of larger empty margins.
         float softLeft = innerLeft + dpadWidth + gap;
-        float cellHeight = innerHeight / 4f;
-        float inset = Math.min(dialWidth / 3f, cellHeight) * 0.05f;
+        float softCellH = (innerHeight - 3f * gap) / 4f;
         KeyDef[] softColumn = {
                 keysById.get(CTRL_SOFT1), keysById.get(CTRL_SOFT2),
                 keysById.get(CTRL_MENU), keysById.get(CTRL_CLEAR),
         };
         for (int row = 0; row < softColumn.length; row++) {
             if (softColumn[row] == null) continue;
-            softColumn[row].rect.set(softLeft, innerTop + row * cellHeight + inset,
-                    softLeft + softWidth, innerTop + (row + 1) * cellHeight - inset);
+            float top = innerTop + row * (softCellH + gap);
+            softColumn[row].rect.set(softLeft, top,
+                    softLeft + softWidth, top + softCellH);
         }
 
         float dialLeft = softLeft + softWidth + gap;
-        float dialCellW = dialWidth / 3f;
-        // Wider-than-tall number keys: cap the cell height and centre the 3x4 block vertically
-        // in the pad band so the digits read as longer rectangles instead of squares.
-        float dialCellH = Math.min(cellHeight, dialCellW / 1.22f);
-        float dialTop = innerTop + (innerHeight - dialCellH * 4f) / 2f;
-        inset = Math.min(dialCellW, dialCellH) * 0.015f;
+        float dialCellW = (dialWidth - 2f * gap) / 3f;
+        float dialCellH = (innerHeight - 3f * gap) / 4f;
         for (int i = 0; i < DIAL_LABELS.length; i++) {
             int col = i % 3;
             int row = i / 3;
             KeyDef def = keysById.get(CTRL_DIAL_BASE + i);
             if (def == null) continue;
-            def.rect.set(dialLeft + col * dialCellW + inset, dialTop + row * dialCellH + inset,
-                    dialLeft + (col + 1) * dialCellW - inset, dialTop + (row + 1) * dialCellH - inset);
+            float left = dialLeft + col * (dialCellW + gap);
+            float top = innerTop + row * (dialCellH + gap);
+            def.rect.set(left, top, left + dialCellW, top + dialCellH);
         }
         }
     }
@@ -1570,8 +1578,11 @@ try {
         float innerW = innerRight - innerLeft;
         float innerH = innerBottom - innerTop;
 
-        float softCellW = innerW / 2f;
-        float softCellH = innerH * 0.12f;
+        // Fixed gaps, scalable faces: the 2x2 soft-key block and the 3x4
+        // number block share all the space that is left over.
+        float gap = keyGap();
+        float softCellW = (innerW - gap) / 2f;
+        float softCellH = (innerH * 0.24f - gap) / 2f;
         KeyDef[] softs = {
                 keysById.get(CTRL_SOFT1), keysById.get(CTRL_SOFT2),
                 keysById.get(CTRL_MENU), keysById.get(CTRL_CLEAR),
@@ -1580,24 +1591,23 @@ try {
             if (softs[i] == null) continue;
             int col = i % 2;
             int row = i / 2;
-            softs[i].rect.set(innerLeft + col * softCellW + 2f * density,
-                    innerTop + row * softCellH + 2f * density,
-                    innerLeft + (col + 1) * softCellW - 2f * density,
-                    innerTop + (row + 1) * softCellH - 2f * density);
+            float left = innerLeft + col * (softCellW + gap);
+            float top = innerTop + row * (softCellH + gap);
+            softs[i].rect.set(left, top, left + softCellW, top + softCellH);
         }
 
-        float dialTop = innerTop + 2f * softCellH + 4f * density;
+        float dialTop = innerTop + innerH * 0.24f + gap;
         float dialH = innerBottom - dialTop;
-        float cellW = innerW / 3f;
-        float cellH = dialH / 4f;
-        float inset = Math.min(cellW, cellH) * 0.06f;
+        float cellW = (innerW - 2f * gap) / 3f;
+        float cellH = (dialH - 3f * gap) / 4f;
         for (int i = 0; i < DIAL_LABELS.length; i++) {
             int col = i % 3;
             int row = i / 3;
             KeyDef def = keysById.get(CTRL_DIAL_BASE + i);
             if (def == null) continue;
-            def.rect.set(innerLeft + col * cellW + inset, dialTop + row * cellH + inset,
-                    innerLeft + (col + 1) * cellW - inset, dialTop + (row + 1) * cellH - inset);
+            float left = innerLeft + col * (cellW + gap);
+            float top = dialTop + row * (cellH + gap);
+            def.rect.set(left, top, left + cellW, top + cellH);
         }
 
         float dpadSize = Math.min(viewWidth * 0.22f, viewHeight * 0.30f);
@@ -1921,7 +1931,11 @@ try {
                 if (alphaOverride < 255) {
                     alpha = alpha * alphaOverride / 255;
                 }
-                boolean stretch = !landscape && isDialArt(artId);
+                // Number and soft keys fill their whole cell in both
+                // orientations. The artwork is stretched, but labels are
+                // redrawn at the final size so they stay undistorted. The
+                // D-pad keeps its fixed cross shape.
+                boolean stretch = !artId.startsWith("dpad-");
                 if (controlsSkin.draw(canvas, artId, rect, pressed, alpha, stretch)) {
                     return;
                 }
@@ -2078,14 +2092,6 @@ try {
         canvas.drawRoundRect(editResizeTrack, trackRadius, trackRadius, editSliderTrackPaint);
         canvas.drawCircle(editResizeKnob.centerX(), editResizeKnob.centerY(),
                 editResizeKnob.width() / 2f, editSliderKnobPaint);
-    }
-
-    private static boolean isDialArt(String artId) {
-        if (artId == null || !artId.startsWith("key-")) {
-            return false;
-        }
-        String tail = artId.substring(4);
-        return tail.length() == 1 || "star".equals(tail) || "hash".equals(tail);
     }
 
     private String skinIdForControl(int id) {

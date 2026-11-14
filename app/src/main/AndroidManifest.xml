@@ -9,19 +9,25 @@
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+    <!-- Legacy writes for exporting saves/icons to shared folders on Android 9 and below.
+         Android 10 uses legacy mode; Android 11+ uses MANAGE_EXTERNAL_STORAGE instead. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
     <!-- All-files access for the built-in file browser on devices without DocumentsUI. -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <!-- DoJa PhoneSystem DEV_VIBRATOR (games with a vibration option). -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
-        android:label="Pocket DoJa"
+        android:label="${appLabel}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:usesCleartextTraffic="true"
         android:theme="@style/AppTheme"
         android:largeHeap="true"
-        android:resizeableActivity="false">
+        android:resizeableActivity="false"
+        android:requestLegacyExternalStorage="true">
         <activity
             android:name="opendoja.android.HomeActivity"
             android:exported="true"

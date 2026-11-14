@@ -55,6 +55,7 @@ public class DisplayActivity extends Activity {
     private boolean pendingUseHardwareRenderer;
     private boolean pendingUseSystemKeyboard;
     private int pendingHapticIntensity;
+    private boolean hapticDragging;
     private boolean pendingUseSystem;
     private String pendingLanguage;
 
@@ -293,19 +294,25 @@ public class DisplayActivity extends Activity {
                             pendingHapticIntensity = progress;
                             hapticLabel.setText(getString(
                                     R.string.haptic_feedback_value, progress));
-                            if (fromUser) {
-                                // Live preview: feel the strength while dragging.
+                            // Do not vibrate while the finger is dragging: each
+                            // tick would restart the motor before it can spin
+                            // down, so the whole slider feels like one strong,
+                            // unchanging buzz. Preview after release instead.
+                            if (fromUser && !hapticDragging) {
                                 ButtonHaptics.tick(DisplayActivity.this, progress);
                             }
                         }
 
                         @Override
                         public void onStartTrackingTouch(android.widget.SeekBar seekBar) {
+                            hapticDragging = true;
                         }
 
                         @Override
                         public void onStopTrackingTouch(android.widget.SeekBar seekBar) {
-                            // Preview the selected strength.
+                            hapticDragging = false;
+                            // Preview the selected strength once the motor has
+                            // had a chance to come to rest.
                             ButtonHaptics.tick(DisplayActivity.this,
                                     pendingHapticIntensity);
                         }
