@@ -268,21 +268,28 @@ public class KeyMappingActivity extends Activity {
     }
 
     private void beginCapture(HostControlAction action, View row) {
-        if (capturingRow != null) {
-            updateRowHighlight(capturingRow, capturingRow.isFocused());
-        }
+        View previous = capturingRow;
         capturing = action;
         capturingRow = row;
+        // Clear the previous row after capturingRow has moved off it. Doing
+        // this first made updateRowHighlight() see the old row as the active
+        // capture row and paint it again, so every tapped row stayed blue.
+        if (previous != null) {
+            updateRowHighlight(previous, previous.isFocused());
+        }
         row.setBackgroundColor(0x803080FF);
         updateHeader(action);
     }
 
     private void endCapture() {
-        if (capturingRow != null) {
-            updateRowHighlight(capturingRow, capturingRow.isFocused());
-        }
+        View previous = capturingRow;
         capturing = null;
         capturingRow = null;
+        // Same ordering as beginCapture(): clear the capture flag before
+        // repainting so the row returns to its focus (or transparent) state.
+        if (previous != null) {
+            updateRowHighlight(previous, previous.isFocused());
+        }
         updateHeader(null);
     }
 
