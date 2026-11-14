@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!--
+      Dev-only sources excluded from the Android build (see app/build.gradle).
+      Lint still walks the shared Java source root, so keep their desktop/JDK
+      API usage out of the shipped-app report.
+    -->
+    <issue id="NewApi">
+        <ignore path="opendoja/src/main/java/opendoja/probes" />
+        <ignore path="opendoja/src/main/java/opendoja/tools" />
+        <ignore path="opendoja/src/main/java/opendoja/launcher" />
+        <ignore path="opendoja/src/main/java/opendoja/host/input/ControllerInputManagerProbe.java" />
+    </issue>
+</lint>

@@ -17,10 +17,9 @@ final class LaunchCompatibility {
         // Both the named-module resource bridge and the DoJa-specific SJIS compatibility hook rely on
         // narrow reflective access into JDK internals. Re-exec once with only those explicit
         // opens so the default desktop launch path stays unchanged.
-        Process process = new ProcessBuilder(buildRequiredAddOpensCommand(
+        Process process = inheritConsole(new ProcessBuilder(buildRequiredAddOpensCommand(
                         JamLauncher.class.getName(),
-                        new String[]{jamPath.toString()}))
-                .inheritIO()
+                        new String[]{jamPath.toString()})))
                 .start();
         int exit = process.waitFor();
         System.exit(exit);
@@ -41,14 +40,13 @@ final class LaunchCompatibility {
             return;
         }
 
-        Process process = new ProcessBuilder(buildCompatibilityCommand(
+        Process process = inheritConsole(new ProcessBuilder(buildCompatibilityCommand(
                         disableExplicitGc,
                         limitHotSpotTier,
                         disableOnStackReplacement,
                         disableLoopInvariantCodeMotion,
                         JamLauncher.class.getName(),
-                        new String[]{jamPath.toString()}))
-                .inheritIO()
+                        new String[]{jamPath.toString()})))
                 .start();
         int exit = process.waitFor();
         System.exit(exit);
@@ -62,13 +60,24 @@ final class LaunchCompatibility {
         // This fallback is intentionally JVM-wide because bytecode verification is also JVM-wide.
         // Keep it as a one-time startup retry only after the title has actually failed with
         // VerifyError, rather than weakening verification for every launch.
-        Process process = new ProcessBuilder(buildVerifyFallbackCommand(JamLauncher.class.getName(),
-                        new String[]{jamPath.toString()}))
-                .inheritIO()
+        Process process = inheritConsole(new ProcessBuilder(buildVerifyFallbackCommand(JamLauncher.class.getName(),
+                        new String[]{jamPath.toString()})))
                 .start();
         int exit = process.waitFor();
         System.exit(exit);
         return true;
+    }
+
+    /**
+     * inheritIO() is only available from API 26. These re-exec helpers belong to
+     * the desktop launcher path, so Android never needs an inherited console; the
+     * guard keeps this shared class loadable on Android 7.0.
+     */
+    private static ProcessBuilder inheritConsole(ProcessBuilder builder) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            builder.inheritIO();
+        }
+        return builder;
     }
 
     private static List<String> buildCompatibilityCommand(boolean disableExplicitGc, boolean limitHotSpotTier,

@@ -186,6 +186,19 @@ public class HomeActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Tapping the launcher icon while the app's task already exists makes
+        // Android push another HomeActivity on top of the current screen (for
+        // example a hibernating game) with LAUNCH_MULTIPLE. Reopening from
+        // Recents instead brings the task forward. Return to the screen that
+        // was already showing so the game stays alive and resumes with its
+        // paused overlay.
+        if (!isTaskRoot()) {
+            opendoja.host.OpenDoJaLog.info(HomeActivity.class,
+                    "HomeActivity.onCreate: stacked launch on task " + getTaskId()
+                            + "; returning to existing screen");
+            finish();
+            return;
+        }
         DisplayActivity.applyShippingDefaults(this);
         instance = this;
         // Cancel any stale restart alarm from the previous process-restart implementation
@@ -290,6 +303,12 @@ public class HomeActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        // A stacked launcher launch finishes in onCreate() before the UI is
+        // built; if the framework still delivers onResume, do not touch the
+        // uninitialized views.
+        if (isFinishing()) {
+            return;
+        }
         ThemeRenderer.logEvent("Home.onResume glView=" + (glView != null)
                 + " themeRenderer=" + (themeRenderer != null));
         applyDisplayOrientation(this);
@@ -723,7 +742,7 @@ public class HomeActivity extends Activity {
         wifiFilter.addAction(WifiManager.RSSI_CHANGED_ACTION);
         wifiFilter.addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION);
         wifiFilter.addAction(WifiManager.WIFI_STATE_CHANGED_ACTION);
-        registerReceiver(wifiReceiver, wifiFilter, Context.RECEIVER_NOT_EXPORTED);
+        registerInternalReceiver(wifiReceiver, wifiFilter);
         Log.d("PocketDoJa_WiFi", "WiFi receiver registered");
 
         // Battery receiver
@@ -735,12 +754,26 @@ public class HomeActivity extends Activity {
             }
         };
         IntentFilter batteryFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
-        registerReceiver(batteryReceiver, batteryFilter, Context.RECEIVER_NOT_EXPORTED);
+        registerInternalReceiver(batteryReceiver, batteryFilter);
         Log.d("PocketDoJa_Battery", "Battery receiver registered");
 
         // Initial update
         updateWifiIcon();
         updateBatteryIcon();
+    }
+
+    /**
+     * Registers process-local receivers. RECEIVER_NOT_EXPORTED and the
+     * three-argument overload are only available from API 33; Android 7.x uses
+     * the two-argument form. These filters only carry protected system
+     * broadcasts, so the older overload is sufficient there.
+     */
+    private void registerInternalReceiver(BroadcastReceiver receiver, IntentFilter filter) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(receiver, filter);
+        }
     }
 
     private void updateMascotIcon(int percent, boolean charging, boolean present) {
@@ -2337,7 +2370,7 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
                 && !defaultGameIcon.isRecycled()) {
             return defaultGameIcon;
         }
-        Bitmap raw = loadApplicationIcon();
+        Bitmap raw = loadDefaultGameIconArtwork();
         defaultGameIcon = prepareGameIcon(raw);
         if (raw != defaultGameIcon) {
             raw.recycle();
@@ -2345,8 +2378,21 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         return defaultGameIcon;
     }
 
-    private Bitmap loadApplicationIcon() {
+    /**
+     * Loads the full-square artwork used for games that ship no icon. The tile
+     * mask is applied by {@link #prepareGameIcon(Bitmap)}, so the source keeps
+     * its background in the corners; the pre-masked launcher icon does not and
+     * would end up looking rounded instead of squircle.
+     */
+    private Bitmap loadDefaultGameIconArtwork() {
         int size = Math.max(1, iconSizePx);
+        try {
+            Bitmap artwork = BitmapFactory.decodeResource(getResources(), R.drawable.default_game_icon);
+            if (artwork != null) {
+                return artwork;
+            }
+        } catch (RuntimeException ignored) {
+        }
         try {
             android.graphics.drawable.Drawable drawable =
                     getPackageManager().getApplicationIcon(getPackageName());

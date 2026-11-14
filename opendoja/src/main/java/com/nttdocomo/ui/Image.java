@@ -289,6 +289,16 @@ final class DesktopImage extends com.docomostar.ui.Image {
         disposed = true;
     }
 
+    /**
+     * Restores an image that belongs to a media resource. DoJa's media API reloads
+     * the resource on {@code MediaResource.use()}, so an Image obtained from a
+     * MediaImage must become usable again after the resource is used once more,
+     * even if the application previously called {@link #dispose()} on it.
+     */
+    void revive() {
+        disposed = false;
+    }
+
     @Override
     public void setTransparentColor(int transparentColor) {
         ensureNotDisposed();
@@ -371,6 +381,10 @@ final class DesktopImage extends com.docomostar.ui.Image {
         transparentCopySource = renderedSource;
         transparentCopyColor = transparentColorKey;
         return copy;
+    }
+
+    boolean isDisposed() {
+        return disposed;
     }
 
     void ensureNotDisposed() {

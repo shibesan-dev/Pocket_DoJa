@@ -92,9 +92,9 @@ public final class DoJaCryptoSupport {
 
     public static byte[] wrapSessionKey(byte[] sessionKey, int sessionCipher) {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
-        output.writeBytes(WRAPPED_SESSION_KEY_MAGIC);
+        output.write(WRAPPED_SESSION_KEY_MAGIC, 0, WRAPPED_SESSION_KEY_MAGIC.length);
         output.write(sessionCipher);
-        output.writeBytes(sessionKey);
+        output.write(sessionKey, 0, sessionKey.length);
         return output.toByteArray();
     }
 

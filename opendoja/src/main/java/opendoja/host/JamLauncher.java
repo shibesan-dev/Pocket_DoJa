@@ -486,7 +486,7 @@ public final class JamLauncher {
                 java.util.jar.JarEntry entry = (java.util.jar.JarEntry) jarFile.getEntry("fat.bin");
                 if (entry != null) {
                     try (java.io.InputStream in = jarFile.getInputStream(entry)) {
-                        data = in.readAllBytes();
+                        data = readAllBytes(in);
                     }
                 }
             } catch (IOException ignored) {
@@ -593,6 +593,16 @@ public final class JamLauncher {
             result.append(token);
         }
         return result.toString();
+    }
+
+    private static byte[] readAllBytes(java.io.InputStream input) throws IOException {
+        java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        int read;
+        while ((read = input.read(buffer)) != -1) {
+            output.write(buffer, 0, read);
+        }
+        return output.toByteArray();
     }
 
     private record ResolvedScratchpad(Path path, boolean found) {

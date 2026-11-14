@@ -285,10 +285,20 @@ public final class DoJaStorageHostProbe {
     private static byte[] readAllBytes(com.nttdocomo.fs.File file) throws Exception {
         FileEntity entity = file.open(com.nttdocomo.fs.File.MODE_READ_ONLY);
         try (InputStream in = entity.openInputStream()) {
-            return in.readAllBytes();
+            return readAllBytes(in);
         } finally {
             entity.close();
         }
+    }
+
+    private static byte[] readAllBytes(InputStream input) throws Exception {
+        java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        int read;
+        while ((read = input.read(buffer)) != -1) {
+            output.write(buffer, 0, read);
+        }
+        return output.toByteArray();
     }
 
     private static byte[] readAllBytes(Path path) throws Exception {

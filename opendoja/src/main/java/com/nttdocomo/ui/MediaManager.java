@@ -683,6 +683,17 @@ public final class MediaManager {
         }
 
         @Override
+        public void use() throws ConnectionException {
+            super.use();
+            // A title may dispose the Image it obtained while releasing the
+            // resource, then call use() again when the same MediaImage is
+            // needed later. Reusing the resource makes its image usable again.
+            if (image.isDisposed()) {
+                image.revive();
+            }
+        }
+
+        @Override
         public int getWidth() {
             return image.getWidth();
         }
@@ -714,6 +725,16 @@ public final class MediaManager {
 
         AnimatedMediaImage(DesktopImage[] frames) {
             this.frames = frames.clone();
+        }
+
+        @Override
+        public void use() throws ConnectionException {
+            super.use();
+            for (DesktopImage frame : frames) {
+                if (frame.isDisposed()) {
+                    frame.revive();
+                }
+            }
         }
 
         @Override

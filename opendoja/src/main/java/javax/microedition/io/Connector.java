@@ -202,7 +202,7 @@ public class Connector {
             try {
                 java.io.InputStream in = DoJaRuntime.openLaunchResourceStream("resource:///fat.bin");
                 if (in != null) {
-                    byte[] data = in.readAllBytes();
+                    byte[] data = readAllBytes(in);
                     in.close();
                     int count = (data.length - 16) / 36;
                     for (int i = 0; i < count; i++) {
@@ -238,6 +238,15 @@ public class Connector {
         }
     }
 
+    private static byte[] readAllBytes(InputStream input) throws IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        int read;
+        while ((read = input.read(buffer)) != -1) {
+            output.write(buffer, 0, read);
+        }
+        return output.toByteArray();
+    }
 
     private static DataInputStream asDataInputStream(InputStream input) {
         return input instanceof DataInputStream dataInput ? dataInput : new DataInputStream(input);

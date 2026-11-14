@@ -7,7 +7,6 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
-import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Properties;
@@ -241,10 +240,19 @@ public record GameIdentity(
                     digest.update(buffer, 0, read);
                 }
             }
-            return HexFormat.of().formatHex(digest.digest());
+            return toHex(digest.digest());
         } catch (IOException | java.security.NoSuchAlgorithmException exception) {
             OpenDoJaLog.debug(GameIdentity.class, () -> "Could not hash JAM " + file + ": " + exception);
             return null;
         }
+    }
+
+    private static String toHex(byte[] bytes) {
+        StringBuilder hex = new StringBuilder(bytes.length * 2);
+        for (byte value : bytes) {
+            hex.append(Character.forDigit((value >>> 4) & 0x0F, 16));
+            hex.append(Character.forDigit(value & 0x0F, 16));
+        }
+        return hex.toString();
     }
 }

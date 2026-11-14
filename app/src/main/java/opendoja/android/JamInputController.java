@@ -44,12 +44,12 @@ public final class JamInputController {
                 (softKey, eventType) -> {
                     DoJaRuntime r = runtime;
                     if (r == null) r = DoJaRuntime.current();
-                        if (r != null) {
-                            opendoja.host.OpenDoJaLog.info(JamInputController.class, "soft sink: dispatching softKey=" + softKey + " to runtime=" + r);
-                            r.dispatchHostSoftKey(softKey, eventType);
-                        } else {
-                            opendoja.host.OpenDoJaLog.warn(JamInputController.class, "soft sink: NO runtime, softKey=" + softKey + " dropped");
-                        }
+                    if (r != null) {
+                        opendoja.host.OpenDoJaLog.info(JamInputController.class, "soft sink: dispatching softKey=" + softKey + " to runtime=" + r);
+                        r.dispatchHostSoftKey(softKey, eventType);
+                    } else {
+                        opendoja.host.OpenDoJaLog.warn(JamInputController.class, "soft sink: NO runtime, softKey=" + softKey + " dropped");
+                    }
                 },
                 RELEASE_DEBOUNCE_MS);
     }

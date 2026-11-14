@@ -112,6 +112,10 @@ final class DoJaSjisCompatibility {
         field.set(provider, null);
     }
 
+    // Only reached on desktop JVMs started with the required --add-opens flags
+    // (see hasRequiredAddOpens); Android never takes this path, so the API 30+
+    // private-cache reflection restriction does not affect the shipped app.
+    @android.annotation.SuppressLint("SoonBlockedPrivateApi")
     private static void clearCharsetLookupCaches() throws ReflectiveOperationException {
         // Charset keeps a tiny process-wide lookup cache in addition to the provider cache.
         Field cache1 = Charset.class.getDeclaredField("cache1");
