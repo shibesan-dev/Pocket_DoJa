@@ -137,4 +137,10 @@
     <string name="exit_game">Выйти из игры</string>
     <string name="haptic_feedback">Тактильная отдача</string>
     <string name="haptic_feedback_value">Тактильная отдача: %1$d%%</string>
+    <string name="edit_layout">Изменить раскладку</string>
+    <string name="edit_hint">Перетаскивайте игры, чтобы изменить порядок. На геймпаде удерживайте «Выбрать», перемещайтесь крестовиной, затем отпустите.</string>
+    <string name="save_changes_title">Сохранить изменения?</string>
+    <string name="save_changes_message">Сохранить новый порядок игр?</string>
+    <string name="save_changes_save">Сохранить</string>
+    <string name="save_changes_discard">Отклонить</string>
 </resources>

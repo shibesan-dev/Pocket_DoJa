@@ -137,4 +137,10 @@
     <string name="exit_game">Keluar permainan</string>
     <string name="haptic_feedback">Maklum balas haptik</string>
     <string name="haptic_feedback_value">Maklum balas haptik: %1$d%%</string>
+    <string name="edit_layout">Edit susun atur</string>
+    <string name="edit_hint">Seret permainan untuk menyusun semula. Dengan pengawal, tahan Pilih, gerakkan dengan D-pad, kemudian lepaskan.</string>
+    <string name="save_changes_title">Simpan perubahan?</string>
+    <string name="save_changes_message">Kekalkan susunan permainan baharu?</string>
+    <string name="save_changes_save">Simpan</string>
+    <string name="save_changes_discard">Buang</string>
 </resources>

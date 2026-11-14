@@ -137,4 +137,10 @@
     <string name="exit_game">ออกจากเกม</string>
     <string name="haptic_feedback">การสั่นเมื่อสัมผัส</string>
     <string name="haptic_feedback_value">การสั่นเมื่อสัมผัส: %1$d%%</string>
+    <string name="edit_layout">แก้ไขเลย์เอาต์</string>
+    <string name="edit_hint">ลากเกมเพื่อจัดเรียงใหม่ บนคอนโทรลเลอร์ ให้กด Select ค้างไว้ เลื่อนด้วย D-pad แล้วปล่อย</string>
+    <string name="save_changes_title">บันทึกการเปลี่ยนแปลงหรือไม่</string>
+    <string name="save_changes_message">เก็บลำดับเกมใหม่ไว้หรือไม่</string>
+    <string name="save_changes_save">บันทึก</string>
+    <string name="save_changes_discard">ทิ้ง</string>
 </resources>

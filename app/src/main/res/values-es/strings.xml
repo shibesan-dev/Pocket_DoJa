@@ -137,4 +137,10 @@
     <string name="exit_game">Salir del juego</string>
     <string name="haptic_feedback">Respuesta háptica</string>
     <string name="haptic_feedback_value">Respuesta háptica: %1$d%%</string>
+    <string name="edit_layout">Editar diseño</string>
+    <string name="edit_hint">Arrastra los juegos para reordenarlos. Con un mando, mantén pulsado Seleccionar, muévete con la cruceta y suelta.</string>
+    <string name="save_changes_title">¿Guardar cambios?</string>
+    <string name="save_changes_message">¿Conservar el nuevo orden de juegos?</string>
+    <string name="save_changes_save">Guardar</string>
+    <string name="save_changes_discard">Descartar</string>
 </resources>

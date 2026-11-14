@@ -137,4 +137,10 @@
     <string name="exit_game">விளையாட்டிலிருந்து வெளியேறு</string>
     <string name="haptic_feedback">தொடு அதிர்வு</string>
     <string name="haptic_feedback_value">தொடு அதிர்வு: %1$d%%</string>
+    <string name="edit_layout">தளவமைப்பைத் திருத்து</string>
+    <string name="edit_hint">வரிசைப்படுத்த கேம்களை இழுக்கவும். கன்ட்ரோலரில் Select-ஐ அழுத்திப் பிடித்து, D-pad மூலம் நகர்த்தி, பின்னர் விடவும்.</string>
+    <string name="save_changes_title">மாற்றங்களைச் சேமிக்கவா?</string>
+    <string name="save_changes_message">புதிய கேம் வரிசையை வைத்திருக்கவா?</string>
+    <string name="save_changes_save">சேமி</string>
+    <string name="save_changes_discard">நிராகரி</string>
 </resources>

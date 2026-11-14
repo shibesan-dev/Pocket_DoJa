@@ -137,4 +137,10 @@
     <string name="exit_game">Quitter le jeu</string>
     <string name="haptic_feedback">Retour haptique</string>
     <string name="haptic_feedback_value">Retour haptique : %1$d%%</string>
+    <string name="edit_layout">Modifier la disposition</string>
+    <string name="edit_hint">Faites glisser les jeux pour les réorganiser. Avec une manette, maintenez Sélection, déplacez-vous avec la croix directionnelle, puis relâchez.</string>
+    <string name="save_changes_title">Enregistrer les modifications ?</string>
+    <string name="save_changes_message">Conserver le nouvel ordre des jeux ?</string>
+    <string name="save_changes_save">Enregistrer</string>
+    <string name="save_changes_discard">Abandonner</string>
 </resources>

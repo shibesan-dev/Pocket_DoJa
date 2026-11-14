@@ -137,4 +137,10 @@
     <string name="exit_game">結束遊戲</string>
     <string name="haptic_feedback">觸感回饋</string>
     <string name="haptic_feedback_value">觸感回饋：%1$d%%</string>
+    <string name="edit_layout">編輯版面</string>
+    <string name="edit_hint">拖曳遊戲以重新排列。使用控制器時，按住選擇鍵，用方向鍵移動，然後放開。</string>
+    <string name="save_changes_title">儲存變更？</string>
+    <string name="save_changes_message">保留新的遊戲順序？</string>
+    <string name="save_changes_save">儲存</string>
+    <string name="save_changes_discard">捨棄</string>
 </resources>

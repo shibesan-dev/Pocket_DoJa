@@ -137,4 +137,10 @@
     <string name="exit_game">Lumabas sa Laro</string>
     <string name="haptic_feedback">Vibrasyon sa pagpindot</string>
     <string name="haptic_feedback_value">Vibrasyon sa pagpindot: %1$d%%</string>
+    <string name="edit_layout">I-edit ang layout</string>
+    <string name="edit_hint">I-drag ang mga laro para muling ayusin. Sa controller, hawakan ang Select, gumalaw gamit ang D-pad, pagkatapos ay bitawan.</string>
+    <string name="save_changes_title">I-save ang mga pagbabago?</string>
+    <string name="save_changes_message">Panatilihin ang bagong pagkakasunod-sunod ng mga laro?</string>
+    <string name="save_changes_save">I-save</string>
+    <string name="save_changes_discard">Itapon</string>
 </resources>

@@ -147,4 +147,11 @@ Thank you for your interest in Pocket DoJa!
     <string name="exit_game">Exit Game</string>
     <string name="haptic_feedback">Haptic feedback</string>
     <string name="haptic_feedback_value">Haptic feedback: %1$d%%</string>
+
+    <string name="edit_layout">Edit layout</string>
+    <string name="edit_hint">Drag games to rearrange. With a controller, hold Select, move with the D-pad, then release.</string>
+    <string name="save_changes_title">Save changes?</string>
+    <string name="save_changes_message">Keep the new game order?</string>
+    <string name="save_changes_save">Save</string>
+    <string name="save_changes_discard">Discard</string>
 </resources>

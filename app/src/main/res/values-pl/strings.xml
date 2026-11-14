@@ -137,4 +137,10 @@
     <string name="exit_game">Wyjdź z gry</string>
     <string name="haptic_feedback">Wibracje dotykowe</string>
     <string name="haptic_feedback_value">Wibracje dotykowe: %1$d%%</string>
+    <string name="edit_layout">Edytuj układ</string>
+    <string name="edit_hint">Przeciągaj gry, aby zmienić kolejność. Na kontrolerze przytrzymaj Wybierz, poruszaj się krzyżakiem, a następnie puść.</string>
+    <string name="save_changes_title">Zapisać zmiany?</string>
+    <string name="save_changes_message">Zachować nową kolejność gier?</string>
+    <string name="save_changes_save">Zapisz</string>
+    <string name="save_changes_discard">Odrzuć</string>
 </resources>

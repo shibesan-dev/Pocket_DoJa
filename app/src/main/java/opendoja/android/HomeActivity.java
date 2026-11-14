@@ -1,5 +1,9 @@
 package opendoja.android;
 
+import android.animation.Animator;
+import android.animation.ObjectAnimator;
+import android.animation.PropertyValuesHolder;
+import android.animation.ValueAnimator;
 import android.content.SharedPreferences;
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -29,6 +33,7 @@ import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.media.AudioAttributes;
@@ -44,6 +49,8 @@ import android.util.DisplayMetrics;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.animation.AccelerateDecelerateInterpolator;
+import android.view.animation.OvershootInterpolator;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
@@ -127,6 +134,7 @@ public class HomeActivity extends Activity {
     private ImageView mascotIcon;
     private TextView searchButton;
     private TextView viewToggleButton;
+    private TextView editButton;
     private TextView menuButton;
     // In-app D-pad keyboard used by Search and Rename instead of the system IME.
     private FrameLayout rootView;
@@ -136,7 +144,7 @@ public class HomeActivity extends Activity {
     private TextView renameDisplay;
     private GameEntry renameTarget;
     private String renameText = "";
-    // -1 = game grid has D-pad focus; 0/1/2 = Search / view toggle / menu.
+    // -1 = game grid has D-pad focus; 0/1/2/3 = Search / view toggle / edit / menu.
     private int topBarFocusIndex = -1;
     private TextView timeView;
     private float topBarScale = 1f;
@@ -148,6 +156,7 @@ public class HomeActivity extends Activity {
 
     private static final String HOME_PREFS = "home";
     private static final String KEY_LAST_GAME = "lastGamePath";
+    private static final String KEY_GAME_ORDER = "gameOrder";
     private static final long NAV_DUPLICATE_DOWN_MS = 60L;
     // Slightly shorter than the platform timeout so a remote's key-up never
     // beats the long-press handler.
@@ -186,6 +195,25 @@ public class HomeActivity extends Activity {
     private SoundPool navSoundPool;
     private int navSoundId = 0;
     private boolean navSoundReady = false;
+
+    // ---- Layout edit mode ----
+    // While editMode is on, tiles wobble and long-press / Select picks one up.
+    // The new order stays in memory until the user confirms Save; Discard
+    // simply rescans, which reapplies the previously persisted order.
+    private boolean editMode = false;
+    private boolean editOrderDirty = false;
+    private boolean pendingEditEntrance = false;
+    private final Map<String, Animator> wobbleAnimators = new LinkedHashMap<>();
+    private float lastTouchRawX = 0f;
+    private float lastTouchRawY = 0f;
+    private ImageView dragOverlay;
+    private int dragOverlaySizePx = 0;
+    private String dragGamePath;
+    private String dragHoverPath;
+    private View dragSourceView;
+    private boolean controllerDragging = false;
+    private boolean controllerDragMoved = false;
+    private String controllerDragPath;
 
     public static HomeActivity instance;
     public static volatile boolean bgmSuppressed = false;
@@ -384,6 +412,15 @@ public class HomeActivity extends Activity {
         cancelNavSelectLongPress();
         navSelectPressed = false;
         navSelectLongPressed = false;
+        // Do not leave a floating tile or an endless wobble running behind
+        // another activity. The order itself stays in memory for Save.
+        if (dragOverlay != null) {
+            finishTouchDrag(null);
+        }
+        if (controllerDragging) {
+            endControllerDrag();
+        }
+        stopWobbleAnimations();
         ThemeRenderer.logEvent("Home.onPause");
         stopGlFrameLoop();
         if (glView != null) {
@@ -447,6 +484,8 @@ public class HomeActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        removeDragOverlayNow();
+        cancelWobbleAnimations();
         worker.shutdownNow();
         if (wifiReceiver != null) {
             try { unregisterReceiver(wifiReceiver); } catch (Exception ignored) {}
@@ -595,21 +634,37 @@ public class HomeActivity extends Activity {
                 LinearLayout.LayoutParams.MATCH_PARENT, 1f));
 
         viewToggleButton = new TextView(this);
-        viewToggleButton.setText(isGridView() ? "\u25A6" : "\u2630");
+        viewToggleButton.setText("");
         viewToggleButton.setTextSize(22f);
         viewToggleButton.setTextColor(themeTextColor());
         viewToggleButton.setGravity(Gravity.CENTER);
-        viewToggleButton.setPadding(dp(16), 0, dp(8), 0);
+        viewToggleButton.setPadding(dp(8), 0, dp(8), 0);
         viewToggleButton.setClickable(true);
         viewToggleButton.setFocusable(false);
         FocusHighlight.disable(viewToggleButton);
         viewToggleButton.setOnClickListener(v -> {
             setGridView(!isGridView());
-            viewToggleButton.setText(isGridView() ? "\u25A6" : "\u2630");
+            updateViewToggleIcon();
             refreshGames();
         });
         bar.addView(viewToggleButton, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT));
+        updateViewToggleIcon();
+
+        editButton = new TextView(this);
+        editButton.setText("");
+        editButton.setTextSize(22f);
+        editButton.setTextColor(themeTextColor());
+        editButton.setGravity(Gravity.CENTER);
+        editButton.setPadding(dp(8), 0, dp(8), 0);
+        editButton.setClickable(true);
+        editButton.setFocusable(false);
+        editButton.setContentDescription(getString(R.string.edit_layout));
+        FocusHighlight.disable(editButton);
+        editButton.setOnClickListener(v -> onEditButtonClicked());
+        bar.addView(editButton, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT));
+        updateEditButtonAppearance();
 
         menuButton = new TextView(this);
         menuButton.setText("...");
@@ -684,7 +739,11 @@ public class HomeActivity extends Activity {
         }
         if (viewToggleButton != null) {
             viewToggleButton.setTextSize(22f * topBarScale);
-            viewToggleButton.setPadding(scaledDp(16, topBarScale), 0, scaledDp(8, topBarScale), 0);
+            viewToggleButton.setPadding(scaledDp(8, topBarScale), 0, scaledDp(8, topBarScale), 0);
+        }
+        if (editButton != null) {
+            editButton.setTextSize(22f * topBarScale);
+            editButton.setPadding(scaledDp(8, topBarScale), 0, scaledDp(8, topBarScale), 0);
         }
         if (menuButton != null) {
             menuButton.setTextSize(26f * topBarScale);
@@ -954,6 +1013,27 @@ public class HomeActivity extends Activity {
         }
     }
 
+    /** Grid/list toggle artwork. Dimmed in list mode so the current mode reads at a glance. */
+    private void updateViewToggleIcon() {
+        if (viewToggleButton == null) {
+            return;
+        }
+        Drawable icon = getResources().getDrawable(R.drawable.ic_grid, getTheme()).mutate();
+        icon.setTint(themeTextColor());
+        icon.setAlpha(isGridView() ? 255 : 140);
+        viewToggleButton.setCompoundDrawablesWithIntrinsicBounds(null, null, icon, null);
+    }
+
+    /** Edit toggle artwork. Accent tint while the layout is being edited. */
+    private void updateEditButtonAppearance() {
+        if (editButton == null) {
+            return;
+        }
+        Drawable icon = getResources().getDrawable(R.drawable.ic_edit, getTheme()).mutate();
+        icon.setTint(editMode ? 0xFF3080FF : themeTextColor());
+        editButton.setCompoundDrawablesWithIntrinsicBounds(null, null, icon, null);
+    }
+
     private void startTimeUpdater() {
         if (timeTimer != null) {
             timeTimer.cancel();
@@ -1162,6 +1242,8 @@ public class HomeActivity extends Activity {
         }
         // Update search icon for new theme
         updateSearchIcon();
+        updateViewToggleIcon();
+        updateEditButtonAppearance();
         // Update time text color
         if (timeView != null) {
             timeView.setTextColor(themeTextColor());
@@ -1274,6 +1356,12 @@ public class HomeActivity extends Activity {
 
     private void toggleSearch() {
         if (searchBox == null) {
+            return;
+        }
+        if (editMode) {
+            // Reordering a filtered subset would make the saved layout
+            // surprising, so search waits until edits are saved or discarded.
+            Toast.makeText(this, getString(R.string.edit_hint), Toast.LENGTH_SHORT).show();
             return;
         }
         if (searchBox.getVisibility() == View.VISIBLE) {
@@ -2239,6 +2327,22 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
     }
 
     private void refreshGames() {
+        refreshGames(false);
+    }
+
+    /**
+     * @param forceScan true when edit mode has just been entered and the
+     *                  filtered list must be replaced by the full library.
+     *                  Otherwise, while editing, the in-memory order wins over
+     *                  the persisted order so an activity pause/resume (for
+     *                  example opening Theme) cannot silently discard the
+     *                  rearrangement the user has not saved yet.
+     */
+    private void refreshGames(boolean forceScan) {
+        if (!forceScan && editMode && !currentGames.isEmpty()) {
+            populateGrid(new ArrayList<>(currentGames));
+            return;
+        }
         worker.execute(() -> {
             List<GameEntry> games = scanGames();
             if (isFinishing() || isDestroyed()) {
@@ -2279,6 +2383,8 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
             }
             games.add(new GameEntry(jam, name, loadGameIcon(jam)));
         }
+        games.sort(Comparator.comparingLong((GameEntry e) -> e.jam.lastModified()).reversed());
+        applySavedGameOrder(games);
         if (!searchQuery.isEmpty()) {
             String q = searchQuery.toLowerCase(Locale.ROOT);
             List<GameEntry> filtered = new ArrayList<>();
@@ -2289,8 +2395,50 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
             }
             games = filtered;
         }
-        games.sort(Comparator.comparingLong((GameEntry e) -> e.jam.lastModified()).reversed());
         return games;
+    }
+
+    /**
+     * Applies the order saved by edit mode. Matches by file name rather than
+     * absolute path so a library moved between storage locations keeps its
+     * layout. Games that are new (or were imported since the last save) keep
+     * their last-modified order and are appended after the saved entries.
+     */
+    private void applySavedGameOrder(List<GameEntry> games) {
+        String saved = getSharedPreferences(HOME_PREFS, MODE_PRIVATE)
+                .getString(KEY_GAME_ORDER, "");
+        if (saved == null || saved.isEmpty() || games.isEmpty()) {
+            return;
+        }
+        Map<String, GameEntry> remaining = new LinkedHashMap<>();
+        for (GameEntry game : games) {
+            remaining.put(game.jam.getName(), game);
+        }
+        List<GameEntry> ordered = new ArrayList<>(games.size());
+        for (String name : saved.split("\n")) {
+            if (name.isEmpty()) {
+                continue;
+            }
+            GameEntry game = remaining.remove(name);
+            if (game != null) {
+                ordered.add(game);
+            }
+        }
+        ordered.addAll(remaining.values());
+        games.clear();
+        games.addAll(ordered);
+    }
+
+    private void persistGameOrder() {
+        StringBuilder value = new StringBuilder();
+        for (GameEntry game : currentGames) {
+            if (value.length() > 0) {
+                value.append('\n');
+            }
+            value.append(game.jam.getName());
+        }
+        getSharedPreferences(HOME_PREFS, MODE_PRIVATE)
+                .edit().putString(KEY_GAME_ORDER, value.toString()).apply();
     }
 
     private Bitmap loadGameIcon(File jam) {
@@ -2579,6 +2727,8 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
             }
         }
 
+        applyEditModePresentation(games);
+
         // Restore by path (never by list index/object identity): the previous
         // selection, then the last launched game, then the first game.
         String restore = previousSelection;
@@ -2857,6 +3007,9 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         }
     }
     private void showGameOptions(GameEntry game) {
+        if (editMode) {
+            return;
+        }
         new AlertDialog.Builder(this)
                 .setItems(gameOptions, (dialog, which) -> {
                     if (which == 0) {
@@ -3251,6 +3404,17 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
     // ------------------------------------------------------------------
     private void onGameTapped(GameEntry game) {
         String path = game.jam.getAbsolutePath();
+        if (editMode) {
+            // Selecting is still useful for the controller, but launching and
+            // the game options menu stay disabled until editing finishes.
+            selectedGamePath = path;
+            updateGameHighlight();
+            ensureSelectedGameVisible();
+            if (gridContainer != null) {
+                gridContainer.requestFocus();
+            }
+            return;
+        }
         if (path.equals(selectedGamePath)) {
             launchJam(game.jam);
             return;
@@ -3266,12 +3430,15 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
     private void updateGameHighlight() {
         boolean gridFocused = topBarFocusIndex < 0;
         for (Map.Entry<String, View> entry : gameItemViews.entrySet()) {
-            applyGameItemBackground(entry.getValue(),
-                    gridFocused && entry.getKey().equals(selectedGamePath));
+            boolean selected = gridFocused && entry.getKey().equals(selectedGamePath);
+            boolean dropTarget = editMode
+                    && entry.getKey().equals(dragHoverPath)
+                    && !entry.getKey().equals(dragGamePath);
+            applyGameItemBackground(entry.getValue(), selected, dropTarget);
         }
     }
 
-    private void applyGameItemBackground(View item, boolean selected) {
+    private void applyGameItemBackground(View item, boolean selected, boolean dropTarget) {
         if (item == null) {
             return;
         }
@@ -3281,8 +3448,541 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         GradientDrawable tile = new GradientDrawable();
         tile.setColor(themeSurfaceColor());
         tile.setCornerRadius(dp(listStyle ? 8 : 10));
-        tile.setStroke(dp(selected ? 4 : 1), selected ? 0xFFFFD600 : 0xFF2A2E36);
+        int strokeColor = selected ? 0xFFFFD600 : (dropTarget ? 0xFF4FC3F7 : 0xFF2A2E36);
+        int strokeWidth = (selected || dropTarget) ? 4 : 1;
+        tile.setStroke(dp(strokeWidth), strokeColor);
         item.setBackground(tile);
+    }
+
+    // ------------------------------------------------------------------
+    // Layout edit mode (touch + controller)
+    // ------------------------------------------------------------------
+    private void onEditButtonClicked() {
+        if (editMode) {
+            requestExitEditMode();
+        } else {
+            enterEditMode();
+        }
+    }
+
+    private void enterEditMode() {
+        if (currentGames.isEmpty() && searchQuery.isEmpty()) {
+            return;
+        }
+        // A filtered list would save an incomplete order, so search is closed
+        // before editing starts.
+        if (searchBox != null && searchBox.getVisibility() == View.VISIBLE) {
+            toggleSearch();
+        }
+        searchQuery = "";
+        editMode = true;
+        editOrderDirty = false;
+        pendingEditEntrance = true;
+        topBarFocusIndex = -1;
+        updateTopBarFocus();
+        updateEditButtonAppearance();
+        updateGameHighlight();
+        if (gridContainer != null) {
+            gridContainer.requestFocus();
+        }
+        refreshGames(true);
+        Toast.makeText(this, getString(R.string.edit_hint), Toast.LENGTH_LONG).show();
+        playNavSound();
+    }
+
+    private void requestExitEditMode() {
+        if (!editMode) {
+            return;
+        }
+        if (dragOverlay != null) {
+            finishTouchDrag(null);
+        }
+        if (controllerDragging) {
+            endControllerDrag();
+        }
+        if (!editOrderDirty) {
+            exitEditMode();
+            return;
+        }
+        // Let the tiles rest while the decision dialog is open.
+        stopWobbleAnimations();
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.save_changes_title)
+                .setMessage(R.string.save_changes_message)
+                .setPositiveButton(R.string.save_changes_save, (dialog, which) -> {
+                    persistGameOrder();
+                    exitEditMode();
+                })
+                .setNegativeButton(R.string.save_changes_discard, (dialog, which) -> {
+                    exitEditMode();
+                    refreshGames();
+                })
+                .setNeutralButton(android.R.string.cancel, null)
+                .setOnDismissListener(dialog -> {
+                    if (editMode) {
+                        startWobbleAnimations();
+                    }
+                })
+                .show();
+    }
+
+    private void exitEditMode() {
+        editMode = false;
+        editOrderDirty = false;
+        pendingEditEntrance = false;
+        dragHoverPath = null;
+        controllerDragging = false;
+        controllerDragPath = null;
+        controllerDragMoved = false;
+        stopWobbleAnimations();
+        updateEditButtonAppearance();
+        updateTopBarFocus();
+        updateGameHighlight();
+        if (!currentGames.isEmpty()) {
+            populateGrid(new ArrayList<>(currentGames));
+        }
+        if (gridContainer != null) {
+            gridContainer.requestFocus();
+        }
+        playNavSound();
+    }
+
+    private void applyEditModePresentation(List<GameEntry> games) {
+        if (!editMode) {
+            return;
+        }
+        for (GameEntry game : games) {
+            View item = gameItemViews.get(game.jam.getAbsolutePath());
+            if (item == null) {
+                continue;
+            }
+            item.setOnLongClickListener(v -> {
+                beginTouchDrag(game, item);
+                return true;
+            });
+        }
+        startWobbleAnimations();
+        if (pendingEditEntrance) {
+            pendingEditEntrance = false;
+            animateEditEntrance();
+        }
+        if (controllerDragging && controllerDragPath != null) {
+            View lifted = gameItemViews.get(controllerDragPath);
+            if (lifted != null) {
+                lifted.setScaleX(1.06f);
+                lifted.setScaleY(1.06f);
+                lifted.setAlpha(0.94f);
+                lifted.setElevation(dp(8));
+            }
+        }
+    }
+
+    private void startWobbleAnimations() {
+        cancelWobbleAnimations();
+        if (!editMode) {
+            return;
+        }
+        int index = 0;
+        for (Map.Entry<String, View> entry : gameItemViews.entrySet()) {
+            View icon = findGameIconView(entry.getValue());
+            if (icon == null) {
+                continue;
+            }
+            PropertyValuesHolder rotation = PropertyValuesHolder.ofFloat(
+                    View.ROTATION, -2.8f, 2.8f);
+            PropertyValuesHolder scaleX = PropertyValuesHolder.ofFloat(
+                    View.SCALE_X, 1f, 1.025f);
+            PropertyValuesHolder scaleY = PropertyValuesHolder.ofFloat(
+                    View.SCALE_Y, 1f, 1.025f);
+            ObjectAnimator animator = ObjectAnimator.ofPropertyValuesHolder(
+                    icon, rotation, scaleX, scaleY);
+            animator.setDuration(210L + (index % 4) * 45L);
+            animator.setStartDelay((index % 6) * 35L);
+            animator.setRepeatCount(ValueAnimator.INFINITE);
+            animator.setRepeatMode(ValueAnimator.REVERSE);
+            animator.setInterpolator(new AccelerateDecelerateInterpolator());
+            animator.start();
+            wobbleAnimators.put(entry.getKey(), animator);
+            index++;
+        }
+    }
+
+    private void cancelWobbleAnimations() {
+        for (Animator animator : wobbleAnimators.values()) {
+            animator.cancel();
+        }
+        wobbleAnimators.clear();
+    }
+
+    private void stopWobbleAnimations() {
+        cancelWobbleAnimations();
+        for (View item : gameItemViews.values()) {
+            View icon = findGameIconView(item);
+            if (icon != null) {
+                icon.animate().cancel();
+                icon.setRotation(0f);
+                icon.setScaleX(1f);
+                icon.setScaleY(1f);
+            }
+            item.animate().cancel();
+            item.setAlpha(1f);
+            item.setScaleX(1f);
+            item.setScaleY(1f);
+            item.setElevation(0f);
+        }
+    }
+
+    private View findGameIconView(View item) {
+        if (item instanceof ImageView) {
+            return item;
+        }
+        if (item instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) item;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                if (group.getChildAt(i) instanceof ImageView) {
+                    return group.getChildAt(i);
+                }
+            }
+        }
+        return null;
+    }
+
+    private void animateEditEntrance() {
+        int index = 0;
+        for (View item : gameItemViews.values()) {
+            item.animate().cancel();
+            item.setAlpha(0.35f);
+            item.setScaleX(0.92f);
+            item.setScaleY(0.92f);
+            item.animate()
+                    .alpha(1f)
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setStartDelay(Math.min(index * 20L, 320L))
+                    .setDuration(300L)
+                    .setInterpolator(new OvershootInterpolator(2.2f))
+                    .start();
+            index++;
+        }
+    }
+
+    private void animateSettle(String path) {
+        View item = gameItemViews.get(path);
+        if (item == null) {
+            return;
+        }
+        item.animate().cancel();
+        item.setScaleX(0.9f);
+        item.setScaleY(0.9f);
+        item.animate()
+                .scaleX(1f)
+                .scaleY(1f)
+                .alpha(1f)
+                .setDuration(260L)
+                .setInterpolator(new OvershootInterpolator(2.6f))
+                .start();
+    }
+
+    // ---- Touch: long-press a wobbling tile and drop it on another ----
+
+    private void beginTouchDrag(GameEntry game, View source) {
+        if (!editMode || controllerDragging || game == null || source == null) {
+            return;
+        }
+        removeDragOverlayNow();
+        dragGamePath = game.jam.getAbsolutePath();
+        dragSourceView = source;
+        dragHoverPath = null;
+        selectedGamePath = dragGamePath;
+        source.setAlpha(0.25f);
+        updateGameHighlight();
+        ButtonHaptics.tick(this);
+        playNavSound();
+        createDragOverlay(game, lastTouchRawX, lastTouchRawY);
+    }
+
+    private void createDragOverlay(GameEntry game, float rawX, float rawY) {
+        if (rootView == null) {
+            return;
+        }
+        int size = Math.max(dp(56), Math.min(iconSizePx + dp(18), dp(96)));
+        dragOverlaySizePx = size;
+        ImageView bubble = new ImageView(this);
+        bubble.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        bubble.setImageBitmap(game.icon);
+        GradientDrawable background = new GradientDrawable();
+        background.setShape(GradientDrawable.OVAL);
+        background.setColor(0xF2FFFFFF);
+        background.setStroke(dp(2), 0xFFFFD600);
+        bubble.setBackground(background);
+        bubble.setPadding(dp(10), dp(10), dp(10), dp(10));
+        bubble.setElevation(dp(12));
+        bubble.setAlpha(0f);
+        bubble.setScaleX(0.7f);
+        bubble.setScaleY(0.7f);
+        rootView.addView(bubble, new FrameLayout.LayoutParams(size, size));
+        dragOverlay = bubble;
+        positionDragOverlay(rawX, rawY);
+        bubble.animate()
+                .alpha(0.96f)
+                .scaleX(1.06f)
+                .scaleY(1.06f)
+                .setDuration(140L)
+                .setInterpolator(new OvershootInterpolator(2f))
+                .start();
+    }
+
+    private void positionDragOverlay(float rawX, float rawY) {
+        if (dragOverlay == null || rootView == null) {
+            return;
+        }
+        int[] location = new int[2];
+        rootView.getLocationOnScreen(location);
+        float half = dragOverlaySizePx / 2f;
+        dragOverlay.setX(rawX - location[0] - half);
+        dragOverlay.setY(rawY - location[1] - half);
+    }
+
+    private boolean handleTouchDragEvent(android.view.MotionEvent event) {
+        switch (event.getActionMasked()) {
+            case android.view.MotionEvent.ACTION_MOVE:
+                lastTouchRawX = event.getRawX();
+                lastTouchRawY = event.getRawY();
+                autoScrollDuringDrag(lastTouchRawY);
+                positionDragOverlay(lastTouchRawX, lastTouchRawY);
+                updateDragHover(findDropTarget(lastTouchRawX, lastTouchRawY));
+                return true;
+            case android.view.MotionEvent.ACTION_UP:
+                lastTouchRawX = event.getRawX();
+                lastTouchRawY = event.getRawY();
+                finishTouchDrag(findDropTarget(lastTouchRawX, lastTouchRawY));
+                return true;
+            case android.view.MotionEvent.ACTION_CANCEL:
+                finishTouchDrag(null);
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    private void updateDragHover(String targetPath) {
+        if (TextUtils.equals(dragHoverPath, targetPath)) {
+            return;
+        }
+        dragHoverPath = targetPath;
+        updateGameHighlight();
+        if (targetPath != null) {
+            playNavSound();
+        }
+    }
+
+    private void autoScrollDuringDrag(float rawY) {
+        if (gameScrollView == null) {
+            return;
+        }
+        int[] location = new int[2];
+        gameScrollView.getLocationOnScreen(location);
+        int top = location[1] + dp(56) + dp(8);
+        int bottom = location[1] + gameScrollView.getHeight() - dp(8);
+        int edge = dp(16);
+        int step = dp(18);
+        if (rawY < top + edge) {
+            gameScrollView.scrollBy(0, -step);
+        } else if (rawY > bottom - edge) {
+            gameScrollView.scrollBy(0, step);
+        }
+    }
+
+    private String findDropTarget(float rawX, float rawY) {
+        int[] location = new int[2];
+        int padding = dp(6);
+        for (Map.Entry<String, View> entry : gameItemViews.entrySet()) {
+            View item = entry.getValue();
+            if (item == null || item == dragSourceView) {
+                continue;
+            }
+            item.getLocationOnScreen(location);
+            int left = location[0] - padding;
+            int top = location[1] - padding;
+            int right = location[0] + item.getWidth() + padding;
+            int bottom = location[1] + item.getHeight() + padding;
+            if (rawX >= left && rawX <= right && rawY >= top && rawY <= bottom) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    private void finishTouchDrag(String targetPath) {
+        String draggedPath = dragGamePath;
+        View source = dragSourceView;
+        if (source != null) {
+            source.setAlpha(1f);
+        }
+        dragGamePath = null;
+        dragSourceView = null;
+        dragHoverPath = null;
+        animateDragOverlayOut();
+        if (draggedPath == null) {
+            updateGameHighlight();
+            return;
+        }
+        if (targetPath != null && !targetPath.equals(draggedPath)) {
+            int targetIndex = indexOfGame(targetPath);
+            if (targetIndex >= 0 && moveGameToIndex(draggedPath, targetIndex)) {
+                editOrderDirty = true;
+                selectedGamePath = draggedPath;
+                populateGrid(new ArrayList<>(currentGames));
+                animateSettle(draggedPath);
+                ensureSelectedGameVisible();
+                ButtonHaptics.tick(this);
+                playNavSound();
+                return;
+            }
+        }
+        updateGameHighlight();
+    }
+
+    private void animateDragOverlayOut() {
+        final ImageView overlay = dragOverlay;
+        if (overlay == null) {
+            return;
+        }
+        dragOverlay = null;
+        overlay.animate().cancel();
+        overlay.animate()
+                .alpha(0f)
+                .scaleX(0.72f)
+                .scaleY(0.72f)
+                .setDuration(120L)
+                .withEndAction(() -> {
+                    if (overlay.getParent() instanceof android.view.ViewGroup) {
+                        ((android.view.ViewGroup) overlay.getParent()).removeView(overlay);
+                    }
+                })
+                .start();
+    }
+
+    private void removeDragOverlayNow() {
+        if (dragOverlay == null) {
+            return;
+        }
+        ImageView overlay = dragOverlay;
+        dragOverlay = null;
+        overlay.animate().cancel();
+        if (overlay.getParent() instanceof android.view.ViewGroup) {
+            ((android.view.ViewGroup) overlay.getParent()).removeView(overlay);
+        }
+    }
+
+    private boolean moveGameToIndex(String path, int targetIndex) {
+        int from = indexOfGame(path);
+        if (from < 0 || targetIndex < 0 || targetIndex >= currentGames.size() || from == targetIndex) {
+            return false;
+        }
+        GameEntry game = currentGames.remove(from);
+        currentGames.add(targetIndex, game);
+        return true;
+    }
+
+    // ---- Controller: hold Select, move with the D-pad, release to settle ----
+
+    private void beginControllerDrag() {
+        if (!editMode || controllerDragging || selectedGamePath == null) {
+            return;
+        }
+        if (indexOfGame(selectedGamePath) < 0) {
+            return;
+        }
+        controllerDragging = true;
+        controllerDragPath = selectedGamePath;
+        controllerDragMoved = false;
+        navSelectPressed = true;
+        navSelectLongPressed = false;
+        ButtonHaptics.tick(this);
+        playNavSound();
+        View item = gameItemViews.get(controllerDragPath);
+        if (item != null) {
+            item.animate().cancel();
+            item.animate()
+                    .scaleX(1.06f)
+                    .scaleY(1.06f)
+                    .alpha(0.94f)
+                    .setDuration(140L)
+                    .start();
+            item.setElevation(dp(8));
+        }
+    }
+
+    private void moveControllerDrag(int keyCode) {
+        int index = indexOfGame(controllerDragPath);
+        if (index < 0) {
+            return;
+        }
+        int count = currentGames.size();
+        int next = index;
+        if (isGridView()) {
+            int column = index % columns;
+            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                if (column > 0) {
+                    next = index - 1;
+                }
+            } else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                if (column < columns - 1 && index + 1 < count) {
+                    next = index + 1;
+                }
+            } else if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                if (index - columns >= 0) {
+                    next = index - columns;
+                }
+            } else if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                if (index + columns < count) {
+                    next = index + columns;
+                }
+            }
+        } else if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+            next = Math.max(0, index - 1);
+        } else if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+            next = Math.min(count - 1, index + 1);
+        }
+        if (next == index) {
+            return;
+        }
+        GameEntry game = currentGames.remove(index);
+        currentGames.add(next, game);
+        controllerDragMoved = true;
+        editOrderDirty = true;
+        selectedGamePath = controllerDragPath;
+        populateGrid(new ArrayList<>(currentGames));
+        ensureSelectedGameVisible();
+        playNavSound();
+    }
+
+    private void endControllerDrag() {
+        if (!controllerDragging) {
+            return;
+        }
+        String path = controllerDragPath != null ? controllerDragPath : selectedGamePath;
+        boolean moved = controllerDragMoved;
+        controllerDragging = false;
+        controllerDragPath = null;
+        controllerDragMoved = false;
+        View item = gameItemViews.get(path);
+        if (item != null) {
+            item.animate().cancel();
+            item.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .alpha(1f)
+                    .setDuration(220L)
+                    .setInterpolator(new OvershootInterpolator(2.5f))
+                    .start();
+            item.setElevation(0f);
+        }
+        updateGameHighlight();
+        if (moved) {
+            ButtonHaptics.tick(this);
+        }
     }
 
     private void ensureSelectedGameVisible() {
@@ -3369,7 +4069,7 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
     }
 
     private void launchSelectedGame() {
-        if (selectedGamePath == null) {
+        if (editMode || selectedGamePath == null) {
             return;
         }
         for (GameEntry game : currentGames) {
@@ -3382,11 +4082,21 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
 
     @Override
     public boolean dispatchTouchEvent(android.view.MotionEvent event) {
-        // Any touch takes focus away from the remote-only top bar highlight.
-        if (event != null
-                && event.getActionMasked() == android.view.MotionEvent.ACTION_DOWN
-                && topBarFocusIndex >= 0) {
-            setTopBarFocus(-1, false);
+        if (event != null) {
+            int action = event.getActionMasked();
+            if (action == android.view.MotionEvent.ACTION_DOWN) {
+                lastTouchRawX = event.getRawX();
+                lastTouchRawY = event.getRawY();
+            }
+            // Once a tile has been picked up, the rest of the gesture belongs
+            // to the drag overlay rather than to the tile underneath.
+            if (dragOverlay != null) {
+                return handleTouchDragEvent(event);
+            }
+            // Any touch takes focus away from the remote-only top bar highlight.
+            if (action == android.view.MotionEvent.ACTION_DOWN && topBarFocusIndex >= 0) {
+                setTopBarFocus(-1, false);
+            }
         }
         return super.dispatchTouchEvent(event);
     }
@@ -3437,6 +4147,11 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
             setTopBarFocus(-1, true);
             return true;
         }
+        // Back also leaves layout editing, with the save/discard prompt.
+        if (action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_BACK && editMode) {
+            requestExitEditMode();
+            return true;
+        }
         if (!isGameNavigationKey(keyCode)) {
             return super.dispatchKeyEvent(event);
         }
@@ -3461,34 +4176,47 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
                 lastNavDownTime = eventTime;
             }
             if (isGameMovementKey(keyCode)) {
-                switch (keyCode) {
-                    case KeyEvent.KEYCODE_DPAD_UP:
-                        // Up from the first row moves focus to the top bar
-                        // (Search / view toggle / menu) instead of stopping.
-                        if (currentGames.isEmpty() || isSelectionInFirstRow()) {
-                            setTopBarFocus(0, true);
-                        } else {
-                            moveSelection(0, -1);
-                        }
-                        break;
-                    case KeyEvent.KEYCODE_DPAD_DOWN:
-                        moveSelection(0, 1);
-                        break;
-                    case KeyEvent.KEYCODE_DPAD_LEFT:
-                        moveSelection(-1, 0);
-                        break;
-                    case KeyEvent.KEYCODE_DPAD_RIGHT:
-                        moveSelection(1, 0);
-                        break;
-                    default:
-                        break;
+                if (editMode && controllerDragging) {
+                    // The held game travels with the D-pad instead of moving
+                    // the highlight onto a different tile.
+                    moveControllerDrag(keyCode);
+                } else {
+                    switch (keyCode) {
+                        case KeyEvent.KEYCODE_DPAD_UP:
+                            // Up from the first row moves focus to the top bar
+                            // (Search / view toggle / edit / menu) instead of stopping.
+                            if (currentGames.isEmpty() || isSelectionInFirstRow()) {
+                                setTopBarFocus(0, true);
+                            } else {
+                                moveSelection(0, -1);
+                            }
+                            break;
+                        case KeyEvent.KEYCODE_DPAD_DOWN:
+                            moveSelection(0, 1);
+                            break;
+                        case KeyEvent.KEYCODE_DPAD_LEFT:
+                            moveSelection(-1, 0);
+                            break;
+                        case KeyEvent.KEYCODE_DPAD_RIGHT:
+                            moveSelection(1, 0);
+                            break;
+                        default:
+                            break;
+                    }
                 }
             } else if (!repeating) {
-                // Confirm/Select (D-pad center, OK, Enter): launch on release
-                // so a long press can open the game options menu instead.
-                navSelectLongPressed = false;
-                navSelectPressed = true;
-                armNavSelectLongPress();
+                if (editMode) {
+                    // Press and hold Select to pick the highlighted game up.
+                    beginControllerDrag();
+                } else {
+                    // Confirm/Select (D-pad center, OK, Enter): launch on release
+                    // so a long press can open the game options menu instead.
+                    navSelectLongPressed = false;
+                    navSelectPressed = true;
+                    armNavSelectLongPress();
+                }
+            } else if (editMode && controllerDragging) {
+                // Repeats belong to the held tile; ignore them.
             } else if (navSelectPressed && !navSelectLongPressed) {
                 // Fallback: a repeat means the key is being held even if the
                 // Handler above has not fired yet.
@@ -3507,6 +4235,11 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
             navSelectPressed = false;
             navSelectLongPressed = false;
             cancelNavSelectLongPress();
+            if (editMode) {
+                // Releasing Select settles the held game in its new slot.
+                endControllerDrag();
+                return true;
+            }
             if (wasPressed && !longPressed) {
                 launchSelectedGame();
             }
@@ -3542,7 +4275,7 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
 
     /** Opens the options for the D-pad-highlighted game (remote long press). */
     private void showSelectedGameOptions() {
-        if (selectedGamePath == null) {
+        if (editMode || selectedGamePath == null) {
             return;
         }
         for (GameEntry game : currentGames) {
@@ -3591,7 +4324,7 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
     }
 
     private void moveTopBarFocus(int delta) {
-        int next = Math.max(0, Math.min(2, topBarFocusIndex + delta));
+        int next = Math.max(0, Math.min(3, topBarFocusIndex + delta));
         if (next == topBarFocusIndex) {
             return;
         }
@@ -3605,7 +4338,7 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
             }
             topBarFocusIndex = -1;
         } else {
-            int clamped = Math.min(2, index);
+            int clamped = Math.min(3, index);
             if (clamped == topBarFocusIndex) {
                 return;
             }
@@ -3624,7 +4357,8 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
     private void updateTopBarFocus() {
         setTopBarButtonFocused(searchButton, topBarFocusIndex == 0);
         setTopBarButtonFocused(viewToggleButton, topBarFocusIndex == 1);
-        setTopBarButtonFocused(menuButton, topBarFocusIndex == 2);
+        setTopBarButtonFocused(editButton, topBarFocusIndex == 2);
+        setTopBarButtonFocused(menuButton, topBarFocusIndex == 3);
     }
 
     private void setTopBarButtonFocused(TextView button, boolean focused) {
@@ -3647,12 +4381,19 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
             return;
         }
         if (index == 0) {
-            setTopBarFocus(-1, false);
+            // toggleSearch() explains why search is unavailable while editing;
+            // keep the top-bar focus in that case so Edit stays reachable.
+            if (!editMode) {
+                setTopBarFocus(-1, false);
+            }
             toggleSearch();
         } else if (index == 1) {
             if (viewToggleButton != null) {
                 viewToggleButton.performClick();
             }
+        } else if (index == 2) {
+            setTopBarFocus(-1, false);
+            onEditButtonClicked();
         } else if (menuButton != null) {
             setTopBarFocus(-1, false);
             showOptionsMenu(menuButton);

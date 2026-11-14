@@ -137,4 +137,10 @@
     <string name="exit_game">Sair do jogo</string>
     <string name="haptic_feedback">Retorno tátil</string>
     <string name="haptic_feedback_value">Retorno tátil: %1$d%%</string>
+    <string name="edit_layout">Editar layout</string>
+    <string name="edit_hint">Arraste os jogos para reorganizar. No controle, segure Selecionar, mova com o direcional e solte.</string>
+    <string name="save_changes_title">Salvar alterações?</string>
+    <string name="save_changes_message">Manter a nova ordem dos jogos?</string>
+    <string name="save_changes_save">Salvar</string>
+    <string name="save_changes_discard">Descartar</string>
 </resources>

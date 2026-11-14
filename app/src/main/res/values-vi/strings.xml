@@ -137,4 +137,10 @@
     <string name="exit_game">Thoát game</string>
     <string name="haptic_feedback">Phản hồi rung</string>
     <string name="haptic_feedback_value">Phản hồi rung: %1$d%%</string>
+    <string name="edit_layout">Chỉnh sửa bố cục</string>
+    <string name="edit_hint">Kéo trò chơi để sắp xếp lại. Trên tay cầm, giữ Select, di chuyển bằng D-pad rồi thả ra.</string>
+    <string name="save_changes_title">Lưu thay đổi?</string>
+    <string name="save_changes_message">Giữ thứ tự trò chơi mới?</string>
+    <string name="save_changes_save">Lưu</string>
+    <string name="save_changes_discard">Bỏ</string>
 </resources>

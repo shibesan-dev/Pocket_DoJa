@@ -15,6 +15,7 @@ signing.properties
 *.log
 *.err
 *.out
+*.class
 javap-all.txt
 jdk-api-sigs.txt
 jdk-sigs-all.txt
@@ -70,6 +71,9 @@ opendoja-log.txt
 
 # Local analysis scratch (game dumps, screenshots, disassembly, extracted assets)
 data/
+
+# Local JDI debugging helpers (kept on disk, not tracked)
+tools/jdi/
 
 # Do not upload local game/public data
 public/

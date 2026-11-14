@@ -137,4 +137,10 @@
     <string name="exit_game">ゲーム終了</string>
     <string name="haptic_feedback">触覚フィードバック</string>
     <string name="haptic_feedback_value">触覚フィードバック: %1$d%%</string>
+    <string name="edit_layout">レイアウトを編集</string>
+    <string name="edit_hint">ゲームをドラッグして並べ替えます。コントローラーでは選択ボタンを押し続け、十字キーで移動してから離します。</string>
+    <string name="save_changes_title">変更を保存しますか？</string>
+    <string name="save_changes_message">新しいゲームの並び順を保存しますか？</string>
+    <string name="save_changes_save">保存</string>
+    <string name="save_changes_discard">破棄</string>
 </resources>
