@@ -39,8 +39,8 @@ Check out the **[Game Compatibility Tracker](https://github.com/shibesan-dev/Poc
 |---|---|
 | ![Screenshot 1](docs/images/screenshot-1.png) | ![Screenshot 2](docs/images/screenshot-2.png) |
 | ![Screenshot 3](docs/images/screenshot-3.png) | ![Screenshot 4](docs/images/screenshot-4.png) |
-| ![Screenshot 5](docs/images/screenshot-5.png) | ![Screenshot 6](docs/images/screenshot-6.png) |
-| ![Screenshot 7](docs/images/screenshot-7.png) | ![Screenshot 8](docs/images/screenshot-8.png) |
+| ![Screenshot 5](docs/images/screenshot-5.png) | ![Screenshot 8](docs/images/screenshot-8.png) |
+
 
 ## Building
 
