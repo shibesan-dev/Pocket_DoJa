@@ -79,6 +79,7 @@
     <string name="unbound">未割り当て</string>
     <string name="reset">リセット</string>
     <string name="doja_key">DoJaキー %1$d</string>
+    <string name="host_action">アクション</string>
     <string name="exit_game_action">ゲームを終了</string>
     <string name="display_title">表示</string>
     <string name="display_title_game">表示: %1$s</string>
@@ -109,6 +110,7 @@
     <string name="display_fps">システム</string>
     <string name="show_fps">FPSを表示</string>
     <string name="use_hardware_rendering">ハードウェアレンダリングを使用</string>
+    <string name="use_system_keyboard">システムキーボードを使用</string>
     <string name="reset_to_global">グローバル設定に戻す</string>
     <string name="theme_title">テーマとBGM</string>
     <string name="theme">テーマ</string>
@@ -122,7 +124,7 @@
     <string name="no_bgm">BGMなし</string>
     <string name="bgm">BGM</string>
     <string name="default_bgm">デフォルトBGM</string>
-    <string name="game_menu">ゲームメニュー</string>
+    <string name="game_menu">エミュレーターメニュー</string>
     <string name="edit_buttons">ボタンを編集</string>
     <string name="edit_buttons_move">移動</string>
     <string name="edit_buttons_resize">サイズ変更</string>
@@ -133,4 +135,6 @@
     <string name="edit_buttons_scale">スケール %1$d%%</string>
     <string name="hide_keypad">キーパッドを隠す</string>
     <string name="exit_game">ゲーム終了</string>
+    <string name="haptic_feedback">触覚フィードバック</string>
+    <string name="haptic_feedback_value">触覚フィードバック: %1$d%%</string>
 </resources>

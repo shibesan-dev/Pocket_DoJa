@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Background for the selected settings option row. Both states draw the
+    same fill, so focus adds no second highlight. This deliberately avoids
+    the view's "selected" state, which would also switch the platform text
+    color to its dimmed selected variant.
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true"
+        android:drawable="@drawable/option_row_selected" />
+    <item android:drawable="@drawable/option_row_selected" />
+</selector>

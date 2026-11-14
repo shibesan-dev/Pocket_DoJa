@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Background for an unselected settings option row. Declaring a focused
+    state here means Android does not add its default focus highlight on top
+    of the outline drawn below.
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true"
+        android:drawable="@drawable/focus_highlight" />
+    <item android:drawable="@android:color/transparent" />
+</selector>

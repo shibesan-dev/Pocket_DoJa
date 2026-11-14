@@ -79,6 +79,7 @@
     <string name="unbound">இணைக்கப்படவில்லை</string>
     <string name="reset">மீட்டமை</string>
     <string name="doja_key">DoJa விசை %1$d</string>
+    <string name="host_action">செயல்</string>
     <string name="exit_game_action">விளையாட்டிலிருந்து வெளியேறு</string>
     <string name="display_title">காட்சி</string>
     <string name="display_title_game">காட்சி: %1$s</string>
@@ -109,6 +110,7 @@
     <string name="display_fps">சிஸ்டம்</string>
     <string name="show_fps">FPS காட்டு</string>
     <string name="use_hardware_rendering">வன்பொருள் ரெண்டரிங்கைப் பயன்படுத்து</string>
+    <string name="use_system_keyboard">சிஸ்டம் விசைப்பலகையைப் பயன்படுத்தவும்</string>
     <string name="reset_to_global">உலகளாவிய இயல்புநிலைக்கு மீட்டமை</string>
     <string name="theme_title">தீம் &amp; BGM</string>
     <string name="theme">தீம்</string>
@@ -122,7 +124,7 @@
     <string name="no_bgm">BGM இல்லை</string>
     <string name="bgm">BGM</string>
     <string name="default_bgm">இயல்புநிலை BGM</string>
-    <string name="game_menu">விளையாட்டு மெனு</string>
+    <string name="game_menu">எமுலேட்டர் மெனு</string>
     <string name="edit_buttons">பொத்தான்களைத் திருத்து</string>
     <string name="edit_buttons_move">நகர்த்து</string>
     <string name="edit_buttons_resize">அளவை மாற்று</string>
@@ -133,4 +135,6 @@
     <string name="edit_buttons_scale">அளவு %1$d%%</string>
     <string name="hide_keypad">விசைப்பலகையை மறை</string>
     <string name="exit_game">விளையாட்டிலிருந்து வெளியேறு</string>
+    <string name="haptic_feedback">தொடு அதிர்வு</string>
+    <string name="haptic_feedback_value">தொடு அதிர்வு: %1$d%%</string>
 </resources>

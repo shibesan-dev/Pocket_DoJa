@@ -9,6 +9,7 @@ import android.graphics.PorterDuffXfermode;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -53,6 +54,9 @@ public class JamSurfaceView extends View {
     private static final int EDIT_TOOL_OK = 4;
     private static final int EDIT_TOOL_CANCEL = 5;
     private static final int EDIT_TOOL_COUNT = 6;
+    private static final int EDIT_FOCUS_TOOLBAR = 0;
+    private static final int EDIT_FOCUS_GROUP = 1;
+    private static final int EDIT_FOCUS_ADJUST = 2;
     private static final int[] EDIT_TOOL_ICONS = {
             R.drawable.ic_button_edit_move,
             R.drawable.ic_button_edit_resize,
@@ -153,6 +157,8 @@ public class JamSurfaceView extends View {
     private final Paint editLabelPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint editSliderTrackPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint editSliderKnobPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint editFocusPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint editHiddenPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private Bitmap upscaleBitmap;
     private Canvas upscaleCanvas;
@@ -277,6 +283,9 @@ public class JamSurfaceView extends View {
     private boolean keypadVisibleBeforeButtonEdit;
     private int editTool = EDIT_TOOL_MOVE;
     private int editSelectedGroup = -1;
+    private int editFocusedTool = EDIT_TOOL_MOVE;
+    private int editFocusedGroup = 0;
+    private int editFocusArea = EDIT_FOCUS_TOOLBAR;
     private int editPressGroup = -1;
     private int editPointerId = -1;
     private boolean editPressWasSelected;
@@ -472,6 +481,10 @@ try {
         editSliderTrackPaint.setColor(0xFF444444);
         editSliderKnobPaint.setStyle(Paint.Style.FILL);
         editSliderKnobPaint.setColor(0xFFFFD600);
+        editFocusPaint.setStyle(Paint.Style.STROKE);
+        editFocusPaint.setColor(0xFF4DA3FF);
+        editHiddenPaint.setStyle(Paint.Style.STROKE);
+        editHiddenPaint.setColor(0xAAFF7043);
         editToolIcons = new Drawable[EDIT_TOOL_COUNT];
         for (int i = 0; i < EDIT_TOOL_ICONS.length; i++) {
             Drawable drawable = getContext().getDrawable(EDIT_TOOL_ICONS[i]);
@@ -629,6 +642,9 @@ try {
         buttonEditMode = true;
         editTool = EDIT_TOOL_MOVE;
         editSelectedGroup = -1;
+        editFocusedTool = EDIT_TOOL_MOVE;
+        editFocusedGroup = firstEditableGroup();
+        editFocusArea = EDIT_FOCUS_TOOLBAR;
         editPressGroup = -1;
         editPointerId = -1;
         editSliderDragging = false;
@@ -648,6 +664,8 @@ try {
         buttonEditMode = false;
         keypadVisible = keypadVisibleBeforeButtonEdit;
         editSelectedGroup = -1;
+        editFocusArea = EDIT_FOCUS_TOOLBAR;
+        editFocusedTool = EDIT_TOOL_MOVE;
         editPressGroup = -1;
         editPointerId = -1;
         editSliderDragging = false;
@@ -657,6 +675,204 @@ try {
 
     public boolean isButtonEditMode() {
         return buttonEditMode;
+    }
+
+    /**
+     * Routes a D-pad / remote key press while the button editor is open.
+     *
+     * <p>Toolbar: left/right chooses a tool, Center activates it, down enters
+     * the control groups. Groups: left/right chooses a set, Center selects or
+     * toggles it, up returns to the toolbar. Once a set is selected in Move or
+     * Resize mode the arrows nudge or scale it and Center/Back steps out.
+     * Returns false only for Back on the toolbar, which cancels the editor.</p>
+     */
+    public boolean handleButtonEditKey(KeyEvent event) {
+        if (!buttonEditMode || event == null) {
+            return false;
+        }
+        int keyCode = event.getKeyCode();
+        if (event.getAction() == KeyEvent.ACTION_UP) {
+            return true;
+        }
+        if (event.getAction() != KeyEvent.ACTION_DOWN) {
+            return true;
+        }
+        boolean repeating = event.getRepeatCount() > 0;
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            if (repeating) {
+                return true;
+            }
+            if (editFocusArea == EDIT_FOCUS_ADJUST) {
+                editSelectedGroup = -1;
+                editFocusArea = EDIT_FOCUS_GROUP;
+            } else if (editFocusArea == EDIT_FOCUS_GROUP) {
+                editFocusArea = EDIT_FOCUS_TOOLBAR;
+                editFocusedTool = editTool;
+            } else {
+                return false;
+            }
+            ButtonHaptics.tick(getContext());
+            postInvalidate();
+            return true;
+        }
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+            case KeyEvent.KEYCODE_DPAD_UP:
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                if (!repeating) {
+                    ButtonHaptics.tick(getContext());
+                    handleEditDirection(keyCode);
+                }
+                return true;
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+            case KeyEvent.KEYCODE_NUMPAD_ENTER:
+            case KeyEvent.KEYCODE_BUTTON_A:
+                if (!repeating) {
+                    ButtonHaptics.tick(getContext());
+                    activateEditFocus();
+                }
+                return true;
+            default:
+                // The editor owns all other keys; nothing may leak into the
+                // suspended game while it is open.
+                return true;
+        }
+    }
+
+    private void handleEditDirection(int keyCode) {
+        int dx = keyCode == KeyEvent.KEYCODE_DPAD_LEFT ? -1
+                : keyCode == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : 0;
+        int dy = keyCode == KeyEvent.KEYCODE_DPAD_UP ? -1
+                : keyCode == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : 0;
+        if (editFocusArea == EDIT_FOCUS_TOOLBAR) {
+            if (dx != 0) {
+                editFocusedTool = Math.max(0, Math.min(EDIT_TOOL_COUNT - 1,
+                        editFocusedTool + dx));
+            } else if (dy > 0) {
+                editFocusedGroup = firstEditableGroup();
+                editFocusArea = EDIT_FOCUS_GROUP;
+            }
+            postInvalidate();
+            return;
+        }
+        if (editFocusArea == EDIT_FOCUS_GROUP) {
+            if (dx != 0) {
+                moveEditGroupFocus(dx);
+            } else if (dy < 0) {
+                editFocusArea = EDIT_FOCUS_TOOLBAR;
+                editFocusedTool = editTool;
+            }
+            postInvalidate();
+            return;
+        }
+        if (editSelectedGroup < 0) {
+            editFocusArea = EDIT_FOCUS_GROUP;
+            postInvalidate();
+            return;
+        }
+        if (editTool == EDIT_TOOL_RESIZE) {
+            if (dx != 0 || dy != 0) {
+                adjustEditScale(dx != 0 ? dx : dy);
+            }
+        } else if (editTool == EDIT_TOOL_MOVE) {
+            if (dx != 0 || dy != 0) {
+                nudgeEditGroup(dx, dy);
+            }
+        }
+    }
+
+    private void activateEditFocus() {
+        if (editFocusArea == EDIT_FOCUS_TOOLBAR) {
+            int tool = editFocusedTool;
+            handleEditToolbar(tool);
+            if (buttonEditMode) {
+                if (tool == EDIT_TOOL_MOVE || tool == EDIT_TOOL_RESIZE
+                        || tool == EDIT_TOOL_HIDE) {
+                    editFocusArea = EDIT_FOCUS_GROUP;
+                } else {
+                    editFocusArea = EDIT_FOCUS_TOOLBAR;
+                    editFocusedTool = tool;
+                }
+            }
+            postInvalidate();
+            return;
+        }
+        if (editFocusArea == EDIT_FOCUS_GROUP) {
+            int group = editFocusedGroup;
+            if (group < 0 || group >= GROUP_COUNT || groupBounds[group].isEmpty()) {
+                return;
+            }
+            if (editTool == EDIT_TOOL_HIDE) {
+                ButtonLayout layout = editButtonLayouts[group];
+                layout.hidden = !layout.hidden;
+                editSelectedGroup = -1;
+            } else if (editTool == EDIT_TOOL_MOVE || editTool == EDIT_TOOL_RESIZE) {
+                editSelectedGroup = group;
+                editFocusArea = EDIT_FOCUS_ADJUST;
+            }
+            postInvalidate();
+            return;
+        }
+        editSelectedGroup = -1;
+        editFocusArea = EDIT_FOCUS_GROUP;
+        postInvalidate();
+    }
+
+    private int firstEditableGroup() {
+        for (int group = 0; group < GROUP_COUNT; group++) {
+            if (!groupBounds[group].isEmpty()) {
+                return group;
+            }
+        }
+        return 0;
+    }
+
+    private void moveEditGroupFocus(int direction) {
+        int start = editFocusedGroup;
+        if (start < 0 || start >= GROUP_COUNT) {
+            start = 0;
+        }
+        for (int step = 1; step <= GROUP_COUNT; step++) {
+            int candidate = (start + direction * step + GROUP_COUNT * 2) % GROUP_COUNT;
+            if (!groupBounds[candidate].isEmpty()) {
+                editFocusedGroup = candidate;
+                return;
+            }
+        }
+    }
+
+    private void nudgeEditGroup(int dx, int dy) {
+        if (editSelectedGroup < 0) {
+            return;
+        }
+        float viewWidth = logicalViewWidth();
+        float viewHeight = logicalViewHeight();
+        if (viewWidth <= 0f || viewHeight <= 0f) {
+            return;
+        }
+        float step = Math.max(2f, editGridStep() * 0.5f);
+        ButtonLayout layout = editButtonLayouts[editSelectedGroup];
+        if (dx != 0) {
+            layout.dx += dx * step / viewWidth;
+        }
+        if (dy != 0) {
+            layout.dy += dy * step / viewHeight;
+        }
+        computeZones();
+        postInvalidate();
+    }
+
+    private void adjustEditScale(int direction) {
+        if (editSelectedGroup < 0) {
+            return;
+        }
+        ButtonLayout layout = editButtonLayouts[editSelectedGroup];
+        float scale = clamp(layout.scale, BUTTON_SCALE_MIN, BUTTON_SCALE_MAX);
+        layout.scale = clamp(scale + direction * 0.05f, BUTTON_SCALE_MIN, BUTTON_SCALE_MAX);
+        computeZones();
+        postInvalidate();
     }
 
     public void releaseAllControls() {
@@ -973,6 +1189,9 @@ try {
         editSelectedGroup = -1;
         editPressGroup = -1;
         editTool = EDIT_TOOL_MOVE;
+        editFocusedTool = EDIT_TOOL_MOVE;
+        editFocusedGroup = firstEditableGroup();
+        editFocusArea = EDIT_FOCUS_TOOLBAR;
     }
 
     /**
@@ -1753,20 +1972,35 @@ try {
         float margin = Math.max(3f, Math.min(viewWidth, viewHeight) * 0.007f);
         for (int group = 0; group < GROUP_COUNT; group++) {
             ButtonLayout layout = activeButtonLayout(group);
-            if (layout == null || layout.hidden || groupBounds[group].isEmpty()) {
+            if (layout == null || groupBounds[group].isEmpty()) {
                 continue;
             }
             RectF r = new RectF(groupBounds[group]);
             r.inset(-margin, -margin);
-            boolean selected = editSelectedGroup == group
+            boolean hidden = layout.hidden;
+            boolean selected = !hidden && editSelectedGroup == group
                     && (editTool == EDIT_TOOL_MOVE || editTool == EDIT_TOOL_RESIZE);
             float radius = Math.max(6f, margin * 2.2f);
-            if (selected) {
-                canvas.drawRoundRect(r, radius, radius, editSelectionFillPaint);
+            if (hidden) {
+                // Hidden sets stay visible in the editor (with a red outline)
+                // so they can be focused and toggled back with the D-pad.
+                editHiddenPaint.setStrokeWidth(Math.max(3f, margin * 1.6f));
+                canvas.drawRoundRect(r, radius, radius, editHiddenPaint);
+            } else {
+                if (selected) {
+                    canvas.drawRoundRect(r, radius, radius, editSelectionFillPaint);
+                }
+                editHighlightPaint.setStrokeWidth(selected ? Math.max(6f, margin * 2.2f)
+                        : Math.max(4f, margin * 1.45f));
+                canvas.drawRoundRect(r, radius, radius, editHighlightPaint);
             }
-            editHighlightPaint.setStrokeWidth(selected ? Math.max(6f, margin * 2.2f)
-                    : Math.max(4f, margin * 1.45f));
-            canvas.drawRoundRect(r, radius, radius, editHighlightPaint);
+            if (editFocusArea != EDIT_FOCUS_TOOLBAR && editFocusedGroup == group) {
+                RectF focus = new RectF(groupBounds[group]);
+                float focusInset = margin * (selected ? 3.2f : 2.6f);
+                focus.inset(-focusInset, -focusInset);
+                editFocusPaint.setStrokeWidth(Math.max(5f, margin * 2.4f));
+                canvas.drawRoundRect(focus, radius * 1.4f, radius * 1.4f, editFocusPaint);
+            }
         }
         drawEditToolbar(canvas);
         if (editTool == EDIT_TOOL_RESIZE && editSelectedGroup >= 0) {
@@ -1782,15 +2016,18 @@ try {
         for (int i = 0; i < EDIT_TOOL_COUNT; i++) {
             RectF r = editToolbarRects[i];
             boolean selected = i == editTool && i <= EDIT_TOOL_HIDE;
-            editToolFillPaint.setColor(selected ? 0x3AFFD600 : 0x2A000000);
-            editToolBorderPaint.setColor(selected ? 0xFFFFD600 : 0xCCFFFFFF);
-            editToolBorderPaint.setStrokeWidth(selected ? 2.5f : 1.5f);
+            boolean focused = editFocusArea == EDIT_FOCUS_TOOLBAR && i == editFocusedTool;
+            editToolFillPaint.setColor(focused ? (selected ? 0x664A90FF : 0x553B82F6)
+                    : (selected ? 0x3AFFD600 : 0x2A000000));
+            editToolBorderPaint.setColor(focused ? 0xFF60A5FA
+                    : (selected ? 0xFFFFD600 : 0xCCFFFFFF));
+            editToolBorderPaint.setStrokeWidth(focused ? 3f : (selected ? 2.5f : 1.5f));
             canvas.drawRect(r, editToolFillPaint);
             canvas.drawRect(r, editToolBorderPaint);
             Drawable icon = editToolIcons == null ? null : editToolIcons[i];
             if (icon != null) {
                 float inset = r.width() * 0.19f;
-                icon.setTint(selected ? 0xFFFFD600 : 0xFFFFFFFF);
+                icon.setTint(focused ? 0xFF7CB8FF : (selected ? 0xFFFFD600 : 0xFFFFFFFF));
                 icon.setBounds(Math.round(r.left + inset), Math.round(r.top + inset),
                         Math.round(r.right - inset), Math.round(r.bottom - inset));
                 icon.draw(canvas);
@@ -1825,6 +2062,12 @@ try {
         }
         float radius = Math.max(5f, editIconSize * 0.12f);
         canvas.drawRoundRect(editResizePanel, radius, radius, editToolbarBgPaint);
+        if (editFocusArea == EDIT_FOCUS_ADJUST && editTool == EDIT_TOOL_RESIZE) {
+            RectF focus = new RectF(editResizePanel);
+            focus.inset(-Math.max(3f, editIconSize * 0.08f), -Math.max(3f, editIconSize * 0.08f));
+            editFocusPaint.setStrokeWidth(Math.max(3f, editIconSize * 0.10f));
+            canvas.drawRoundRect(focus, radius * 1.4f, radius * 1.4f, editFocusPaint);
+        }
         float labelSize = Math.max(7f, editIconSize * 0.20f);
         editLabelPaint.setTextSize(labelSize);
         String label = getContext().getString(R.string.edit_buttons_scale,
@@ -2058,11 +2301,17 @@ try {
     private boolean editTouchDown(float x, float y) {
         int tool = hitEditToolbar(x, y);
         if (tool >= 0) {
+            ButtonHaptics.tick(getContext());
+            editFocusedTool = tool;
+            editFocusArea = EDIT_FOCUS_TOOLBAR;
             handleEditToolbar(tool);
             return true;
         }
         if (editTool == EDIT_TOOL_RESIZE && editSelectedGroup >= 0
                 && editResizePanel.contains(x, y)) {
+            ButtonHaptics.tick(getContext());
+            editFocusArea = EDIT_FOCUS_ADJUST;
+            editFocusedGroup = editSelectedGroup;
             editSliderDragging = true;
             updateEditResizeFromX(x);
             return true;
@@ -2071,11 +2320,15 @@ try {
         if (group < 0) {
             if (editTool == EDIT_TOOL_MOVE) {
                 editSelectedGroup = -1;
+                editFocusArea = EDIT_FOCUS_GROUP;
                 postInvalidate();
             }
             return true;
         }
+        ButtonHaptics.tick(getContext());
+        editFocusedGroup = group;
         if (editTool == EDIT_TOOL_HIDE) {
+            editFocusArea = EDIT_FOCUS_GROUP;
             ButtonLayout layout = editButtonLayouts[group];
             layout.hidden = !layout.hidden;
             editSelectedGroup = -1;
@@ -2083,6 +2336,7 @@ try {
             return true;
         }
         if (editTool == EDIT_TOOL_MOVE || editTool == EDIT_TOOL_RESIZE) {
+            editFocusArea = EDIT_FOCUS_ADJUST;
             editPressGroup = group;
             editPressWasSelected = editSelectedGroup == group;
             editSelectedGroup = group;
@@ -2142,6 +2396,8 @@ try {
         if (tool == EDIT_TOOL_RESET) {
             resetEditButtonLayouts();
             editSliderDragging = false;
+            editFocusedTool = tool;
+            editFocusArea = EDIT_FOCUS_TOOLBAR;
             computeZones();
             postInvalidate();
             return;
@@ -2158,8 +2414,20 @@ try {
         editPressGroup = -1;
         editPressMoved = false;
         editSliderDragging = false;
+        editFocusedTool = tool;
         if (tool == EDIT_TOOL_HIDE) {
             editSelectedGroup = -1;
+        }
+        if (tool == EDIT_TOOL_MOVE || tool == EDIT_TOOL_RESIZE || tool == EDIT_TOOL_HIDE) {
+            editFocusArea = EDIT_FOCUS_GROUP;
+            if (tool != EDIT_TOOL_HIDE && editSelectedGroup >= 0) {
+                editFocusedGroup = editSelectedGroup;
+            } else if (editFocusedGroup < 0 || editFocusedGroup >= GROUP_COUNT
+                    || groupBounds[editFocusedGroup].isEmpty()) {
+                editFocusedGroup = firstEditableGroup();
+            }
+        } else {
+            editFocusArea = EDIT_FOCUS_TOOLBAR;
         }
         postInvalidate();
     }
@@ -2276,6 +2544,11 @@ try {
         } else {
             pointerControls.put(pointerId, control);
             activeControls.add(control);
+            if (previous == null || previous == CTRL_NONE || previous != control) {
+                // Haptic tick only when a new button is pressed, not while a
+                // finger stays on the same button.
+                ButtonHaptics.tick(getContext());
+            }
             if (input != null) {
                 int keyCode = controlToKeyCode(control);
                     if (keyCode >= 0) {

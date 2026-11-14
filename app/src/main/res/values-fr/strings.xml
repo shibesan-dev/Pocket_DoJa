@@ -79,6 +79,7 @@
     <string name="unbound">Non attribué</string>
     <string name="reset">Réinitialiser</string>
     <string name="doja_key">Touche DoJa %1$d</string>
+    <string name="host_action">Action</string>
     <string name="exit_game_action">Quitter le jeu</string>
     <string name="display_title">Affichage</string>
     <string name="display_title_game">Affichage : %1$s</string>
@@ -109,6 +110,7 @@
     <string name="display_fps">Système</string>
     <string name="show_fps">Afficher les FPS</string>
     <string name="use_hardware_rendering">Utiliser le rendu matériel</string>
+    <string name="use_system_keyboard">Utiliser le clavier du système</string>
     <string name="reset_to_global">Réinitialiser aux valeurs globales</string>
     <string name="theme_title">Thème et musique</string>
     <string name="theme">Thème</string>
@@ -122,7 +124,7 @@
     <string name="no_bgm">Pas de musique</string>
     <string name="bgm">Musique</string>
     <string name="default_bgm">Musique par défaut</string>
-    <string name="game_menu">Menu du jeu</string>
+    <string name="game_menu">Menu de l\'émulateur</string>
     <string name="edit_buttons">Modifier les boutons</string>
     <string name="edit_buttons_move">Déplacer</string>
     <string name="edit_buttons_resize">Redimensionner</string>
@@ -133,4 +135,6 @@
     <string name="edit_buttons_scale">Échelle %1$d%%</string>
     <string name="hide_keypad">Masquer le clavier</string>
     <string name="exit_game">Quitter le jeu</string>
+    <string name="haptic_feedback">Retour haptique</string>
+    <string name="haptic_feedback_value">Retour haptique : %1$d%%</string>
 </resources>

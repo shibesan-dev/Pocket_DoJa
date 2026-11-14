@@ -5,7 +5,8 @@ package com.docomostar.ui;
  * titles call them as com.docomostar.ui.Graphics.getColorOfRGB(...).
  */
 public abstract class Graphics extends com.nttdocomo.ui.Graphics
-        implements com.docomostar.opt.ui.j3d.Graphics3D, com.docomostar.ui.ogl.GraphicsOGL {
+        implements com.docomostar.opt.ui.j3d.Graphics3D, com.docomostar.ui.ogl.GraphicsOGL,
+        com.docomostar.ui.graphics3d.Graphics3D {
     protected Graphics() {
         super();
     }
@@ -92,5 +93,26 @@ public abstract class Graphics extends com.nttdocomo.ui.Graphics
 
     public void renderPrimitives(com.docomostar.opt.ui.j3d.PrimitiveArray primitives, int start, int count, int attr) {
         super.renderPrimitives(primitives, start, count, attr);
+    }
+
+    @Override
+    public void setTransform(com.docomostar.ui.util3d.Transform transform) {
+        super.setTransform(transform);
+    }
+
+    @Override
+    public void addLight(com.docomostar.ui.graphics3d.Light light, com.docomostar.ui.util3d.Transform transform) {
+        super.addLight(com.docomostar.ui.graphics3d.Star3DBridge.unwrap(light), transform);
+    }
+
+    @Override
+    public void setFog(com.docomostar.ui.graphics3d.Fog fog) {
+        super.setFog(com.docomostar.ui.graphics3d.Star3DBridge.unwrap(fog));
+    }
+
+    @Override
+    public void renderObject3D(com.docomostar.ui.graphics3d.DrawableObject3D object,
+                               com.docomostar.ui.util3d.Transform transform) {
+        super.renderObject3D(com.docomostar.ui.graphics3d.Star3DBridge.unwrap(object), transform);
     }
 }

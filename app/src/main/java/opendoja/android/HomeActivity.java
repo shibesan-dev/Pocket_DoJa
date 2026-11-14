@@ -25,6 +25,7 @@ import android.graphics.ColorFilter;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
@@ -93,12 +94,17 @@ public class HomeActivity extends Activity {
     private File pendingSdDataGame;
     // Shown in diagnostics so we can confirm which build is actually installed.
     private static final String DIAG_BUILD = "2026-11-11 15:55 led-blink";
+    // Save Diagnostics - Dev use only!! Enable/Disable
+    // false hides the menu item entirely; captureDiagnostics() stays in the code.
+    private static final boolean SAVE_DIAGNOSTICS_ENABLED = false;
+    private static final int MENU_INDEX_SAVE_DIAGNOSTICS = 6;
     private GameEntry pendingIconGame;
     private GameEntry pendingSaveGame;
     private String[] menuItems;
     private String[] gameOptions;
 
     private final Map<String, Bitmap> iconCache = new ConcurrentHashMap<>();
+    private Bitmap defaultGameIcon;
     private ExecutorService worker = Executors.newFixedThreadPool(2);
     private EditText searchBox;
     private TextView titleView;
@@ -115,6 +121,16 @@ public class HomeActivity extends Activity {
     private TextView searchButton;
     private TextView viewToggleButton;
     private TextView menuButton;
+    // In-app D-pad keyboard used by Search and Rename instead of the system IME.
+    private FrameLayout rootView;
+    private DpadKeyboardView searchKeyboard;
+    private FrameLayout renameOverlay;
+    private DpadKeyboardView renameKeyboard;
+    private TextView renameDisplay;
+    private GameEntry renameTarget;
+    private String renameText = "";
+    // -1 = game grid has D-pad focus; 0/1/2 = Search / view toggle / menu.
+    private int topBarFocusIndex = -1;
     private TextView timeView;
     private float topBarScale = 1f;
     private BroadcastReceiver wifiReceiver;
@@ -126,6 +142,9 @@ public class HomeActivity extends Activity {
     private static final String HOME_PREFS = "home";
     private static final String KEY_LAST_GAME = "lastGamePath";
     private static final long NAV_DUPLICATE_DOWN_MS = 60L;
+    // Slightly shorter than the platform timeout so a remote's key-up never
+    // beats the long-press handler.
+    private static final long NAV_LONG_PRESS_MS = 400L;
 
     // The pixel font is loaded once per process. createFromAsset parses the
     // TTF on every call, so caching avoids re-parsing per game-list row.
@@ -151,6 +170,12 @@ public class HomeActivity extends Activity {
     private String selectedGamePath;
     private long lastNavDownTime = 0L;
     private int lastNavDownKey = 0;
+    // Remote/gamepad confirm key: short press opens the selected game, holding
+    // it opens the game options menu (same as long-pressing a game tile).
+    private android.os.Handler navKeyHandler;
+    private Runnable navSelectLongPressRunnable;
+    private boolean navSelectPressed;
+    private boolean navSelectLongPressed;
     private SoundPool navSoundPool;
     private int navSoundId = 0;
     private boolean navSoundReady = false;
@@ -161,6 +186,7 @@ public class HomeActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        DisplayActivity.applyShippingDefaults(this);
         instance = this;
         // Cancel any stale restart alarm from the previous process-restart implementation
         try {
@@ -226,6 +252,7 @@ public class HomeActivity extends Activity {
         gridContainer.setFocusable(true);
         gridContainer.setFocusableInTouchMode(true);
         gridContainer.setDescendantFocusability(android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+        FocusHighlight.disable(gridContainer);
         content.addView(gridContainer, matchWrap());
 
         ScrollView scroll = new ScrollView(this);
@@ -247,7 +274,15 @@ public class HomeActivity extends Activity {
         topBarParams.gravity = Gravity.TOP;
         root.addView(fixedTopBar, topBarParams);
 
-        // icon picker registered via startActivityForResult (see onActivityResult)
+        rootView = root;
+        searchKeyboard = buildSearchKeyboard();
+        FrameLayout.LayoutParams keyboardParams = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, keyboardHeightPx());
+        keyboardParams.gravity = Gravity.BOTTOM;
+        searchKeyboard.setVisibility(View.GONE);
+        root.addView(searchKeyboard, keyboardParams);
+
+        // All import/icon pickers use the built-in CustomFilePicker.
         setContentView(root);
         initNavSound();
     }
@@ -307,33 +342,14 @@ public class HomeActivity extends Activity {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
                 if (android.os.Environment.isExternalStorageManager()) {
                     pendingCustomImport = false;
-                    File start = android.os.Environment.getExternalStorageDirectory();
-                    if (start == null || !start.isDirectory()) start = getFilesDir();
-                    showFileBrowser(start);
+                    CustomFilePicker.pickFolder(this, "Select folder containing games",
+                            dir -> startBatchImportFromFiles(dir));
                 }
             } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
                 if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
                     pendingCustomImport = false;
-                    File start = android.os.Environment.getExternalStorageDirectory();
-                    if (start == null || !start.isDirectory()) start = getFilesDir();
-                    showFileBrowser(start);
-                }
-            }
-        }
-        if (pendingImageIcon && pendingIconGame != null) {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                if (android.os.Environment.isExternalStorageManager()) {
-                    pendingImageIcon = false;
-                    File start = android.os.Environment.getExternalStorageDirectory();
-                    if (start == null || !start.isDirectory()) start = getFilesDir();
-                    showImageBrowser(start);
-                }
-            } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                    pendingImageIcon = false;
-                    File start = android.os.Environment.getExternalStorageDirectory();
-                    if (start == null || !start.isDirectory()) start = getFilesDir();
-                    showImageBrowser(start);
+                    CustomFilePicker.pickFolder(this, "Select folder containing games",
+                            dir -> startBatchImportFromFiles(dir));
                 }
             }
         }
@@ -343,6 +359,9 @@ public class HomeActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
+        cancelNavSelectLongPress();
+        navSelectPressed = false;
+        navSelectLongPressed = false;
         ThemeRenderer.logEvent("Home.onPause");
         stopGlFrameLoop();
         if (glView != null) {
@@ -491,7 +510,11 @@ public class HomeActivity extends Activity {
         searchButton.setGravity(Gravity.CENTER);
         searchButton.setPadding(dp(8), 0, dp(8), 0);
         searchButton.setClickable(true);
-        searchButton.setFocusable(true);
+        // Focus is tracked by the custom D-pad navigation, not the platform.
+        // Keeping these buttons non-focusable prevents the system focus ring
+        // (and focus getting stuck on the view toggle) on controller input.
+        searchButton.setFocusable(false);
+        FocusHighlight.disable(searchButton);
         searchButton.setOnClickListener(v -> toggleSearch());
         
         // Try to load custom search icon
@@ -502,7 +525,20 @@ public class HomeActivity extends Activity {
         searchBox.setTextColor(themeTextColor());
         searchBox.setHintTextColor(0x80FFFFFF);
         searchBox.setSingleLine(true);
+        FocusHighlight.disable(searchBox);
+        // The built-in D-pad keyboard is the default; the Display setting can
+        // hand text entry over to the device's installed IME instead.
+        searchBox.setShowSoftInputOnFocus(DisplayActivity.isSystemKeyboardEnabled(this));
         searchBox.setVisibility(View.GONE);
+        searchBox.setOnClickListener(v -> {
+            if (useSystemKeyboard()) {
+                searchBox.setShowSoftInputOnFocus(true);
+                showSystemKeyboard(searchBox);
+            } else {
+                searchBox.setShowSoftInputOnFocus(false);
+                showSearchKeyboard();
+            }
+        });
         searchBox.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {
@@ -543,7 +579,8 @@ public class HomeActivity extends Activity {
         viewToggleButton.setGravity(Gravity.CENTER);
         viewToggleButton.setPadding(dp(16), 0, dp(8), 0);
         viewToggleButton.setClickable(true);
-        viewToggleButton.setFocusable(true);
+        viewToggleButton.setFocusable(false);
+        FocusHighlight.disable(viewToggleButton);
         viewToggleButton.setOnClickListener(v -> {
             setGridView(!isGridView());
             viewToggleButton.setText(isGridView() ? "\u25A6" : "\u2630");
@@ -559,7 +596,8 @@ public class HomeActivity extends Activity {
         menuButton.setGravity(Gravity.CENTER);
         menuButton.setPadding(dp(16), 0, dp(16), 0);
         menuButton.setClickable(true);
-        menuButton.setFocusable(true);
+        menuButton.setFocusable(false);
+        FocusHighlight.disable(menuButton);
         menuButton.setBackground(new RippleDrawable(
                 ColorStateList.valueOf(0x33FFFFFF), null, new ColorDrawable(0x1FFFFFFF)));
         menuButton.setOnClickListener(this::showOptionsMenu);
@@ -574,7 +612,8 @@ public class HomeActivity extends Activity {
         dividerParams.gravity = Gravity.BOTTOM;
         FrameLayout container = new FrameLayout(this);
         container.setClickable(true);
-        container.setFocusable(true);
+        container.setFocusable(false);
+        FocusHighlight.disable(container);
         container.addView(bar, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, dp(56)));
         container.addView(divider, dividerParams);
@@ -1106,6 +1145,97 @@ public class HomeActivity extends Activity {
         }
     }
 
+    private int keyboardHeightPx() {
+        int screenHeight = getResources().getDisplayMetrics().heightPixels;
+        return Math.max(dp(140), Math.round(screenHeight * 0.46f));
+    }
+
+    private DpadKeyboardView buildSearchKeyboard() {
+        DpadKeyboardView keyboard = new DpadKeyboardView(this);
+        keyboard.setListener(new DpadKeyboardView.Listener() {
+            @Override
+            public void onText(String text) {
+                if (searchBox == null || searchBox.getVisibility() != View.VISIBLE) {
+                    return;
+                }
+                searchBox.getText().append(text);
+            }
+
+            @Override
+            public void onDelete() {
+                if (searchBox == null) {
+                    return;
+                }
+                Editable editable = searchBox.getText();
+                if (editable.length() > 0) {
+                    editable.delete(editable.length() - 1, editable.length());
+                }
+            }
+
+            @Override
+            public void onSubmit() {
+                // Keep the current query and let the D-pad move around the
+                // filtered grid; Back still closes/clears the search.
+                hideSearchKeyboard();
+                if (searchBox != null) {
+                    searchBox.clearFocus();
+                }
+                if (gridContainer != null) {
+                    gridContainer.requestFocus();
+                }
+            }
+
+            @Override
+            public void onCancel() {
+                toggleSearch();
+            }
+        });
+        return keyboard;
+    }
+
+    private boolean isSearchKeyboardVisible() {
+        return searchKeyboard != null && searchKeyboard.getVisibility() == View.VISIBLE;
+    }
+
+    private boolean showSearchKeyboard() {
+        if (searchKeyboard == null || searchBox == null
+                || searchBox.getVisibility() != View.VISIBLE) {
+            return false;
+        }
+        searchKeyboard.setVisibility(View.VISIBLE);
+        searchKeyboard.bringToFront();
+        if (searchBox.hasFocus()) {
+            searchBox.setCursorVisible(true);
+        }
+        searchKeyboard.invalidate();
+        return true;
+    }
+
+    private void hideSearchKeyboard() {
+        if (searchKeyboard != null) {
+            searchKeyboard.setVisibility(View.GONE);
+        }
+    }
+
+    private boolean useSystemKeyboard() {
+        return DisplayActivity.isSystemKeyboardEnabled(this);
+    }
+
+    private void showSystemKeyboard(android.view.View target) {
+        if (target == null) {
+            return;
+        }
+        target.requestFocus();
+        target.post(() -> {
+            android.view.inputmethod.InputMethodManager imm =
+                    (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+            if (imm != null) {
+                imm.showSoftInput(target,
+                        android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+            }
+        });
+    }
+
     private void toggleSearch() {
         if (searchBox == null) {
             return;
@@ -1113,6 +1243,7 @@ public class HomeActivity extends Activity {
         if (searchBox.getVisibility() == View.VISIBLE) {
             searchBox.setText("");
             searchBox.setVisibility(View.GONE);
+            hideSearchKeyboard();
             if (titleView != null) {
                 titleView.setVisibility(View.VISIBLE);
             }
@@ -1133,11 +1264,19 @@ public class HomeActivity extends Activity {
             if (titleView != null) {
                 titleView.setVisibility(View.GONE);
             }
-            searchBox.requestFocus();
-            android.view.inputmethod.InputMethodManager imm =
-                    (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-            if (imm != null) {
-                imm.showSoftInput(searchBox, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+            if (useSystemKeyboard()) {
+                hideSearchKeyboard();
+                searchBox.setShowSoftInputOnFocus(true);
+                showSystemKeyboard(searchBox);
+            } else {
+                searchBox.setShowSoftInputOnFocus(false);
+                showSearchKeyboard();
+                searchBox.requestFocus();
+                android.view.inputmethod.InputMethodManager imm =
+                        (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+                if (imm != null) {
+                    imm.hideSoftInputFromWindow(searchBox.getWindowToken(), 0);
+                }
             }
         }
     }
@@ -1164,6 +1303,10 @@ public class HomeActivity extends Activity {
         menu.setBackground(panel);
 
         for (int i = 0; i < menuItems.length; i++) {
+            // Save Diagnostics - Dev use only!! Enable/Disable
+            if (!SAVE_DIAGNOSTICS_ENABLED && i == MENU_INDEX_SAVE_DIAGNOSTICS) {
+                continue;
+            }
             final int menuIndex = i;
             String label = menuItems[i];
             TextView item = new TextView(this);
@@ -1173,6 +1316,20 @@ public class HomeActivity extends Activity {
             item.setGravity(Gravity.CENTER_VERTICAL);
             item.setPadding(dp(18), dp(14), dp(18), dp(14));
             item.setClickable(true);
+            item.setFocusable(true);
+            // The focused fill below is the only indicator; don't let the
+            // platform draw its outline around the same item.
+            FocusHighlight.disable(item);
+            item.setOnFocusChangeListener((v, hasFocus) -> {
+                if (hasFocus) {
+                    GradientDrawable focused = new GradientDrawable();
+                    focused.setColor(0x663080FF);
+                    focused.setCornerRadius(dp(6));
+                    v.setBackground(focused);
+                } else {
+                    v.setBackground(null);
+                }
+            });
             item.setForeground(new RippleDrawable(
                     ColorStateList.valueOf(0x2FFFFFFF), null, null));
             item.setOnClickListener(v -> {
@@ -1194,6 +1351,11 @@ public class HomeActivity extends Activity {
         popup.setFocusable(true);
         popup.setElevation(dp(8));
         popup.showAsDropDown(anchor, -(menu.getMeasuredWidth() - anchor.getWidth()), 0);
+        menu.post(() -> {
+            if (menu.getChildCount() > 0) {
+                menu.getChildAt(0).requestFocus();
+            }
+        });
         menuPopup = popup;
     }
 
@@ -1242,7 +1404,10 @@ public class HomeActivity extends Activity {
                 System.exit(0);
                 break;
             case 6:
-                captureDiagnostics();
+                // Save Diagnostics - Dev use only!! Enable/Disable
+                if (SAVE_DIAGNOSTICS_ENABLED) {
+                    captureDiagnostics();
+                }
                 break;
             default:
                 break;
@@ -2076,7 +2241,7 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
                 } catch (IOException ignored) {
                 }
             }
-            games.add(new GameEntry(jam, name, loadGameIcon(jam, name)));
+            games.add(new GameEntry(jam, name, loadGameIcon(jam)));
         }
         if (!searchQuery.isEmpty()) {
             String q = searchQuery.toLowerCase(Locale.ROOT);
@@ -2092,12 +2257,16 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         return games;
     }
 
-    private Bitmap loadGameIcon(File jam, String displayName) {
+    private Bitmap loadGameIcon(File jam) {
         File customIcon = new File(jam.getParentFile(), stripExtension(jam.getName()) + ".icon.png");
         if (customIcon.exists()) {
             Bitmap bmp = BitmapFactory.decodeFile(customIcon.getAbsolutePath());
             if (bmp != null) {
-                return bmp;
+                Bitmap prepared = prepareGameIcon(bmp);
+                if (prepared != bmp) {
+                    bmp.recycle();
+                }
+                return prepared;
             }
         }
         File jar = siblingFile(jam, ".jar");
@@ -2127,10 +2296,77 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
             }
         }
         if (icon == null) {
-            icon = placeholderIcon(displayName);
+            // No icon in the JAM: use the Pocket DoJa app icon, so resetting a
+            // custom icon always returns to the same recognizable default.
+            return defaultGameIconBitmap();
         }
-        iconCache.put(key, icon);
-        return icon;
+        Bitmap prepared = prepareGameIcon(icon);
+        if (prepared != icon) {
+            icon.recycle();
+        }
+        iconCache.put(key, prepared);
+        return prepared;
+    }
+
+    /**
+     * Renders an icon into the square tile format used by the launcher, with
+     * soft squircle corners instead of sharp square edges.
+     */
+    private Bitmap prepareGameIcon(Bitmap source) {
+        int size = Math.max(1, iconSizePx);
+        Bitmap output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(output);
+        Path clip = new Path();
+        float radius = size * 0.235f;
+        clip.addRoundRect(new RectF(0f, 0f, size, size), radius, radius, Path.Direction.CW);
+        canvas.clipPath(clip);
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        float scale = Math.min(size / (float) source.getWidth(),
+                size / (float) source.getHeight());
+        float width = source.getWidth() * scale;
+        float height = source.getHeight() * scale;
+        float left = (size - width) / 2f;
+        float top = (size - height) / 2f;
+        canvas.drawBitmap(source, null,
+                new RectF(left, top, left + width, top + height), paint);
+        return output;
+    }
+
+    private Bitmap defaultGameIconBitmap() {
+        if (defaultGameIcon != null && defaultGameIcon.getWidth() == iconSizePx
+                && !defaultGameIcon.isRecycled()) {
+            return defaultGameIcon;
+        }
+        Bitmap raw = loadApplicationIcon();
+        defaultGameIcon = prepareGameIcon(raw);
+        if (raw != defaultGameIcon) {
+            raw.recycle();
+        }
+        return defaultGameIcon;
+    }
+
+    private Bitmap loadApplicationIcon() {
+        int size = Math.max(1, iconSizePx);
+        try {
+            android.graphics.drawable.Drawable drawable =
+                    getPackageManager().getApplicationIcon(getPackageName());
+            if (drawable != null) {
+                Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+                Canvas canvas = new Canvas(bitmap);
+                drawable.setBounds(0, 0, size, size);
+                drawable.draw(canvas);
+                return bitmap;
+            }
+        } catch (android.content.pm.PackageManager.NameNotFoundException | RuntimeException ignored) {
+        }
+        android.graphics.drawable.Drawable fallback = getDrawable(R.mipmap.ic_launcher);
+        Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        if (fallback != null) {
+            Canvas canvas = new Canvas(bitmap);
+            fallback.setBounds(0, 0, size, size);
+            fallback.draw(canvas);
+        }
+        return bitmap;
     }
 
     private Bitmap decodeJarImage(File jar, String entryName) {
@@ -2223,32 +2459,6 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
             }
         }
         return null;
-    }
-
-    private Bitmap placeholderIcon(String displayName) {
-        int size = iconSizePx;
-        Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-        float[] hsv = new float[3];
-        hsv[0] = Math.floorMod(displayName.hashCode(), 360);
-        hsv[1] = 0.45f;
-        hsv[2] = 0.62f;
-        Paint tilePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        tilePaint.setColor(Color.HSVToColor(hsv));
-        float radius = size / 6f;
-        canvas.drawRoundRect(0f, 0f, size - 1f, size - 1f, radius, radius, tilePaint);
-
-        String initial = displayName.isEmpty()
-                ? "?"
-                : new StringBuilder().appendCodePoint(displayName.codePointAt(0)).toString();
-        Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        textPaint.setColor(Color.WHITE);
-        textPaint.setTextSize(size * 0.46f);
-        textPaint.setFakeBoldText(true);
-        textPaint.setTextAlign(Paint.Align.CENTER);
-        float baseline = size / 2f - (textPaint.descent() + textPaint.ascent()) / 2f;
-        canvas.drawText(initial, size / 2f, baseline, textPaint);
-        return bitmap;
     }
 
     private Bitmap scaleIcon(Bitmap bmp) {
@@ -2432,42 +2642,178 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
     }
 
     private void showRenameDialog(GameEntry game) {
-        final android.widget.EditText input = new android.widget.EditText(this);
-        input.setText(game.displayName);
-        new AlertDialog.Builder(this)
-                .setTitle("Rename")
+        if (game == null) {
+            return;
+        }
+        if (DisplayActivity.isSystemKeyboardEnabled(this)) {
+            showRenameDialogWithSystemKeyboard(game);
+        } else {
+            showRenameDialogWithDpadKeyboard(game);
+        }
+    }
+
+    private void showRenameDialogWithDpadKeyboard(GameEntry game) {
+        if (rootView == null) {
+            return;
+        }
+        closeRenameOverlay();
+        renameTarget = game;
+        renameText = game.displayName == null ? "" : game.displayName;
+
+        FrameLayout overlay = new FrameLayout(this);
+        overlay.setBackgroundColor(0xB3000000);
+        overlay.setClickable(true);
+        overlay.setFocusable(true);
+        FocusHighlight.disable(overlay);
+
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(20), dp(16), dp(20), dp(16));
+        GradientDrawable panelBackground = new GradientDrawable();
+        panelBackground.setColor(0xF020242E);
+        panelBackground.setCornerRadius(dp(12));
+        panel.setBackground(panelBackground);
+
+        TextView title = new TextView(this);
+        title.setText(R.string.rename_title);
+        title.setTextColor(themeTextColor());
+        title.setTextSize(20f);
+        title.setTypeface(null, Typeface.BOLD);
+        panel.addView(title, matchWrap());
+
+        renameDisplay = new TextView(this);
+        renameDisplay.setText(renameText);
+        renameDisplay.setTextColor(0xFFE8E8E8);
+        renameDisplay.setTextSize(18f);
+        renameDisplay.setSingleLine(true);
+        renameDisplay.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams displayParams = matchWrap();
+        displayParams.topMargin = dp(10);
+        panel.addView(renameDisplay, displayParams);
+
+        FrameLayout.LayoutParams panelParams = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT);
+        panelParams.gravity = Gravity.TOP;
+        panelParams.setMargins(dp(16), dp(64), dp(16), 0);
+        overlay.addView(panel, panelParams);
+
+        DpadKeyboardView keyboard = new DpadKeyboardView(this);
+        keyboard.setListener(new DpadKeyboardView.Listener() {
+            @Override
+            public void onText(String text) {
+                renameText = renameText + text;
+                updateRenameDisplay();
+            }
+
+            @Override
+            public void onDelete() {
+                if (!renameText.isEmpty()) {
+                    renameText = renameText.substring(0, renameText.length() - 1);
+                    updateRenameDisplay();
+                }
+            }
+
+            @Override
+            public void onSubmit() {
+                commitRename();
+            }
+
+            @Override
+            public void onCancel() {
+                closeRenameOverlay();
+            }
+        });
+        FrameLayout.LayoutParams keyboardParams = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, keyboardHeightPx());
+        keyboardParams.gravity = Gravity.BOTTOM;
+        overlay.addView(keyboard, keyboardParams);
+
+        renameKeyboard = keyboard;
+        renameOverlay = overlay;
+        rootView.addView(overlay, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        overlay.requestFocus();
+    }
+
+    private void showRenameDialogWithSystemKeyboard(GameEntry game) {
+        final EditText input = new EditText(this);
+        input.setText(game.displayName == null ? "" : game.displayName);
+        input.setSingleLine(true);
+        input.setSelection(input.getText().length());
+        input.setShowSoftInputOnFocus(true);
+        input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.rename_title)
                 .setView(input)
-                .setPositiveButton("OK", (dialog, which) -> {
-                    String newName = input.getText().toString().trim();
-                    if (newName.isEmpty()) return;
-                    File nameFile = new File(game.jam.getParentFile(), stripExtension(game.jam.getName()) + ".name.txt");
-                    try (FileOutputStream fos = new FileOutputStream(nameFile)) {
-                        fos.write(newName.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-                    } catch (IOException ignored) {
-                    }
-                    refreshGames();
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
+                .setPositiveButton(R.string.edit_buttons_ok, (d, which) ->
+                        saveRename(game, input.getText().toString()))
+                .setNegativeButton(R.string.edit_buttons_cancel, null)
+                .create();
+        input.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                saveRename(game, input.getText().toString());
+                dialog.dismiss();
+                return true;
+            }
+            return false;
+        });
+        dialog.setOnShowListener(d -> {
+            input.requestFocus();
+            input.setSelection(input.getText().length());
+            input.postDelayed(() ->
+                    showSystemKeyboard(input), 150);
+        });
+        dialog.show();
+    }
+
+    private void updateRenameDisplay() {
+        if (renameDisplay != null) {
+            renameDisplay.setText(renameText);
+        }
+    }
+
+    private void commitRename() {
+        GameEntry target = renameTarget;
+        String newName = renameText;
+        closeRenameOverlay();
+        saveRename(target, newName);
+    }
+
+    private void saveRename(GameEntry target, String rawName) {
+        String newName = rawName == null ? "" : rawName.trim();
+        if (target == null || newName.isEmpty()) {
+            return;
+        }
+        File nameFile = new File(target.jam.getParentFile(),
+                stripExtension(target.jam.getName()) + ".name.txt");
+        try (FileOutputStream fos = new FileOutputStream(nameFile)) {
+            fos.write(newName.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (IOException ignored) {
+        }
+        refreshGames();
+    }
+
+    private void closeRenameOverlay() {
+        if (renameOverlay != null && rootView != null) {
+            rootView.removeView(renameOverlay);
+        }
+        renameOverlay = null;
+        renameKeyboard = null;
+        renameDisplay = null;
+        renameTarget = null;
+        renameText = "";
+        if (gridContainer != null) {
+            gridContainer.requestFocus();
+        }
     }
     private void showGameOptions(GameEntry game) {
         new AlertDialog.Builder(this)
                 .setItems(gameOptions, (dialog, which) -> {
                     if (which == 0) {
-                        pendingIconGame = game;
-                        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-                        intent.addCategory(Intent.CATEGORY_OPENABLE);
-                        intent.setType("*/*");
-                        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/png", "image/jpeg", "image/x-icon", "image/vnd.microsoft.icon"});
-                        if (intent.resolveActivity(getPackageManager()) == null) {
-                            pickImageFileCustom(game);
-                            return;
-                        }
-                        try {
-                            startActivityForResult(intent, REQUEST_CHANGE_ICON);
-                        } catch (RuntimeException exception) {
-                            pickImageFileCustom(game);
-                        }
+                        // Always use the built-in picker so the flow is identical
+                        // on devices with and without DocumentsUI.
+                        pickImageFileCustom(game);
                     } else if (which == 1) {
                         File customIcon = new File(game.jam.getParentFile(), stripExtension(game.jam.getName()) + ".icon.png");
                         if (customIcon.exists()) customIcon.delete();
@@ -2505,20 +2851,9 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
                 .show();
     }
     private void startExportSave(GameEntry game) {
-        pendingSaveGame = game;
-        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("application/zip");
-        intent.putExtra(Intent.EXTRA_TITLE, stripExtension(game.jam.getName()) + ".pdsave");
-        if (intent.resolveActivity(getPackageManager()) == null) {
-            exportSaveCustom(game);
-            return;
-        }
-        try {
-            startActivityForResult(intent, REQUEST_EXPORT_SAVE);
-        } catch (RuntimeException exception) {
-            exportSaveCustom(game);
-        }
+        // Built-in folder picker: the system CREATE_DOCUMENT screen cannot be
+        // driven reliably with a D-pad (its action bar/save button is skipped).
+        exportSaveCustom(game);
     }
 
     private void exportSaveCustom(GameEntry game) {
@@ -2539,19 +2874,8 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
     }
 
     private void startImportSave(GameEntry game) {
-        pendingSaveGame = game;
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("*/*");
-        if (intent.resolveActivity(getPackageManager()) == null) {
-            importSaveCustom(game);
-            return;
-        }
-        try {
-            startActivityForResult(intent, REQUEST_IMPORT_SAVE);
-        } catch (RuntimeException exception) {
-            importSaveCustom(game);
-        }
+        // Built-in file picker (filtered to save archives) for every device.
+        importSaveCustom(game);
     }
 
     private void importSaveCustom(GameEntry game) {
@@ -2857,8 +3181,10 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
     }
 
     private void updateGameHighlight() {
+        boolean gridFocused = topBarFocusIndex < 0;
         for (Map.Entry<String, View> entry : gameItemViews.entrySet()) {
-            applyGameItemBackground(entry.getValue(), entry.getKey().equals(selectedGamePath));
+            applyGameItemBackground(entry.getValue(),
+                    gridFocused && entry.getKey().equals(selectedGamePath));
         }
     }
 
@@ -2972,11 +3298,62 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
     }
 
     @Override
+    public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+        // Any touch takes focus away from the remote-only top bar highlight.
+        if (event != null
+                && event.getActionMasked() == android.view.MotionEvent.ACTION_DOWN
+                && topBarFocusIndex >= 0) {
+            setTopBarFocus(-1, false);
+        }
+        return super.dispatchTouchEvent(event);
+    }
+
+    @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (event == null) {
             return super.dispatchKeyEvent(event);
         }
         int keyCode = event.getKeyCode();
+        int action = event.getAction();
+        // Rename uses a full-screen in-app keyboard overlay. It consumes the
+        // whole input until the user submits or cancels.
+        if (renameOverlay != null) {
+            if (renameKeyboard != null && renameKeyboard.handleKeyEvent(event)) {
+                return true;
+            }
+            if (action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_BACK) {
+                closeRenameOverlay();
+                return true;
+            }
+            if (keyCode == KeyEvent.KEYCODE_VOLUME_UP
+                    || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+                return super.dispatchKeyEvent(event);
+            }
+            return true;
+        }
+        // While the in-app search keyboard is visible, D-pad navigation and
+        // typing belong to it.
+        if (isSearchKeyboardVisible()) {
+            if (action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_BACK) {
+                toggleSearch();
+                return true;
+            }
+            if (searchKeyboard.handleKeyEvent(event)) {
+                return true;
+            }
+        }
+        // Back closes the search bar instead of leaving the app.
+        if (action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_BACK
+                && searchBox != null && searchBox.getVisibility() == View.VISIBLE) {
+            toggleSearch();
+            return true;
+        }
+        // Back from the top bar returns focus to the game grid.
+        if (action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_BACK
+                && topBarFocusIndex >= 0) {
+            setTopBarFocus(-1, true);
+            return true;
+        }
         if (!isGameNavigationKey(keyCode)) {
             return super.dispatchKeyEvent(event);
         }
@@ -2987,7 +3364,10 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         if (menuPopup != null && menuPopup.isShowing()) {
             return super.dispatchKeyEvent(event);
         }
-        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+        if (topBarFocusIndex >= 0) {
+            return handleTopBarKeyEvent(event, keyCode, action);
+        }
+        if (action == KeyEvent.ACTION_DOWN) {
             boolean repeating = event.getRepeatCount() > 0;
             long eventTime = event.getEventTime();
             if (!repeating) {
@@ -3000,7 +3380,13 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
             if (isGameMovementKey(keyCode)) {
                 switch (keyCode) {
                     case KeyEvent.KEYCODE_DPAD_UP:
-                        moveSelection(0, -1);
+                        // Up from the first row moves focus to the top bar
+                        // (Search / view toggle / menu) instead of stopping.
+                        if (currentGames.isEmpty() || isSelectionInFirstRow()) {
+                            setTopBarFocus(0, true);
+                        } else {
+                            moveSelection(0, -1);
+                        }
                         break;
                     case KeyEvent.KEYCODE_DPAD_DOWN:
                         moveSelection(0, 1);
@@ -3015,12 +3401,197 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
                         break;
                 }
             } else if (!repeating) {
+                // Confirm/Select (D-pad center, OK, Enter): launch on release
+                // so a long press can open the game options menu instead.
+                navSelectLongPressed = false;
+                navSelectPressed = true;
+                armNavSelectLongPress();
+            } else if (navSelectPressed && !navSelectLongPressed) {
+                // Fallback: a repeat means the key is being held even if the
+                // Handler above has not fired yet.
+                navSelectLongPressed = true;
+                cancelNavSelectLongPress();
+                showSelectedGameOptions();
+            }
+            return true;
+        }
+        if (action == KeyEvent.ACTION_UP) {
+            if (isGameMovementKey(keyCode)) {
+                return true;
+            }
+            boolean wasPressed = navSelectPressed;
+            boolean longPressed = navSelectLongPressed;
+            navSelectPressed = false;
+            navSelectLongPressed = false;
+            cancelNavSelectLongPress();
+            if (wasPressed && !longPressed) {
                 launchSelectedGame();
             }
+            return true;
         }
         // Consume both DOWN and UP so neither the ScrollView nor a focused
         // view can act on the same key press.
         return true;
+    }
+
+    private void armNavSelectLongPress() {
+        if (navKeyHandler == null) {
+            navKeyHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+        }
+        if (navSelectLongPressRunnable == null) {
+            navSelectLongPressRunnable = () -> {
+                if (!navSelectPressed) {
+                    return;
+                }
+                navSelectLongPressed = true;
+                showSelectedGameOptions();
+            };
+        }
+        navKeyHandler.removeCallbacks(navSelectLongPressRunnable);
+        navKeyHandler.postDelayed(navSelectLongPressRunnable, NAV_LONG_PRESS_MS);
+    }
+
+    private void cancelNavSelectLongPress() {
+        if (navKeyHandler != null && navSelectLongPressRunnable != null) {
+            navKeyHandler.removeCallbacks(navSelectLongPressRunnable);
+        }
+    }
+
+    /** Opens the options for the D-pad-highlighted game (remote long press). */
+    private void showSelectedGameOptions() {
+        if (selectedGamePath == null) {
+            return;
+        }
+        for (GameEntry game : currentGames) {
+            if (selectedGamePath.equals(game.jam.getAbsolutePath())) {
+                showGameOptions(game);
+                return;
+            }
+        }
+    }
+
+    // ---- D-pad focus for the fixed top bar ----
+
+    private boolean handleTopBarKeyEvent(KeyEvent event, int keyCode, int action) {
+        if (action == KeyEvent.ACTION_DOWN) {
+            switch (keyCode) {
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                    moveTopBarFocus(-1);
+                    break;
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    moveTopBarFocus(1);
+                    break;
+                case KeyEvent.KEYCODE_DPAD_DOWN:
+                    setTopBarFocus(-1, true);
+                    break;
+                case KeyEvent.KEYCODE_DPAD_UP:
+                    break;
+                default:
+                    if (isGameSelectKey(keyCode) && event.getRepeatCount() == 0) {
+                        navSelectPressed = true;
+                    }
+                    break;
+            }
+            return true;
+        }
+        if (action == KeyEvent.ACTION_UP) {
+            if (isGameSelectKey(keyCode)) {
+                boolean wasPressed = navSelectPressed;
+                navSelectPressed = false;
+                if (wasPressed) {
+                    activateTopBarFocus();
+                }
+            }
+            return true;
+        }
+        return true;
+    }
+
+    private void moveTopBarFocus(int delta) {
+        int next = Math.max(0, Math.min(2, topBarFocusIndex + delta));
+        if (next == topBarFocusIndex) {
+            return;
+        }
+        setTopBarFocus(next, true);
+    }
+
+    private void setTopBarFocus(int index, boolean playSound) {
+        if (index < 0) {
+            if (topBarFocusIndex < 0) {
+                return;
+            }
+            topBarFocusIndex = -1;
+        } else {
+            int clamped = Math.min(2, index);
+            if (clamped == topBarFocusIndex) {
+                return;
+            }
+            topBarFocusIndex = clamped;
+        }
+        updateTopBarFocus();
+        updateGameHighlight();
+        if (topBarFocusIndex < 0) {
+            ensureSelectedGameVisible();
+        }
+        if (playSound) {
+            playNavSound();
+        }
+    }
+
+    private void updateTopBarFocus() {
+        setTopBarButtonFocused(searchButton, topBarFocusIndex == 0);
+        setTopBarButtonFocused(viewToggleButton, topBarFocusIndex == 1);
+        setTopBarButtonFocused(menuButton, topBarFocusIndex == 2);
+    }
+
+    private void setTopBarButtonFocused(TextView button, boolean focused) {
+        if (button == null) {
+            return;
+        }
+        if (focused) {
+            GradientDrawable highlight = new GradientDrawable();
+            highlight.setColor(0x663080FF);
+            highlight.setCornerRadius(dp(8));
+            button.setForeground(highlight);
+        } else {
+            button.setForeground(null);
+        }
+    }
+
+    private void activateTopBarFocus() {
+        int index = topBarFocusIndex;
+        if (index < 0) {
+            return;
+        }
+        if (index == 0) {
+            setTopBarFocus(-1, false);
+            toggleSearch();
+        } else if (index == 1) {
+            if (viewToggleButton != null) {
+                viewToggleButton.performClick();
+            }
+        } else if (menuButton != null) {
+            setTopBarFocus(-1, false);
+            showOptionsMenu(menuButton);
+        }
+    }
+
+    private boolean isSelectionInFirstRow() {
+        if (currentGames.isEmpty()) {
+            return true;
+        }
+        int index = indexOfGame(selectedGamePath);
+        if (index < 0) {
+            index = 0;
+        }
+        return isGridView() ? index < columns : index == 0;
+    }
+
+    private static boolean isGameSelectKey(int keyCode) {
+        return keyCode == KeyEvent.KEYCODE_DPAD_CENTER
+                || keyCode == KeyEvent.KEYCODE_ENTER
+                || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
+                || keyCode == KeyEvent.KEYCODE_BUTTON_A;
     }
 
     private static boolean isGameMovementKey(int keyCode) {
@@ -3031,11 +3602,7 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
     }
 
     private static boolean isGameNavigationKey(int keyCode) {
-        return isGameMovementKey(keyCode)
-                || keyCode == KeyEvent.KEYCODE_DPAD_CENTER
-                || keyCode == KeyEvent.KEYCODE_ENTER
-                || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
-                || keyCode == KeyEvent.KEYCODE_BUTTON_A;
+        return isGameMovementKey(keyCode) || isGameSelectKey(keyCode);
     }
 
     private void initNavSound() {
@@ -3255,29 +3822,15 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
     }
 
     private void pickImportFolder() {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-        try {
-            startActivityForResult(intent, REQUEST_IMPORT_FOLDER);
-        } catch (RuntimeException exception) {
-            // No system document picker (e.g. missing DocumentsUI) -> use built-in browser.
-            pickImportFolderCustom();
-        }
+        // Always use the built-in folder picker: DocumentsUI's "Use this
+        // folder" button cannot be reached with a D-pad.
+        pickImportFolderCustom();
     }
 
     /** Import a game's external SD-card data (e.g. a "sdcarddata" folder) into its SD folder. */
     private void pickSdDataFolder(GameEntry game) {
-        pendingSdDataGame = game.jam;
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        if (intent.resolveActivity(getPackageManager()) == null) {
-            pickSdFolderCustom(game.jam);
-            return;
-        }
-        try {
-            startActivityForResult(intent, REQUEST_IMPORT_SD_DATA);
-        } catch (RuntimeException exception) {
-            pickSdFolderCustom(game.jam);
-        }
+        // Built-in folder picker, same UI and D-pad support as the other flows.
+        pickSdFolderCustom(game.jam);
     }
 
     private void pickSdFolderCustom(File jam) {
@@ -3965,10 +4518,10 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
     }
 
     // ------------------------------------------------------------------
-    // Custom (non-SAF) file browser used when the device has no DocumentsUI.
+    // Built-in (non-SAF) file browser. Used for every picker so behaviour
+    // is identical on devices with and without DocumentsUI.
     // ------------------------------------------------------------------
     private boolean pendingCustomImport = false;
-    private boolean pendingImageIcon = false;
 
     private void pickImportFolderCustom() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
@@ -3995,11 +4548,8 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
                 return;
             }
         }
-        File start = android.os.Environment.getExternalStorageDirectory();
-        if (start == null || !start.isDirectory()) {
-            start = getFilesDir();
-        }
-        showFileBrowser(start);
+        CustomFilePicker.pickFolder(this, "Select folder containing games",
+                dir -> startBatchImportFromFiles(dir));
     }
 
     @Override
@@ -4008,190 +4558,38 @@ opendoja.host.OpenDoJaLog.info(HomeActivity.class, "applyDisplayOrientation: req
         if (requestCode == 9001 && pendingCustomImport) {
             if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 pendingCustomImport = false;
-                File start = android.os.Environment.getExternalStorageDirectory();
-                if (start == null || !start.isDirectory()) start = getFilesDir();
-                showFileBrowser(start);
+                CustomFilePicker.pickFolder(this, "Select folder containing games",
+                        dir -> startBatchImportFromFiles(dir));
             } else {
                 pendingCustomImport = false;
                 Toast.makeText(this, "Storage permission denied", Toast.LENGTH_LONG).show();
             }
         }
-        if (requestCode == 9002 && pendingImageIcon) {
-            if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                pendingImageIcon = false;
-                File start = android.os.Environment.getExternalStorageDirectory();
-                if (start == null || !start.isDirectory()) start = getFilesDir();
-                if (pendingIconGame != null) showImageBrowser(start);
-            } else {
-                pendingImageIcon = false;
-                Toast.makeText(this, "Storage permission denied", Toast.LENGTH_LONG).show();
-            }
-        }
-    }
-
-    private void showFileBrowser(final File dir) {
-        if (dir == null || !dir.isDirectory()) {
-            Toast.makeText(this, "Not a directory", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        android.app.ProgressDialog loading = new android.app.ProgressDialog(this);
-        loading.setMessage("Loading folder...");
-        loading.setIndeterminate(true);
-        loading.show();
-        new Thread(() -> {
-            File[] children = dir.listFiles();
-            List<File> subdirs = new ArrayList<>();
-            if (children != null) {
-                for (File f : children) {
-                    if (f.isDirectory()) subdirs.add(f);
-                }
-            }
-            subdirs.sort((a, b) -> a.getName().compareToIgnoreCase(b.getName()));
-            boolean hasJam = false;
-            if (children != null) {
-                for (File f : children) {
-                    if (f.isFile() && f.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".jam")) {
-                        hasJam = true;
-                        break;
-                    }
-                }
-            }
-            final List<File> finalSubdirs = subdirs;
-            final boolean finalHasJam = hasJam;
-            runOnUiThread(() -> {
-                loading.dismiss();
-                List<String> items = new ArrayList<>();
-                items.add(finalHasJam ? ">> Import this folder (contains .JAM)" : ">> Import this folder (scan subfolders)");
-                File parent = dir.getParentFile();
-                if (parent != null) items.add(".. (parent)");
-                for (File d : finalSubdirs) items.add(d.getName() + "/");
-                final File current = dir;
-                new AlertDialog.Builder(this)
-                        .setTitle(dir.getAbsolutePath())
-                        .setItems(items.toArray(new String[0]), (dialog, which) -> {
-                            if (which == 0) {
-                                new AlertDialog.Builder(this)
-                                        .setTitle("Import games?")
-                                        .setMessage("Scan and import game folders under:\n" + current.getAbsolutePath())
-                                        .setPositiveButton("Import", (d, w) -> startBatchImportFromFiles(current))
-                                        .setNegativeButton("Cancel", null)
-                                        .show();
-                            } else if (parent != null && which == 1) {
-                                showFileBrowser(parent);
-                            } else {
-                                int offset = (parent != null) ? 2 : 1;
-                                int idx = which - offset;
-                                if (idx >= 0 && idx < finalSubdirs.size()) {
-                                    showFileBrowser(finalSubdirs.get(idx));
-                                }
-                            }
-                        })
-                        .setNegativeButton("Cancel", null)
-                        .show();
-            });
-        }).start();
     }
 
     private void pickImageFileCustom(GameEntry game) {
         pendingIconGame = game;
-        pendingImageIcon = true;
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-            if (!android.os.Environment.isExternalStorageManager()) {
-                try {
-                    Intent intent = new Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
-                    intent.setData(android.net.Uri.parse("package:" + getPackageName()));
-                    startActivity(intent);
-                } catch (Exception e) {
-                    try {
-                        startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
-                    } catch (Exception ignored) {
+        // Built-in picker filtered to image files; works with or without
+        // DocumentsUI and is fully D-pad navigable.
+        CustomFilePicker.pickFile(this, "Select icon image",
+                new String[]{".png", ".jpg", ".jpeg", ".webp", ".ico", ".bmp", ".gif"},
+                file -> {
+                    GameEntry target = pendingIconGame;
+                    pendingIconGame = null;
+                    if (target == null) {
+                        return;
                     }
-                }
-                Toast.makeText(this, "Please grant 'All files access', then retry", Toast.LENGTH_LONG).show();
-                return;
-            }
-            pendingImageIcon = false;
-            File start = android.os.Environment.getExternalStorageDirectory();
-            if (start == null || !start.isDirectory()) start = getFilesDir();
-            showImageBrowser(start);
-        } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-            if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
-                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{android.Manifest.permission.READ_EXTERNAL_STORAGE}, 9002);
-                return;
-            }
-            pendingImageIcon = false;
-            File start = android.os.Environment.getExternalStorageDirectory();
-            if (start == null || !start.isDirectory()) start = getFilesDir();
-            showImageBrowser(start);
-        } else {
-            pendingImageIcon = false;
-            File start = android.os.Environment.getExternalStorageDirectory();
-            if (start == null || !start.isDirectory()) start = getFilesDir();
-            showImageBrowser(start);
-        }
+                    try {
+                        saveCustomIconFromFile(target, file);
+                        refreshGames();
+                        Toast.makeText(this, "Icon updated", Toast.LENGTH_SHORT).show();
+                    } catch (Exception exception) {
+                        Toast.makeText(this, "Invalid image: " + exception.getMessage(),
+                                Toast.LENGTH_LONG).show();
+                    }
+                });
     }
 
-    private void showImageBrowser(final File dir) {
-        if (dir == null || !dir.isDirectory()) {
-            Toast.makeText(this, "Not a directory", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        android.app.ProgressDialog loading = new android.app.ProgressDialog(this);
-        loading.setMessage("Loading folder...");
-        loading.setIndeterminate(true);
-        loading.show();
-        new Thread(() -> {
-            File[] children = dir.listFiles();
-            List<File> dirs = new ArrayList<>();
-            List<File> files = new ArrayList<>();
-            if (children != null) {
-                for (File f : children) {
-                    if (f.isDirectory()) dirs.add(f);
-                    else if (f.isFile()) files.add(f);
-                }
-            }
-            dirs.sort((a, b) -> a.getName().compareToIgnoreCase(b.getName()));
-            files.sort((a, b) -> a.getName().compareToIgnoreCase(b.getName()));
-            List<File> entries = new ArrayList<>();
-            entries.addAll(dirs);
-            entries.addAll(files);
-            final List<File> finalEntries = entries;
-            runOnUiThread(() -> {
-                loading.dismiss();
-                File parent = dir.getParentFile();
-                List<String> items = new ArrayList<>();
-                if (parent != null) items.add(".. (parent)");
-                for (File f : finalEntries) {
-                    items.add(f.isDirectory() ? f.getName() + "/" : f.getName());
-                }
-                new AlertDialog.Builder(this)
-                        .setTitle(dir.getAbsolutePath())
-                        .setItems(items.toArray(new String[0]), (dialog, which) -> {
-                            if (parent != null && which == 0) {
-                                showImageBrowser(parent);
-                                return;
-                            }
-                            int idx = (parent != null) ? which - 1 : which;
-                            if (idx < 0 || idx >= finalEntries.size()) return;
-                            File selected = finalEntries.get(idx);
-                            if (selected.isDirectory()) {
-                                showImageBrowser(selected);
-                            } else if (pendingIconGame != null) {
-                                try {
-                                    saveCustomIconFromFile(pendingIconGame, selected);
-                                    refreshGames();
-                                    Toast.makeText(this, "Icon updated", Toast.LENGTH_SHORT).show();
-                                } catch (Exception e) {
-                                    Toast.makeText(this, "Invalid image: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                                }
-                            }
-                        })
-                        .setNegativeButton("Cancel", null)
-                        .show();
-            });
-        }).start();
-    }
     private void startBatchImportFromFiles(File root) {
         android.app.ProgressDialog scanning = new android.app.ProgressDialog(this);
         scanning.setMessage("Scanning for games...");

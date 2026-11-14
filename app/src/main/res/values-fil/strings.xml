@@ -79,6 +79,7 @@
     <string name="unbound">Hindi naka-bind</string>
     <string name="reset">I-reset</string>
     <string name="doja_key">DoJa key %1$d</string>
+    <string name="host_action">Aksyon</string>
     <string name="exit_game_action">Lumabas sa laro</string>
     <string name="display_title">Display</string>
     <string name="display_title_game">Display: %1$s</string>
@@ -109,6 +110,7 @@
     <string name="display_fps">System</string>
     <string name="show_fps">Ipakita ang FPS</string>
     <string name="use_hardware_rendering">Gumamit ng Hardware Rendering</string>
+    <string name="use_system_keyboard">Gamitin ang keyboard ng system</string>
     <string name="reset_to_global">I-reset sa Global Defaults</string>
     <string name="theme_title">Tema at BGM</string>
     <string name="theme">Tema</string>
@@ -122,7 +124,7 @@
     <string name="no_bgm">Walang BGM</string>
     <string name="bgm">BGM</string>
     <string name="default_bgm">Default BGM</string>
-    <string name="game_menu">Menu ng Laro</string>
+    <string name="game_menu">Menu ng Emulator</string>
     <string name="edit_buttons">I-edit ang mga Button</string>
     <string name="edit_buttons_move">Ilipat</string>
     <string name="edit_buttons_resize">I-resize</string>
@@ -133,4 +135,6 @@
     <string name="edit_buttons_scale">Scale %1$d%%</string>
     <string name="hide_keypad">Itago ang Keypad</string>
     <string name="exit_game">Lumabas sa Laro</string>
+    <string name="haptic_feedback">Vibrasyon sa pagpindot</string>
+    <string name="haptic_feedback_value">Vibrasyon sa pagpindot: %1$d%%</string>
 </resources>

@@ -132,4 +132,12 @@ public final class AnchorButton extends Component implements Interactable {
     boolean acceptsFocusOn(Panel panel) {
         return enabled && super.acceptsFocusOn(panel);
     }
+
+    String hostText() {
+        return text;
+    }
+
+    boolean hostEnabled() {
+        return enabled;
+    }
 }

@@ -79,6 +79,7 @@
     <string name="unbound">Не назначено</string>
     <string name="reset">Сбросить</string>
     <string name="doja_key">Клавиша DoJa %1$d</string>
+    <string name="host_action">Действие</string>
     <string name="exit_game_action">Выйти из игры</string>
     <string name="display_title">Экран</string>
     <string name="display_title_game">Экран: %1$s</string>
@@ -109,6 +110,7 @@
     <string name="display_fps">Система</string>
     <string name="show_fps">Показывать FPS</string>
     <string name="use_hardware_rendering">Аппаратный рендеринг</string>
+    <string name="use_system_keyboard">Использовать системную клавиатуру</string>
     <string name="reset_to_global">Сбросить к глобальным настройкам</string>
     <string name="theme_title">Тема и музыка</string>
     <string name="theme">Тема</string>
@@ -122,7 +124,7 @@
     <string name="no_bgm">Без музыки</string>
     <string name="bgm">Музыка</string>
     <string name="default_bgm">Музыка по умолчанию</string>
-    <string name="game_menu">Меню игры</string>
+    <string name="game_menu">Меню эмулятора</string>
     <string name="edit_buttons">Редактировать кнопки</string>
     <string name="edit_buttons_move">Переместить</string>
     <string name="edit_buttons_resize">Размер</string>
@@ -133,4 +135,6 @@
     <string name="edit_buttons_scale">Масштаб %1$d%%</string>
     <string name="hide_keypad">Скрыть клавиатуру</string>
     <string name="exit_game">Выйти из игры</string>
+    <string name="haptic_feedback">Тактильная отдача</string>
+    <string name="haptic_feedback_value">Тактильная отдача: %1$d%%</string>
 </resources>

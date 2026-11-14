@@ -4,6 +4,7 @@ import com.nttdocomo.lang.IllegalStateException;
 import com.nttdocomo.opt.ui.PhoneSystem2;
 import com.nttdocomo.system.StoreException;
 import opendoja.host.DoJaRuntime;
+import opendoja.host.device.DoJaVibrationSupport;
 import opendoja.host.system.DoJaSystemRegistry;
 
 import opendoja.compat.awt.*;
@@ -302,6 +303,15 @@ public class PhoneSystem {
                 runtime.enableKeypadGroup(attribute);
             }
             ATTRIBUTES.put(device, attribute);
+            return;
+        }
+        if (device == DEV_VIBRATOR) {
+            ATTRIBUTES.put(device, attribute);
+            try {
+                DoJaVibrationSupport.setEnabled(attribute == ATTR_VIBRATOR_ON);
+            } catch (Throwable ignored) {
+                // Vibration is best-effort and must never break a title.
+            }
             return;
         }
         ATTRIBUTES.put(device, attribute);

@@ -79,6 +79,7 @@
     <string name="unbound">미할당</string>
     <string name="reset">초기화</string>
     <string name="doja_key">DoJa 키 %1$d</string>
+    <string name="host_action">액션</string>
     <string name="exit_game_action">게임 종료</string>
     <string name="display_title">표시</string>
     <string name="display_title_game">표시: %1$s</string>
@@ -109,6 +110,7 @@
     <string name="display_fps">시스템</string>
     <string name="show_fps">FPS 표시</string>
     <string name="use_hardware_rendering">하드웨어 렌더링 사용</string>
+    <string name="use_system_keyboard">시스템 키보드 사용</string>
     <string name="reset_to_global">전역 기본값으로 초기화</string>
     <string name="theme_title">테마와 BGM</string>
     <string name="theme">테마</string>
@@ -122,7 +124,7 @@
     <string name="no_bgm">BGM 없음</string>
     <string name="bgm">BGM</string>
     <string name="default_bgm">기본 BGM</string>
-    <string name="game_menu">게임 메뉴</string>
+    <string name="game_menu">에뮬레이터 메뉴</string>
     <string name="edit_buttons">버튼 편집</string>
     <string name="edit_buttons_move">이동</string>
     <string name="edit_buttons_resize">크기 조정</string>
@@ -133,4 +135,6 @@
     <string name="edit_buttons_scale">배율 %1$d%%</string>
     <string name="hide_keypad">키패드 숨기기</string>
     <string name="exit_game">게임 종료</string>
+    <string name="haptic_feedback">햇틱 피드백</string>
+    <string name="haptic_feedback_value">햇틱 피드백: %1$d%%</string>
 </resources>

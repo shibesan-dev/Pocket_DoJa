@@ -222,6 +222,15 @@ final class AndroidOglHardwareBackend extends OglHardwareBackend {
 
     @Override
     void prepareForSoftwareMutation() {
+        if (!initialized && !failed) {
+            // A 2D-only renderer has no GPU frame to synchronize. Creating an
+            // EGL context here would leak one native context per Graphics object
+            // (titles commonly call Canvas.getGraphics() once per frame without
+            // disposing it). Defer EGL setup until a real 3D call needs it.
+            colorDirty = true;
+            frameColorValid = false;
+            return;
+        }
         if (!ensureUsable()) {
             return;
         }
@@ -245,6 +254,11 @@ final class AndroidOglHardwareBackend extends OglHardwareBackend {
 
     @Override
     void flushForReadback() {
+        if (!initialized) {
+            // Nothing was drawn through this backend, so there is no GPU frame
+            // to read back and no reason to create an EGL context.
+            return;
+        }
         if (!ensureUsable()) {
             return;
         }
@@ -256,7 +270,7 @@ final class AndroidOglHardwareBackend extends OglHardwareBackend {
     @Override
     void flushForPresentation() {
         flushForReadback();
-        if (!ensureUsable()) {
+        if (!initialized || !ensureUsable()) {
             return;
         }
         // DesktopSurface.present() ends the software depth frame at the same

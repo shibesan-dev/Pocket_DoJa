@@ -79,6 +79,7 @@
     <string name="unbound">Belum dipetakan</string>
     <string name="reset">Set semula</string>
     <string name="doja_key">Kekunci DoJa %1$d</string>
+    <string name="host_action">Tindakan</string>
     <string name="exit_game_action">Keluar permainan</string>
     <string name="display_title">Paparan</string>
     <string name="display_title_game">Paparan: %1$s</string>
@@ -109,6 +110,7 @@
     <string name="display_fps">Sistem</string>
     <string name="show_fps">Tunjuk FPS</string>
     <string name="use_hardware_rendering">Guna pemaparan perkakasan</string>
+    <string name="use_system_keyboard">Gunakan Papan Kekunci Sistem</string>
     <string name="reset_to_global">Set semula kepada lalai global</string>
     <string name="theme_title">Tema dan BGM</string>
     <string name="theme">Tema</string>
@@ -122,7 +124,7 @@
     <string name="no_bgm">Tiada BGM</string>
     <string name="bgm">BGM</string>
     <string name="default_bgm">BGM lalai</string>
-    <string name="game_menu">Menu permainan</string>
+    <string name="game_menu">Menu Emulator</string>
     <string name="edit_buttons">Sunting butang</string>
     <string name="edit_buttons_move">Gerak</string>
     <string name="edit_buttons_resize">Ubah saiz</string>
@@ -133,4 +135,6 @@
     <string name="edit_buttons_scale">Skala %1$d%%</string>
     <string name="hide_keypad">Sembunyi pad kekunci</string>
     <string name="exit_game">Keluar permainan</string>
+    <string name="haptic_feedback">Maklum balas haptik</string>
+    <string name="haptic_feedback_value">Maklum balas haptik: %1$d%%</string>
 </resources>

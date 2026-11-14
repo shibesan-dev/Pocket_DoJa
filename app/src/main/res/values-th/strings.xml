@@ -79,6 +79,7 @@
     <string name="unbound">ยังไม่ผูก</string>
     <string name="reset">รีเซ็ต</string>
     <string name="doja_key">ปุ่ม DoJa %1$d</string>
+    <string name="host_action">การกระทำ</string>
     <string name="exit_game_action">ออกจากเกม</string>
     <string name="display_title">แสดงผล</string>
     <string name="display_title_game">แสดงผล: %1$s</string>
@@ -109,6 +110,7 @@
     <string name="display_fps">ระบบ</string>
     <string name="show_fps">แสดง FPS</string>
     <string name="use_hardware_rendering">ใช้การเรนเดอร์ด้วยฮาร์ดแวร์</string>
+    <string name="use_system_keyboard">ใช้แป้นพิมพ์ของระบบ</string>
     <string name="reset_to_global">รีเซ็ตเป็นค่าเริ่มต้นทั่วไป</string>
     <string name="theme_title">ธีมและเพลงพื้นหลัง</string>
     <string name="theme">ธีม</string>
@@ -122,7 +124,7 @@
     <string name="no_bgm">ไม่มีเพลงพื้นหลัง</string>
     <string name="bgm">เพลงพื้นหลัง</string>
     <string name="default_bgm">เพลงพื้นหลังเริ่มต้น</string>
-    <string name="game_menu">เมนูเกม</string>
+    <string name="game_menu">เมนูอีมูเลเตอร์</string>
     <string name="edit_buttons">แก้ไขปุ่ม</string>
     <string name="edit_buttons_move">ย้าย</string>
     <string name="edit_buttons_resize">ปรับขนาด</string>
@@ -133,4 +135,6 @@
     <string name="edit_buttons_scale">ขนาด %1$d%%</string>
     <string name="hide_keypad">ซ่อนแป้นพิมพ์</string>
     <string name="exit_game">ออกจากเกม</string>
+    <string name="haptic_feedback">การสั่นเมื่อสัมผัส</string>
+    <string name="haptic_feedback_value">การสั่นเมื่อสัมผัส: %1$d%%</string>
 </resources>

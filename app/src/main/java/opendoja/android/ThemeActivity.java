@@ -8,7 +8,6 @@ import java.io.InputStream;
 import android.net.Uri;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Bundle;
 import android.view.Gravity;
@@ -51,6 +50,8 @@ public class ThemeActivity extends Activity {
     private TextView defaultBgmRow;
     private TextView selectBgmButton;
     private TextView noBgmRow;
+    private TextView firstThemeRow;
+    private boolean initialFocusApplied;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -94,10 +95,12 @@ public class ThemeActivity extends Activity {
                 updateHighlights(themeRows, pendingTheme);
             });
             row.setTag(theme);
+            addFocusHighlight(row);
             themeRows.add(row);
             root.addView(row, matchWrap());
         }
         updateHighlights(themeRows, pendingTheme);
+        firstThemeRow = themeRows.get(0);
 
         TextView sectionSkin = new TextView(this);
         sectionSkin.setText("Skin");
@@ -118,6 +121,7 @@ public class ThemeActivity extends Activity {
                 updateHighlights(skinRows, pendingSkin);
             });
             row.setTag(skin);
+            addFocusHighlight(row);
             skinRows.add(row);
             root.addView(row, matchWrap());
         }
@@ -147,6 +151,7 @@ public class ThemeActivity extends Activity {
             HomeActivity.stopBgmStatic();
             updateBgmSelection();
         });
+        addFocusHighlight(defaultBgmRow);
         root.addView(defaultBgmRow, matchWrap());
 
         selectBgmButton = new TextView(this);
@@ -154,21 +159,11 @@ public class ThemeActivity extends Activity {
         selectBgmButton.setTextSize(16f);
         selectBgmButton.setPadding(dp(12), dp(10), dp(12), dp(10));
         selectBgmButton.setOnClickListener(v -> {
-            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("*/*");
-            intent.putExtra(Intent.EXTRA_MIME_TYPES,
-                    new String[]{"audio/*", "application/octet-stream"});
-            if (intent.resolveActivity(getPackageManager()) == null) {
-                pickBgmCustom();
-                return;
-            }
-            try {
-                startActivityForResult(intent, 1);
-            } catch (RuntimeException exception) {
-                pickBgmCustom();
-            }
+            // Always use the built-in picker so the file list is fully
+            // D-pad navigable and does not depend on DocumentsUI.
+            pickBgmCustom();
         });
+        addFocusHighlight(selectBgmButton);
         root.addView(selectBgmButton, matchWrap());
 
         noBgmRow = new TextView(this);
@@ -182,6 +177,7 @@ public class ThemeActivity extends Activity {
             HomeActivity.stopBgmStatic();
             updateBgmSelection();
         });
+        addFocusHighlight(noBgmRow);
         root.addView(noBgmRow, matchWrap());
         updateBgmSelection();
 
@@ -193,25 +189,49 @@ public class ThemeActivity extends Activity {
         ok.setTextSize(16f);
         ok.setPadding(dp(16), dp(10), dp(16), dp(10));
         ok.setOnClickListener(v -> commitAndFinish());
+        addFocusHighlight(ok);
         buttons.addView(ok);
         TextView cancel = new TextView(this);
         cancel.setText(R.string.cancel);
         cancel.setTextSize(16f);
         cancel.setPadding(dp(16), dp(10), dp(16), dp(10));
         cancel.setOnClickListener(v -> finish());
+        addFocusHighlight(cancel);
         buttons.addView(cancel);
         root.addView(buttons, matchWrap());
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
+        // Let individual rows take D-pad focus instead of the ScrollView.
+        scroll.setFocusable(false);
         scroll.addView(root);
         setContentView(scroll);
+        scroll.post(() -> {
+            if (firstThemeRow != null) {
+                firstThemeRow.requestFocus();
+            }
+        });
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        // The post() request above can run before the window gains focus (for
+        // example when this screen is opened with the D-pad), leaving no view
+        // focused so the first key press is swallowed. Claim the initial focus
+        // once the window is actually focusable, like the Settings screen.
+        if (hasFocus && !initialFocusApplied && firstThemeRow != null) {
+            initialFocusApplied = true;
+            firstThemeRow.requestFocus();
+        }
     }
 
     private void updateHighlights(List<TextView> rows, String selected) {
         for (TextView row : rows) {
-            row.setBackgroundColor(selected != null && selected.equals(row.getTag())
-                    ? 0x663080FF : 0x00000000);
+            boolean isSelected = selected != null && selected.equals(row.getTag());
+            row.setBackgroundResource(isSelected
+                    ? R.drawable.option_row_selected_background
+                    : R.drawable.option_row_background);
         }
     }
 
@@ -247,7 +267,7 @@ public class ThemeActivity extends Activity {
         }
     }
 
-    /** Fallback used when the device has no system document picker. */
+    /** Built-in picker: works with or without DocumentsUI and is D-pad navigable. */
     private void pickBgmCustom() {
         CustomFilePicker.pickFile(this, "Select audio file",
                 new String[]{".mp3", ".ogg", ".mld"}, file -> {
@@ -363,13 +383,19 @@ public class ThemeActivity extends Activity {
                 && new java.io.File(pendingBgmPath).exists();
         boolean noSelected = !pendingBgmEnabled;
         if (defaultBgmRow != null) {
-            defaultBgmRow.setBackgroundColor(defaultSelected ? 0x663080FF : 0x00000000);
+            defaultBgmRow.setBackgroundResource(defaultSelected
+                    ? R.drawable.option_row_selected_background
+                    : R.drawable.option_row_background);
         }
         if (selectBgmButton != null) {
-            selectBgmButton.setBackgroundColor(customSelected ? 0x663080FF : 0x00000000);
+            selectBgmButton.setBackgroundResource(customSelected
+                    ? R.drawable.option_row_selected_background
+                    : R.drawable.option_row_background);
         }
         if (noBgmRow != null) {
-            noBgmRow.setBackgroundColor(noSelected ? 0x663080FF : 0x00000000);
+            noBgmRow.setBackgroundResource(noSelected
+                    ? R.drawable.option_row_selected_background
+                    : R.drawable.option_row_background);
         }
         if (bgmLabel != null) {
             if (!pendingBgmEnabled) {
@@ -382,6 +408,19 @@ public class ThemeActivity extends Activity {
                         ? "Custom track" : pendingBgmName);
             }
         }
+    }
+
+    private void addFocusHighlight(TextView row) {
+        row.setFocusable(true);
+        // Deliberately not focusable in touch mode: otherwise the first tap
+        // only focuses the row and a second tap is needed to click it, unlike
+        // the Settings screen where one tap selects the option.
+        row.setFocusableInTouchMode(false);
+        // Same treatment as the Settings screen: the selected row keeps its
+        // fill, a focused unselected row shows only the outline. The platform
+        // highlight is disabled so the two never stack.
+        FocusHighlight.disable(row);
+        row.setBackgroundResource(R.drawable.option_row_background);
     }
 
     private int dp(int value) {

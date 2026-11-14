@@ -27,7 +27,10 @@ public class DisplayActivity extends Activity {
     static final String KEY_HIDE_KEYPAD = "hideKeypad";
     static final String KEY_SHOW_FPS = "showFps";
     static final String KEY_USE_HARDWARE_RENDERER = "useHardwareRenderer";
+    static final String KEY_USE_SYSTEM_KEYBOARD = "useSystemKeyboard";
     static final String KEY_DEBUG = "debugLogging";
+    static final String KEY_DEFAULTS_VERSION = "defaultsVersion";
+    static final int DEFAULTS_VERSION = 1;
     static final String INHERIT = "inherit";
 
     static final String ORIENTATION_PORTRAIT = "portrait";
@@ -50,6 +53,8 @@ public class DisplayActivity extends Activity {
     private String pendingDebug;
     private boolean pendingShowFps;
     private boolean pendingUseHardwareRenderer;
+    private boolean pendingUseSystemKeyboard;
+    private int pendingHapticIntensity;
     private boolean pendingUseSystem;
     private String pendingLanguage;
 
@@ -59,9 +64,46 @@ public class DisplayActivity extends Activity {
     private final List<OptionRow> filterRows = new ArrayList<>();
     private final List<OptionRow> debugRows = new ArrayList<>();
 
+    /**
+     * Applies the shipping defaults once. Preference files survive app updates,
+     * so changing a default in code has no effect on an existing install
+     * without this bump. Users can change the values again afterwards.
+     */
+    static void applyShippingDefaults(android.content.Context context) {
+        if (context == null) {
+            return;
+        }
+        SharedPreferences prefs = context.getSharedPreferences(
+                PREFS_NAME, android.content.Context.MODE_PRIVATE);
+        if (prefs.getInt(KEY_DEFAULTS_VERSION, 0) >= DEFAULTS_VERSION) {
+            return;
+        }
+        prefs.edit()
+                .putBoolean(KEY_USE_HARDWARE_RENDERER, true)   // on by default
+                .putString(KEY_DEBUG, "disable")               // debugging off by default
+                .putBoolean(KEY_SHOW_FPS, false)               // FPS counter off by default
+                .putInt(ButtonHaptics.PREF_KEY, ButtonHaptics.DEFAULT_INTENSITY)
+                .putInt(KEY_DEFAULTS_VERSION, DEFAULTS_VERSION)
+                .apply();
+    }
+
+    /**
+     * True when Search/Rename should use the device's installed IME instead of
+     * the built-in D-pad keyboard. Defaults to false because system IMEs are not
+     * reliably navigable with a remote.
+     */
+    static boolean isSystemKeyboardEnabled(android.content.Context context) {
+        if (context == null) {
+            return false;
+        }
+        return context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
+                .getBoolean(KEY_USE_SYSTEM_KEYBOARD, false);
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        applyShippingDefaults(this);
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         gameId = getIntent() != null ? getIntent().getStringExtra("gameId") : null;
         boolean perGame = gameId != null && !gameId.isEmpty();
@@ -86,6 +128,9 @@ public class DisplayActivity extends Activity {
         pendingDebug = prefs.getString(KEY_DEBUG, "disable");
         pendingShowFps = prefs.getBoolean(KEY_SHOW_FPS, false);
         pendingUseHardwareRenderer = prefs.getBoolean(KEY_USE_HARDWARE_RENDERER, true);
+        pendingUseSystemKeyboard = prefs.getBoolean(KEY_USE_SYSTEM_KEYBOARD, false);
+        pendingHapticIntensity = prefs.getInt(ButtonHaptics.PREF_KEY,
+                ButtonHaptics.DEFAULT_INTENSITY);
         pendingUseSystem = prefs.getBoolean(LocaleHelper.KEY_USE_SYSTEM_LANGUAGE, true);
         pendingLanguage = prefs.getString(LocaleHelper.KEY_LANGUAGE, "en");
 
@@ -220,6 +265,52 @@ public class DisplayActivity extends Activity {
             hardwareCb.setOnCheckedChangeListener((b, checked) ->
                     pendingUseHardwareRenderer = checked);
             root.addView(hardwareCb, matchWrap());
+
+            android.widget.CheckBox systemKeyboardCb = new android.widget.CheckBox(this);
+            systemKeyboardCb.setText(R.string.use_system_keyboard);
+            systemKeyboardCb.setChecked(pendingUseSystemKeyboard);
+            systemKeyboardCb.setOnCheckedChangeListener((b, checked) ->
+                    pendingUseSystemKeyboard = checked);
+            root.addView(systemKeyboardCb, matchWrap());
+
+            // Touch haptics for the on-screen controls: 0 = off.
+            TextView hapticLabel = new TextView(this);
+            hapticLabel.setTextSize(16f);
+            hapticLabel.setPadding(dp(12), dp(12), dp(12), 0);
+            hapticLabel.setText(getString(R.string.haptic_feedback_value,
+                    pendingHapticIntensity));
+            root.addView(hapticLabel, matchWrap());
+
+            android.widget.SeekBar hapticSeek = new android.widget.SeekBar(this);
+            hapticSeek.setMax(100);
+            hapticSeek.setProgress(pendingHapticIntensity);
+            hapticSeek.setPadding(dp(12), 0, dp(12), dp(4));
+            hapticSeek.setOnSeekBarChangeListener(
+                    new android.widget.SeekBar.OnSeekBarChangeListener() {
+                        @Override
+                        public void onProgressChanged(android.widget.SeekBar seekBar,
+                                                      int progress, boolean fromUser) {
+                            pendingHapticIntensity = progress;
+                            hapticLabel.setText(getString(
+                                    R.string.haptic_feedback_value, progress));
+                            if (fromUser) {
+                                // Live preview: feel the strength while dragging.
+                                ButtonHaptics.tick(DisplayActivity.this, progress);
+                            }
+                        }
+
+                        @Override
+                        public void onStartTrackingTouch(android.widget.SeekBar seekBar) {
+                        }
+
+                        @Override
+                        public void onStopTrackingTouch(android.widget.SeekBar seekBar) {
+                            // Preview the selected strength.
+                            ButtonHaptics.tick(DisplayActivity.this,
+                                    pendingHapticIntensity);
+                        }
+                    });
+            root.addView(hapticSeek, matchWrap());
         }
 
         if (!perGame) {
@@ -311,6 +402,9 @@ public class DisplayActivity extends Activity {
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
+        // The list itself must not draw a screen-sized focus ring; the option
+        // rows and checkboxes show the blue item highlight instead.
+        FocusHighlight.disable(scroll);
         scroll.addView(root);
         setContentView(scroll);
 
@@ -326,6 +420,10 @@ public class DisplayActivity extends Activity {
             row.setText(labels[i]);
             row.setTextSize(16f);
             row.setPadding(dp(12), dp(10), dp(12), dp(10));
+            // Selection fill and focus outline live in one state list, so a
+            // focused selected row does not stack the platform focus ring on
+            // top of the blue fill.
+            row.setBackgroundResource(R.drawable.option_row_background);
             row.setOnClickListener(v -> {
                 setter.accept(value);
                 refreshHighlights();
@@ -336,20 +434,21 @@ public class DisplayActivity extends Activity {
     }
 
     private void refreshHighlights() {
-        for (OptionRow row : orientationRows) {
-            row.view.setBackgroundColor(row.value.equals(pendingOrientation) ? 0x663080FF : 0x00000000);
-        }
-        for (OptionRow row : modeRows) {
-            row.view.setBackgroundColor(row.value.equals(pendingMode) ? 0x663080FF : 0x00000000);
-        }
-        for (OptionRow row : gameDisplayRows) {
-            row.view.setBackgroundColor(row.value.equals(pendingGameDisplay) ? 0x663080FF : 0x00000000);
-        }
-        for (OptionRow row : filterRows) {
-            row.view.setBackgroundColor(row.value.equals(pendingFilter) ? 0x663080FF : 0x00000000);
-        }
-        for (OptionRow row : debugRows) {
-            row.view.setBackgroundColor(row.value.equals(pendingDebug) ? 0x663080FF : 0x00000000);
+        refreshRowGroup(orientationRows, pendingOrientation);
+        refreshRowGroup(modeRows, pendingMode);
+        refreshRowGroup(gameDisplayRows, pendingGameDisplay);
+        refreshRowGroup(filterRows, pendingFilter);
+        refreshRowGroup(debugRows, pendingDebug);
+    }
+
+    private void refreshRowGroup(List<OptionRow> rows, String selected) {
+        for (OptionRow row : rows) {
+            boolean isSelected = row.value.equals(selected);
+            // Swap backgrounds instead of using View.setSelected(), because
+            // the platform text color would dim the text of a selected view.
+            row.view.setBackgroundResource(isSelected
+                    ? R.drawable.option_row_selected_background
+                    : R.drawable.option_row_background);
         }
     }
 
@@ -388,6 +487,8 @@ public class DisplayActivity extends Activity {
              editor.putString(KEY_DEBUG, pendingDebug);
              editor.putBoolean(KEY_SHOW_FPS, pendingShowFps);
              editor.putBoolean(KEY_USE_HARDWARE_RENDERER, pendingUseHardwareRenderer);
+             editor.putBoolean(KEY_USE_SYSTEM_KEYBOARD, pendingUseSystemKeyboard);
+             editor.putInt(ButtonHaptics.PREF_KEY, pendingHapticIntensity);
              editor.putBoolean(LocaleHelper.KEY_USE_SYSTEM_LANGUAGE, pendingUseSystem);
              editor.putString(LocaleHelper.KEY_LANGUAGE, pendingLanguage);
          }

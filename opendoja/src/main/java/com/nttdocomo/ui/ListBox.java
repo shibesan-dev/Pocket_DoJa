@@ -1,6 +1,7 @@
 package com.nttdocomo.ui;
 
 import com.nttdocomo.lang.XString;
+import com.nttdocomo.lang._XStringSupport;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,6 +32,7 @@ public final class ListBox extends Component implements Interactable {
     private final int type;
     private final int rows;
     private boolean enabled = true;
+    private int cursor;
 
     /**
      * Creates an empty list box with the specified type.
@@ -102,6 +104,7 @@ public final class ListBox extends Component implements Interactable {
         }
         this.items.clear();
         selected.clear();
+        cursor = 0;
         for (String item : items) {
             append(item);
         }
@@ -120,6 +123,7 @@ public final class ListBox extends Component implements Interactable {
         }
         this.items.clear();
         selected.clear();
+        cursor = 0;
         for (XString item : items) {
             append(item);
         }
@@ -205,6 +209,7 @@ public final class ListBox extends Component implements Interactable {
     public void removeAll() {
         items.clear();
         selected.clear();
+        cursor = 0;
     }
 
     /**
@@ -286,6 +291,64 @@ public final class ListBox extends Component implements Interactable {
     @Override
     boolean acceptsFocusOn(Panel panel) {
         return enabled && super.acceptsFocusOn(panel);
+    }
+
+    int hostType() {
+        return type;
+    }
+
+    int hostRows() {
+        return rows;
+    }
+
+    int hostItemCount() {
+        return items.size();
+    }
+
+    String hostItem(int index) {
+        if (index < 0 || index >= items.size()) {
+            return "";
+        }
+        Item item = items.get(index);
+        return item.text() != null ? item.text() : _XStringSupport.valueOrEmpty(item.xText());
+    }
+
+    boolean hostSelected(int index) {
+        return selected.contains(index);
+    }
+
+    int hostCursor() {
+        return cursor;
+    }
+
+    boolean hostMoveCursor(int delta) {
+        if (items.isEmpty()) {
+            return false;
+        }
+        int next = cursor + delta;
+        if (next < 0 || next >= items.size()) {
+            return false;
+        }
+        cursor = next;
+        return true;
+    }
+
+    void hostActivate() {
+        if (items.isEmpty()) {
+            return;
+        }
+        if (cursor < 0 || cursor >= items.size()) {
+            cursor = 0;
+        }
+        if ((type == CHECK_BOX || type == MULTIPLE_SELECT) && selected.contains(cursor)) {
+            deselect(cursor);
+        } else {
+            select(cursor);
+        }
+    }
+
+    boolean hostEnabled() {
+        return enabled;
     }
 
     private void fireSelectionChangedIfVisible() {

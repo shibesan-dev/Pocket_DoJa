@@ -79,6 +79,7 @@
     <string name="unbound">Nieprzypisany</string>
     <string name="reset">Resetuj</string>
     <string name="doja_key">Klawisz DoJa %1$d</string>
+    <string name="host_action">Akcja</string>
     <string name="exit_game_action">Wyjdź z gry</string>
     <string name="display_title">Wyświetlanie</string>
     <string name="display_title_game">Wyświetlanie: %1$s</string>
@@ -109,6 +110,7 @@
     <string name="display_fps">System</string>
     <string name="show_fps">Pokaż FPS</string>
     <string name="use_hardware_rendering">Użyj renderowania sprzętowego</string>
+    <string name="use_system_keyboard">Użyj klawiatury systemowej</string>
     <string name="reset_to_global">Resetuj do ustawień globalnych</string>
     <string name="theme_title">Motyw i muzyka</string>
     <string name="theme">Motyw</string>
@@ -122,7 +124,7 @@
     <string name="no_bgm">Brak muzyki</string>
     <string name="bgm">Muzyka</string>
     <string name="default_bgm">Domyślna muzyka</string>
-    <string name="game_menu">Menu gry</string>
+    <string name="game_menu">Menu emulatora</string>
     <string name="edit_buttons">Edytuj przyciski</string>
     <string name="edit_buttons_move">Przenieś</string>
     <string name="edit_buttons_resize">Zmień rozmiar</string>
@@ -133,4 +135,6 @@
     <string name="edit_buttons_scale">Skala %1$d%%</string>
     <string name="hide_keypad">Ukryj klawiaturę</string>
     <string name="exit_game">Wyjdź z gry</string>
+    <string name="haptic_feedback">Wibracje dotykowe</string>
+    <string name="haptic_feedback_value">Wibracje dotykowe: %1$d%%</string>
 </resources>

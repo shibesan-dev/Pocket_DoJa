@@ -79,6 +79,7 @@
     <string name="unbound">Chưa gán</string>
     <string name="reset">Đặt lại</string>
     <string name="doja_key">Phím DoJa %1$d</string>
+    <string name="host_action">Hành động</string>
     <string name="exit_game_action">Thoát trò chơi</string>
     <string name="display_title">Hiển thị</string>
     <string name="display_title_game">Hiển thị: %1$s</string>
@@ -109,6 +110,7 @@
     <string name="display_fps">Hệ thống</string>
     <string name="show_fps">Hiện FPS</string>
     <string name="use_hardware_rendering">Dùng kết xuất phần cứng</string>
+    <string name="use_system_keyboard">Dùng bàn phím hệ thống</string>
     <string name="reset_to_global">Đặt lại về mặc định toàn cục</string>
     <string name="theme_title">Giao diện và nhạc nền</string>
     <string name="theme">Giao diện</string>
@@ -122,7 +124,7 @@
     <string name="no_bgm">Không có nhạc nền</string>
     <string name="bgm">Nhạc nền</string>
     <string name="default_bgm">Nhạc nền mặc định</string>
-    <string name="game_menu">Menu game</string>
+    <string name="game_menu">Menu giả lập</string>
     <string name="edit_buttons">Chỉnh sửa nút</string>
     <string name="edit_buttons_move">Di chuyển</string>
     <string name="edit_buttons_resize">Đổi kích thước</string>
@@ -133,4 +135,6 @@
     <string name="edit_buttons_scale">Tỷ lệ %1$d%%</string>
     <string name="hide_keypad">Ẩn bàn phím</string>
     <string name="exit_game">Thoát game</string>
+    <string name="haptic_feedback">Phản hồi rung</string>
+    <string name="haptic_feedback_value">Phản hồi rung: %1$d%%</string>
 </resources>

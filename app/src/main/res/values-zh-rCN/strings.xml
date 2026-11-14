@@ -79,6 +79,7 @@
     <string name="unbound">未绑定</string>
     <string name="reset">重置</string>
     <string name="doja_key">DoJa 键 %1$d</string>
+    <string name="host_action">操作</string>
     <string name="exit_game_action">退出游戏</string>
     <string name="display_title">显示</string>
     <string name="display_title_game">显示: %1$s</string>
@@ -109,6 +110,7 @@
     <string name="display_fps">系统</string>
     <string name="show_fps">显示 FPS</string>
     <string name="use_hardware_rendering">使用硬件渲染</string>
+    <string name="use_system_keyboard">使用系统键盘</string>
     <string name="reset_to_global">重置为全局默认</string>
     <string name="theme_title">主题与背景音乐</string>
     <string name="theme">主题</string>
@@ -122,7 +124,7 @@
     <string name="no_bgm">无背景音乐</string>
     <string name="bgm">背景音乐</string>
     <string name="default_bgm">默认背景音乐</string>
-    <string name="game_menu">游戏菜单</string>
+    <string name="game_menu">模拟器菜单</string>
     <string name="edit_buttons">编辑按钮</string>
     <string name="edit_buttons_move">移动</string>
     <string name="edit_buttons_resize">调整大小</string>
@@ -133,4 +135,6 @@
     <string name="edit_buttons_scale">缩放 %1$d%%</string>
     <string name="hide_keypad">隐藏键盘</string>
     <string name="exit_game">退出游戏</string>
+    <string name="haptic_feedback">触感反馈</string>
+    <string name="haptic_feedback_value">触感反馈：%1$d%%</string>
 </resources>

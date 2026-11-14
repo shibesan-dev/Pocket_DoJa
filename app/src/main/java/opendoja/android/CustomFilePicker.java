@@ -11,10 +11,9 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Minimal built-in file/folder picker used as a fallback when the device has no system
- * DocumentsUI (ACTION_OPEN_DOCUMENT / ACTION_OPEN_DOCUMENT_TREE). It browses the real
- * filesystem (the app holds MANAGE_EXTERNAL_STORAGE / READ_EXTERNAL_STORAGE) so every
- * import/select action still works on such devices.
+ * Built-in file/folder picker used for every import/select flow. It browses the real
+ * filesystem (the app holds MANAGE_EXTERNAL_STORAGE / READ_EXTERNAL_STORAGE), so it
+ * works even on devices without DocumentsUI and is fully D-pad navigable.
  */
 public final class CustomFilePicker {
     public interface FileListener {
@@ -60,6 +59,14 @@ public final class CustomFilePicker {
                 Toast.makeText(activity, "Grant 'All files access', then try again", Toast.LENGTH_LONG).show();
                 return false;
             }
+        } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            if (activity.checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                activity.requestPermissions(
+                        new String[]{android.Manifest.permission.READ_EXTERNAL_STORAGE}, 9100);
+                Toast.makeText(activity, "Grant storage access, then try again", Toast.LENGTH_LONG).show();
+                return false;
+            }
         }
         return true;
     }
@@ -88,7 +95,8 @@ public final class CustomFilePicker {
             for (File child : children) {
                 if (child.isDirectory()) {
                     dirs.add(child);
-                } else if (child.isFile() && matches(child.getName(), extensions)) {
+                } else if (fileListener != null && child.isFile()
+                        && matches(child.getName(), extensions)) {
                     files.add(child);
                 }
             }
@@ -97,45 +105,59 @@ public final class CustomFilePicker {
         files.sort((a, b) -> a.getName().compareToIgnoreCase(b.getName()));
 
         final List<String> items = new ArrayList<>();
-        final List<File> targets = new ArrayList<>();
+        final List<Runnable> actions = new ArrayList<>();
+        if (folderListener != null) {
+            // Folder pickers need an explicit accept action: the system
+            // DocumentsUI "Use this folder" button cannot be reached with a D-pad.
+            // Keep it first so it is selected as soon as the dialog opens.
+            items.add("Choose this folder: " + dir.getName());
+            actions.add(() -> folderListener.onFolder(dir));
+        }
         File parent = dir.getParentFile();
         if (parent != null) {
             items.add(".. (parent)");
-            targets.add(parent);
-        }
-        if (folderListener != null) {
-            items.add(">> Use this folder: " + dir.getName());
-            targets.add(dir);
+            actions.add(() -> browse(activity, parent, title, extensions, fileListener, folderListener));
         }
         for (File d : dirs) {
             items.add(d.getName() + "/");
-            targets.add(d);
+            actions.add(() -> browse(activity, d, title, extensions, fileListener, folderListener));
         }
-        for (File f : files) {
-            items.add(f.getName());
-            targets.add(f);
+        if (fileListener != null) {
+            for (File f : files) {
+                items.add(f.getName());
+                actions.add(() -> fileListener.onFile(f));
+            }
+        }
+        if (items.isEmpty()) {
+            Toast.makeText(activity, "Nothing to show here", Toast.LENGTH_SHORT).show();
+            return;
         }
 
-        new AlertDialog.Builder(activity)
+        final AlertDialog dialog = new AlertDialog.Builder(activity)
                 .setTitle(title + "\n" + dir.getAbsolutePath())
-                .setItems(items.toArray(new String[0]), (dialog, which) -> {
-                    if (which < 0 || which >= targets.size()) {
-                        return;
-                    }
-                    File chosen = targets.get(which);
-                    if (chosen.isDirectory()) {
-                        if (folderListener != null && which == (parent != null ? 1 : 0)
-                                && chosen.equals(dir)) {
-                            folderListener.onFolder(chosen);
-                            return;
-                        }
-                        browse(activity, chosen, title, extensions, fileListener, folderListener);
-                    } else if (fileListener != null) {
-                        fileListener.onFile(chosen);
+                .setItems(items.toArray(new String[0]), (d, which) -> {
+                    if (which >= 0 && which < actions.size()) {
+                        actions.get(which).run();
                     }
                 })
                 .setNegativeButton("Cancel", null)
-                .show();
+                .create();
+        dialog.setOnShowListener(d -> {
+            android.widget.ListView list = dialog.getListView();
+            if (list != null) {
+                // Give the list D-pad focus immediately so a remote can browse
+                // without touching the screen first.
+                list.setFocusable(true);
+                list.setFocusableInTouchMode(true);
+                list.setSelector(new android.graphics.drawable.ColorDrawable(0x663080FF));
+                // The selected item fill is the highlight; skip the platform
+                // outline that would otherwise frame the whole list.
+                FocusHighlight.disable(list);
+                list.setSelection(0);
+                list.post(list::requestFocus);
+            }
+        });
+        dialog.show();
     }
 
     private static boolean matches(String name, String[] extensions) {

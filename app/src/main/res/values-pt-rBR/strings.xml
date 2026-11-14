@@ -79,6 +79,7 @@
     <string name="unbound">Não atribuído</string>
     <string name="reset">Redefinir</string>
     <string name="doja_key">Tecla DoJa %1$d</string>
+    <string name="host_action">Ação</string>
     <string name="exit_game_action">Sair do jogo</string>
     <string name="display_title">Exibição</string>
     <string name="display_title_game">Exibição: %1$s</string>
@@ -109,6 +110,7 @@
     <string name="display_fps">Sistema</string>
     <string name="show_fps">Mostrar FPS</string>
     <string name="use_hardware_rendering">Usar renderização por hardware</string>
+    <string name="use_system_keyboard">Usar teclado do sistema</string>
     <string name="reset_to_global">Redefinir para padrões globais</string>
     <string name="theme_title">Tema e música</string>
     <string name="theme">Tema</string>
@@ -122,7 +124,7 @@
     <string name="no_bgm">Sem música</string>
     <string name="bgm">Música</string>
     <string name="default_bgm">Música padrão</string>
-    <string name="game_menu">Menu do jogo</string>
+    <string name="game_menu">Menu do emulador</string>
     <string name="edit_buttons">Editar botões</string>
     <string name="edit_buttons_move">Mover</string>
     <string name="edit_buttons_resize">Redimensionar</string>
@@ -133,4 +135,6 @@
     <string name="edit_buttons_scale">Escala %1$d%%</string>
     <string name="hide_keypad">Ocultar teclado</string>
     <string name="exit_game">Sair do jogo</string>
+    <string name="haptic_feedback">Retorno tátil</string>
+    <string name="haptic_feedback_value">Retorno tátil: %1$d%%</string>
 </resources>

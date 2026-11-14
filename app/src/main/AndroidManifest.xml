@@ -11,13 +11,15 @@
         android:maxSdkVersion="32" />
     <!-- All-files access for the built-in file browser on devices without DocumentsUI. -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <!-- DoJa PhoneSystem DEV_VIBRATOR (games with a vibration option). -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
         android:label="Pocket DoJa"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:usesCleartextTraffic="true"
-        android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+        android:theme="@style/AppTheme"
         android:largeHeap="true"
         android:resizeableActivity="false">
         <activity

@@ -824,7 +824,7 @@ public final class DoJaRuntime {
         } else {
             currentCanvasPresentedByApplication = false;
             presentedCanvas = null;
-            presentedFrame = null;
+            presentedFrame = frame instanceof Panel panel ? snapshotPanelImage(panel) : null;
             repaintWindow();
         }
     }
@@ -1190,7 +1190,18 @@ public final class DoJaRuntime {
                 keypadStateBits &= ~mask;
             }
         }
-        if (!(currentFrame instanceof Canvas canvas)) {
+        Frame frame = currentFrame;
+        if (frame instanceof Panel panel) {
+            dispatchUiEvent(() -> {
+                panel.hostProcessKeyEvent(eventType, key);
+                if (panel == currentFrame) {
+                    presentedFrame = snapshotPanelImage(panel);
+                    repaintWindow();
+                }
+            });
+            return;
+        }
+        if (!(frame instanceof Canvas canvas)) {
             return;
         }
         dispatchCanvasUiEvent(canvas, () -> {
@@ -1266,6 +1277,9 @@ public final class DoJaRuntime {
                 "dispatchHostSoftKey: softKey=" + softKey + " eventType=" + eventType + " frame=" + frame.getClass().getName());
             }
             frame.processSoftKeyEvent(eventType, softKey);
+            if (frame == currentFrame && frame instanceof Panel panel) {
+                presentedFrame = snapshotPanelImage(panel);
+            }
             repaintWindow();
             if (frame == currentFrame && frame instanceof Canvas canvas && !currentCanvasPresentedByApplication) {
                 requestRender(canvas);
@@ -1494,6 +1508,10 @@ public final class DoJaRuntime {
     private BufferedImage snapshotCanvasImage(Canvas canvas) {
         BufferedImage image = getCanvasImage(canvas);
         return copyCanvasImage(image);
+    }
+
+    private BufferedImage snapshotPanelImage(Panel panel) {
+        return PanelRenderer.snapshot(panel, displayWidth(), displayHeight());
     }
 
     private Graphics runtimeGraphics(Canvas canvas) {

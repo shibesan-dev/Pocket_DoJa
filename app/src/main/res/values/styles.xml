@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        The system default focus highlight is taken from
+        ?android:attr/selectableItemBackground. On this device that drawable is
+        a bright green box, which shows up around focused containers (the game
+        grid, top bar, whole settings list). Replace it with a blue outline.
+        Containers that should never show a section-sized highlight opt out via
+        FocusHighlight.disable().
+    -->
+    <style name="AppTheme" parent="@android:style/Theme.Black.NoTitleBar.Fullscreen">
+        <item name="android:selectableItemBackground">@drawable/focus_highlight</item>
+    </style>
+</resources>

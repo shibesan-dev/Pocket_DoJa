@@ -94,4 +94,12 @@ public final class Button extends Component implements Interactable {
     boolean acceptsFocusOn(Panel panel) {
         return enabled && super.acceptsFocusOn(panel);
     }
+
+    String hostLabel() {
+        return label;
+    }
+
+    boolean hostEnabled() {
+        return enabled;
+    }
 }

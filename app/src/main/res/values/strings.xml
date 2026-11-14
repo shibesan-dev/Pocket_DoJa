@@ -87,6 +87,7 @@ Thank you for your interest in Pocket DoJa!
     <string name="unbound">Unbound</string>
     <string name="reset">Reset</string>
     <string name="doja_key">DoJa key %1$d</string>
+    <string name="host_action">Action</string>
     <string name="exit_game_action">Exit game</string>
 
     <string name="display_title">Display</string>
@@ -118,6 +119,7 @@ Thank you for your interest in Pocket DoJa!
     <string name="display_fps">System</string>
     <string name="show_fps">Show FPS</string>
     <string name="use_hardware_rendering">Use Hardware Rendering</string>
+    <string name="use_system_keyboard">Use System Keyboard</string>
     <string name="reset_to_global">Reset to Global Defaults</string>
 
     <string name="theme_title">Theme &amp; BGM</string>
@@ -132,7 +134,7 @@ Thank you for your interest in Pocket DoJa!
     <string name="no_bgm">No BGM</string>
     <string name="bgm">BGM</string>
     <string name="default_bgm">Default BGM</string>
-    <string name="game_menu">Game menu</string>
+    <string name="game_menu">Emulator Menu</string>
     <string name="edit_buttons">Edit Buttons</string>
     <string name="edit_buttons_move">Move</string>
     <string name="edit_buttons_resize">Resize</string>
@@ -143,4 +145,6 @@ Thank you for your interest in Pocket DoJa!
     <string name="edit_buttons_scale">Scale %1$d%%</string>
     <string name="hide_keypad">Hide Keypad</string>
     <string name="exit_game">Exit Game</string>
+    <string name="haptic_feedback">Haptic feedback</string>
+    <string name="haptic_feedback_value">Haptic feedback: %1$d%%</string>
 </resources>

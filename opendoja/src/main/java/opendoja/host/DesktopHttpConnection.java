@@ -20,12 +20,16 @@ public final class DesktopHttpConnection implements HttpConnection {
     // When non-null this connection serves a local synthetic body instead of hitting the
     // network (offline resource-manifest stub, see resolveResourceManifestStub).
     private final byte[] stubBody;
+    // DoJa games commonly gate startup on a Capcom service header; synthetic stubs return it too.
+    private final String stubCapcomStatus;
 
     public DesktopHttpConnection(URL url, int mode, boolean timeouts) {
         this.url = rewriteOutboundUrl(url);
         this.mode = mode;
         this.timeouts = timeouts;
-        this.stubBody = resolveResourceManifestStub(this.url);
+        StubResponse stub = resolveOfflineStub(this.url);
+        this.stubBody = stub == null ? null : stub.body;
+        this.stubCapcomStatus = stub == null ? null : stub.capcomStatus;
     }
 
     @Override
@@ -155,6 +159,9 @@ public final class DesktopHttpConnection implements HttpConnection {
             if (name == null) {
                 return null;
             }
+            if ("X-CAPCOM-STATUS".equalsIgnoreCase(name)) {
+                return stubCapcomStatus;
+            }
             if ("Content-Length".equalsIgnoreCase(name)) {
                 return Integer.toString(stubBody.length);
             }
@@ -257,6 +264,67 @@ public final class DesktopHttpConnection implements HttpConnection {
             return connection.getContentLengthLong();
         } catch (IOException e) {
             return -1L;
+        }
+    }
+
+    private static StubResponse resolveOfflineStub(URL url) {
+        byte[] manifest = resolveResourceManifestStub(url);
+        if (manifest != null) {
+            return new StubResponse(manifest, null);
+        }
+        return resolveGSaibanOfflineStub(url);
+    }
+
+    /**
+     * Gyakuten Saiban 4 gates startup on two dead Capcom services: a registration call
+     * ({@code isbn_score.php?ty=reg}) and an application-version manifest. Its episode data
+     * ships separately in the scratchpad, so serving deterministic success responses lets the
+     * game continue into local play. Returned status 2 means "already registered" and 9999
+     * credits keeps the trial counter from expiring.
+     */
+    private static StubResponse resolveGSaibanOfflineStub(URL url) {
+        if (url == null || !"game.capcom.jp".equalsIgnoreCase(url.getHost())) {
+            return null;
+        }
+        String path = url.getPath();
+        if (path == null) {
+            return null;
+        }
+        if (path.endsWith("/info.txt") || path.endsWith("/news.txt")) {
+            recordStub("gsaiban empty " + path);
+            return new StubResponse(new byte[0], "OK");
+        }
+        if (path.endsWith("_appVersion.txt") || path.endsWith("/main/common_appVersion.txt")) {
+            // Common and per-part version manifests. Reporting the same version the JAM
+            // declares (AppParam = 13 1.02.00) tells the game its local part data is
+            // current, so it skips the dead download server and plays from the scratchpad.
+            recordStub("gsaiban version " + path);
+            return new StubResponse("1.02.00".getBytes(java.nio.charset.StandardCharsets.US_ASCII), "OK");
+        }
+        if (path.endsWith("/isbn_score.php") && url.getQuery() != null) {
+            String query = url.getQuery();
+            if (query.contains("ty=reg")) {
+                recordStub("gsaiban registration " + path);
+                return new StubResponse(new byte[] {2, 0, 0, 0x27, 0x0F}, "OK");
+            }
+            if (query.contains("ty=s2get")) {
+                // Part availability check. Status 1 = the part is already present
+                // locally, so the game jumps straight to the start-part scene instead
+                // of asking the dead download service for part1311.dat.
+                recordStub("gsaiban part check " + path);
+                return new StubResponse(new byte[] {1}, "OK");
+            }
+        }
+        return null;
+    }
+
+    private static final class StubResponse {
+        private final byte[] body;
+        private final String capcomStatus;
+
+        private StubResponse(byte[] body, String capcomStatus) {
+            this.body = body;
+            this.capcomStatus = capcomStatus;
         }
     }
 

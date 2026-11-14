@@ -109,6 +109,7 @@ public class KeyMappingActivity extends Activity {
         ok.setTextSize(16f);
         ok.setPadding(dp(16), dp(10), dp(16), dp(10));
         ok.setOnClickListener(v -> commitAndFinish());
+        makeButtonFocusable(ok);
         buttons.addView(ok);
         TextView reset = new TextView(this);
         reset.setText(R.string.reset);
@@ -119,19 +120,29 @@ public class KeyMappingActivity extends Activity {
             refreshBindings();
             updateHeader(null);
         });
+        makeButtonFocusable(reset);
         buttons.addView(reset);
         TextView cancel = new TextView(this);
         cancel.setText(R.string.cancel);
         cancel.setTextSize(16f);
         cancel.setPadding(dp(16), dp(10), dp(16), dp(10));
         cancel.setOnClickListener(v -> finish());
+        makeButtonFocusable(cancel);
         buttons.addView(cancel);
         root.addView(buttons, matchWrap());
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
+        // Let the individual rows take D-pad focus; otherwise the ScrollView
+        // itself receives focus and the highlight covers the whole list.
+        scroll.setFocusable(false);
         scroll.addView(root);
         setContentView(scroll);
+        rowsContainer.post(() -> {
+            if (rowsContainer.getChildCount() > 0) {
+                rowsContainer.getChildAt(0).requestFocus();
+            }
+        });
     }
 
     private static LinearLayout.LayoutParams matchWrap() {
@@ -147,7 +158,7 @@ public class KeyMappingActivity extends Activity {
         row.setPadding((int) (8 * density), (int) (10 * density), (int) (8 * density), (int) (10 * density));
 
         TextView name = new TextView(this);
-        name.setText(action.displayName());
+        name.setText(actionLabel(action));
         name.setTextSize(16f);
         row.addView(name, weighted());
 
@@ -164,8 +175,17 @@ public class KeyMappingActivity extends Activity {
         row.addView(binding, weighted());
         bindingViews.put(action.id(), binding);
 
-        row.setFocusable(false);
+        // One row at a time must be focusable so a remote/gamepad can move
+        // through the bindings with the D-pad instead of focusing the whole list.
+        row.setFocusable(true);
+        // Not focusable in touch mode, so a single tap clicks the row instead
+        // of the first tap only giving it focus.
         row.setFocusableInTouchMode(false);
+        // The row paints its own focus fill; stop the platform from drawing a
+        // second (outline) highlight on top of it.
+        FocusHighlight.disable(row);
+        row.setBackgroundColor(Color.TRANSPARENT);
+        row.setOnFocusChangeListener((v, hasFocus) -> updateRowHighlight(v, hasFocus));
 
         row.setOnClickListener(v -> {
             long now = System.currentTimeMillis();
@@ -197,12 +217,21 @@ public class KeyMappingActivity extends Activity {
         return params;
     }
 
+    private String actionLabel(HostControlAction action) {
+        if (action == HostControlAction.EXIT_GAME) {
+            // This action opens the in-game emulator menu instead of quitting.
+            return getString(R.string.game_menu);
+        }
+        return action.displayName();
+    }
+
     private static String describeDispatch(android.content.Context context, HostControlAction action) {
         if (action.dispatchKind() == HostControlAction.DispatchKind.HOST_SOFT_KEY) {
                 return "Key";
         }
         if (action.dispatchKind() == HostControlAction.DispatchKind.HOST_ACTION) {
-                return context.getString(R.string.exit_game_action);
+                // Host actions (the emulator menu) are not DoJa keys.
+                return context.getString(R.string.host_action);
         }
         return context.getString(R.string.doja_key, action.dispatchCode());
     }
@@ -240,26 +269,57 @@ public class KeyMappingActivity extends Activity {
 
     private void beginCapture(HostControlAction action, View row) {
         if (capturingRow != null) {
-            capturingRow.setBackgroundColor(Color.TRANSPARENT);
+            updateRowHighlight(capturingRow, capturingRow.isFocused());
         }
         capturing = action;
         capturingRow = row;
-        row.setBackgroundColor(0x403080FF);
+        row.setBackgroundColor(0x803080FF);
         updateHeader(action);
     }
 
     private void endCapture() {
         if (capturingRow != null) {
-            capturingRow.setBackgroundColor(Color.TRANSPARENT);
+            updateRowHighlight(capturingRow, capturingRow.isFocused());
         }
         capturing = null;
         capturingRow = null;
         updateHeader(null);
     }
 
+    private void updateRowHighlight(View row, boolean focused) {
+        if (row == null) {
+            return;
+        }
+        if (row == capturingRow) {
+            row.setBackgroundColor(0x803080FF);
+        } else if (focused) {
+            row.setBackgroundColor(0x403080FF);
+        } else {
+            row.setBackgroundColor(Color.TRANSPARENT);
+        }
+    }
+
+    private void makeButtonFocusable(TextView button) {
+        button.setFocusable(true);
+        button.setFocusableInTouchMode(false);
+        // Custom fill below; avoid stacking the default focus outline on it.
+        FocusHighlight.disable(button);
+        button.setOnFocusChangeListener((v, hasFocus) -> {
+            if (hasFocus) {
+                android.graphics.drawable.GradientDrawable bg =
+                        new android.graphics.drawable.GradientDrawable();
+                bg.setColor(0x663080FF);
+                bg.setCornerRadius(dp(6));
+                v.setBackground(bg);
+            } else {
+                v.setBackground(null);
+            }
+        });
+    }
+
     private void updateHeader(HostControlAction target) {
         if (target != null) {
-            headerView.setText(getString(R.string.binding_capturing, target.displayName()));
+            headerView.setText(getString(R.string.binding_capturing, actionLabel(target)));
             headerView.setTextColor(0x66CCFFFF);
         } else {
             headerView.setText(R.string.binding_hint);

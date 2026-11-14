@@ -162,7 +162,7 @@ public abstract class Component {
     }
 
     boolean acceptsFocusOn(Panel panel) {
-        if (ownerPanel != panel || !visible) {
+        if (!(this instanceof Interactable) || ownerPanel != panel || !visible) {
             return false;
         }
         int start = getX();

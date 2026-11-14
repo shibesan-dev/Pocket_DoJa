@@ -297,6 +297,10 @@ public final class TextBox extends Component implements Interactable {
         return rows;
     }
 
+    int hostColumns() {
+        return columns;
+    }
+
     boolean hostEnabled() {
         return enabled;
     }

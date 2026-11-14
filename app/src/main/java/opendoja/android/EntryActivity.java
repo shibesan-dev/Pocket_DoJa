@@ -109,6 +109,8 @@ private static volatile Thread gameThread;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Keep the shipping defaults consistent even for direct game launches.
+        DisplayActivity.applyShippingDefaults(this);
         // If Android reused this :game process for a new game, cancel any pending exit.
         processTerminating = false;
         String gameId = getIntent() != null ? getIntent().getStringExtra("jamPath") : null;
@@ -124,6 +126,10 @@ private static volatile Thread gameThread;
         }
         HomeActivity.applyDisplayOrientation(this, gameId);
         OpenDoJaLog.configure(OpenDoJaLog.Level.OFF);
+        try {
+            opendoja.host.device.DoJaVibrationSupport.initialize(getApplicationContext());
+        } catch (Throwable ignored) {
+        }
         DoJaRuntime.setGlobalShutdownCallback(runtime -> {
             if (runtime.sessionId() != activeSessionId) {
                 opendoja.host.OpenDoJaLog.info(EntryActivity.class, "shutdown callback ignored: session=" + runtime.sessionId() + " active=" + activeSessionId);
@@ -156,11 +162,12 @@ private static volatile Thread gameThread;
             runOnUiThread(this::exitGame);
         });
         DoJaRuntime.setPlatformPresenter((frame, sessionId) -> {
-            if (frame == null) {
-                runOnUiThread(this::exitGame);
-                return;
+            // A null frame only means there is nothing to present (for example after
+            // switching to a high-level Panel). Exits are signalled by the runtime's
+            // shutdown callback; treating null as an exit would kill Panel games.
+            if (frame != null) {
+                surfaceView.present(frame, sessionId);
             }
-            surfaceView.present(frame, sessionId);
         });
         // The default artifact-derived host root points inside the read-only APK
         // directory; SD-card storage init would fail there and titles like the
@@ -169,11 +176,12 @@ private static volatile Thread gameThread;
         opendoja.host.OpenDoJaPaths.setHostDataRoot(java.nio.file.Paths.get(getFilesDir().getAbsolutePath()).resolve(".opendoja"));
         installCrashGuard();
         DoJaRuntime.setPlatformPresenter((frame, sessionId) -> {
-            if (frame == null) {
-                runOnUiThread(this::exitGame);
-                return;
+            // A null frame only means there is nothing to present (for example after
+            // switching to a high-level Panel). Exits are signalled by the runtime's
+            // shutdown callback; treating null as an exit would kill Panel games.
+            if (frame != null) {
+                surfaceView.present(frame, sessionId);
             }
-            surfaceView.present(frame, sessionId);
         });
         exiting = false;
         input = new JamInputController();
@@ -217,8 +225,11 @@ private static volatile Thread gameThread;
     @Override
     public boolean dispatchKeyEvent(android.view.KeyEvent event) {
         if (surfaceView != null && surfaceView.isButtonEditMode()) {
-            // While laying out the on-screen controls, BACK cancels the editor
-            // instead of opening the game menu or being routed to the title.
+            if (surfaceView.handleButtonEditKey(event)) {
+                return true;
+            }
+            // Back on the toolbar cancels the editor instead of opening the
+            // game menu or being routed to the title.
             if (event.getKeyCode() == android.view.KeyEvent.KEYCODE_BACK
                     && event.getAction() == android.view.KeyEvent.ACTION_DOWN
                     && event.getRepeatCount() == 0) {
@@ -247,9 +258,11 @@ private static volatile Thread gameThread;
         opendoja.host.HostControlAction mapped = mappedAction(event.getKeyCode());
         if (mapped != null) {
             if (mapped == opendoja.host.HostControlAction.EXIT_GAME) {
+                // A key bound to "Exit Game" opens the in-game menu instead of
+                // quitting immediately, matching the swipe-from-left gesture.
                 if (event.getAction() == android.view.KeyEvent.ACTION_DOWN
                         && event.getRepeatCount() == 0) {
-                    exitGame();
+                    showGameMenu();
                 }
                 return true;
             }
@@ -447,6 +460,10 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
 
     private void exitGame() {
         opendoja.host.OpenDoJaLog.info(EntryActivity.class, "exitGame called");
+        try {
+            opendoja.host.device.DoJaVibrationSupport.cancel();
+        } catch (Throwable ignored) {
+        }
         HomeActivity.gameRunning = false;
         try {
             opendoja.host.DoJaRuntime.markShutdown();
@@ -598,6 +615,10 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
      *  runtime down without exiting the process, so the title screen stays alive. */
     private void stopGame() {
         opendoja.host.OpenDoJaLog.info(EntryActivity.class, "stopGame called, thread=" + Thread.currentThread().getName() + " session=" + sessionId);
+        try {
+            opendoja.host.device.DoJaVibrationSupport.cancel();
+        } catch (Throwable ignored) {
+        }
         if (gameStopped) {
             opendoja.host.OpenDoJaLog.info(EntryActivity.class, "stopGame: already stopped");
             return;
@@ -947,6 +968,10 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
         }
         suspended = true;
         opendoja.host.OpenDoJaLog.info(EntryActivity.class, "suspendGame: hibernating session=" + sessionId);
+        try {
+            opendoja.host.device.DoJaVibrationSupport.pause();
+        } catch (Throwable ignored) {
+        }
         if (gameMenu != null && gameMenu.isShowing()) {
             try {
                 gameMenu.dismiss();
@@ -970,6 +995,10 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
         }
         suspended = false;
         opendoja.host.OpenDoJaLog.info(EntryActivity.class, "resumeGame: resuming session=" + sessionId);
+        try {
+            opendoja.host.device.DoJaVibrationSupport.resume();
+        } catch (Throwable ignored) {
+        }
         // Restart frozen audio and re-enable frame delivery first, then wake
         // the parked threads: a frame racing resumeGlobal() would otherwise be
         // dropped by the released flag and leave the screen stale.
@@ -1131,6 +1160,13 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
         threadSession.set(sessionId);
         activeSessionId = sessionId;
         opendoja.host.OpenDoJaLog.info(EntryActivity.class, "launchGame: session=" + sessionId);
+        try {
+            // Clear vibrator state left behind by a previous title in this process.
+            com.nttdocomo.ui.PhoneSystem.setAttribute(
+                    com.nttdocomo.ui.PhoneSystem.DEV_VIBRATOR,
+                    com.nttdocomo.ui.PhoneSystem.ATTR_VIBRATOR_OFF);
+        } catch (Throwable ignored) {
+        }
         gameReady = false;
         presentedFrameCount = 0;
         hasUserInteracted = false;
@@ -1266,11 +1302,12 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
             surfaceView.prepareForNewGame();
         }
         DoJaRuntime.setPlatformPresenter((frame, sessionId) -> {
-            if (frame == null) {
-                runOnUiThread(this::exitGame);
-                return;
+            // A null frame only means there is nothing to present (for example after
+            // switching to a high-level Panel). Exits are signalled by the runtime's
+            // shutdown callback; treating null as an exit would kill Panel games.
+            if (frame != null) {
+                surfaceView.present(frame, sessionId);
             }
-            surfaceView.present(frame, sessionId);
         });
 
             LaunchConfig config = JamLauncher.buildLaunchConfig(java.nio.file.Paths.get(jam.getAbsolutePath()), false,
@@ -1311,11 +1348,12 @@ android.widget.LinearLayout.LayoutParams exitLp = new android.widget.LinearLayou
                     runOnUiThread(this::exitGame);
                 });
         DoJaRuntime.setPlatformPresenter((frame, sessionId) -> {
-            if (frame == null) {
-                runOnUiThread(this::exitGame);
-                return;
+            // A null frame only means there is nothing to present (for example after
+            // switching to a high-level Panel). Exits are signalled by the runtime's
+            // shutdown callback; treating null as an exit would kill Panel games.
+            if (frame != null) {
+                surfaceView.present(frame, sessionId);
             }
-            surfaceView.present(frame, sessionId);
         });
             }
             DoJaRuntime runtime = DoJaRuntime.current();

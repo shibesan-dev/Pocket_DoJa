@@ -67,7 +67,7 @@ public enum HostControlAction {
             HostInputBinding.keyboard(KeyEvent.VK_M)),
     CAMERA("camera", "Camera", DispatchKind.DOJA_KEY, Display.KEY_CAMERA,
             HostInputBinding.keyboard(KeyEvent.VK_C)),
-    EXIT_GAME("exitGame", "Exit Game", DispatchKind.HOST_ACTION, 0);
+    EXIT_GAME("exitGame", "Emulator Menu", DispatchKind.HOST_ACTION, 0);
 
     private final String id;
     private final String displayName;
