@@ -11,7 +11,9 @@ Compatibility may vary depending on the game, DoJa version, and device. Some gam
 
 ## Notice
 
-This is a personal hobby project by Shibesan. The only official source of updates is this repository: https://github.com/shibesan-dev
+This is a personal hobby project by Shibesan. <br>
+The only official source of updates is this repository: https://github.com/shibesan-dev <br>
+Discord: https://discord.gg/FAwqaAvn8 <br>
 
 Any social media accounts, websites, or channels claiming to be me or this project outside of the link above are **scams**. Please follow updates here only. Official channels will be listed in this README if they become available in the future.
 
